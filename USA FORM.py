@@ -588,11 +588,7 @@ def count_bookings(date, break_type, time_slot):
 def display_schedule(template):
     st.header("LM US ENG 3:00 PM shift")
     
-    # Lunch breaks table
-    st.markdown("### LUNCH BREAKS")
-    lunch_df = pd.DataFrame({
-        "DATE": [st.session_state.selected_date],
-        **{time: [""] for time in template["lunch_breaks"]}
+ 
     })
     st.table(lunch_df)
     
@@ -601,7 +597,7 @@ def display_schedule(template):
     st.markdown("---")
     
     # Tea breaks table
-    st.markdown("### TEA BREAK")
+    
     
     # Create two columns for tea breaks
     max_rows = max(len(template["tea_breaks"]["early"]), len(template["tea_breaks"]["late"]))
