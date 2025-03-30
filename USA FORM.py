@@ -797,7 +797,7 @@ def admin_break_dashboard():
         st.write("No bookings yet.")
 
 def agent_break_dashboard():
-    st.title("Agent Dashboard")
+    st.title("Break Booking")
     st.markdown("---")
     
     # Use the logged-in username directly
@@ -808,28 +808,20 @@ def agent_break_dashboard():
     schedule_date = st.date_input("Select Date:", datetime.now())
     st.session_state.selected_date = schedule_date.strftime('%Y-%m-%d')
     
-    # Template selection (only if multiple templates exist)
-    if len(st.session_state.templates) > 1:
-        selected_template = st.selectbox(
-            "Select Schedule Template:",
-            list(st.session_state.templates.keys())
-        )
-        template = adjust_template_times(st.session_state.templates[selected_template], st.session_state.timezone_offset)
-    elif st.session_state.templates:
-        template = adjust_template_times(list(st.session_state.templates.values())[0], st.session_state.timezone_offset)
-    else:
-        st.error("No schedules available. Please ask your admin to create one.")
+    # Use the first template (or create a default if none exists)
+    if not st.session_state.templates:
+        st.error("No break schedules available. Please contact admin.")
         return
     
-    # Display schedule and booking options
-    display_schedule(template)
+    # Get the first template (we're removing the template selection)
+    template_name = list(st.session_state.templates.keys())[0]
+    template = adjust_template_times(st.session_state.templates[template_name], st.session_state.timezone_offset)
     
     # Booking section
     st.markdown("---")
-    st.header("Book Your Breaks")
+    st.header("Available Break Slots")
     
     # Check if template has limits defined
-    template_name = st.session_state.current_template if st.session_state.current_template else list(st.session_state.templates.keys())[0]
     break_limits = st.session_state.break_limits.get(template_name, {})
     
     # Lunch break booking
@@ -860,8 +852,9 @@ def agent_break_dashboard():
             st.session_state.agent_bookings[st.session_state.selected_date][agent_id]["lunch"] = selected_lunch
             save_break_data()
             st.success(f"Lunch break booked for {selected_lunch}")
+            st.rerun()
     else:
-        st.write("No lunch breaks available in this schedule.")
+        st.write("No lunch breaks available today.")
     
     # Tea break booking
     st.subheader("Tea Breaks")
@@ -891,6 +884,7 @@ def agent_break_dashboard():
         st.session_state.agent_bookings[st.session_state.selected_date][agent_id]["early_tea"] = selected_early_tea
         save_break_data()
         st.success(f"Early tea break booked for {selected_early_tea}")
+        st.rerun()
     
     st.write("Late Tea Breaks:")
     late_tea_cols = st.columns(len(template["tea_breaks"]["late"]))
@@ -918,11 +912,12 @@ def agent_break_dashboard():
         st.session_state.agent_bookings[st.session_state.selected_date][agent_id]["late_tea"] = selected_late_tea
         save_break_data()
         st.success(f"Late tea break booked for {selected_late_tea}")
+        st.rerun()
     
     # Display current bookings
     if st.session_state.selected_date in st.session_state.agent_bookings and agent_id in st.session_state.agent_bookings[st.session_state.selected_date]:
         st.markdown("---")
-        st.header("Your Bookings")
+        st.header("Your Current Bookings")
         bookings = st.session_state.agent_bookings[st.session_state.selected_date][agent_id]
         
         if "lunch" in bookings:
