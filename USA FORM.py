@@ -567,7 +567,7 @@ def adjust_template_times(template, offset):
     adjusted_template = {
         "lunch_breaks": [adjust_time(t, offset) for t in template["lunch_breaks"]],
         "tea_breaks": {
-            "early": [adjust_time(t, offset) for t in template["tea_breaks"]["early"]],
+            "First": [adjust_time(t, offset) for t in template["tea_breaks"]["First"]],
             "late": [adjust_time(t, offset) for t in template["tea_breaks"]["late"]]
         }
     }
@@ -579,7 +579,7 @@ def count_bookings(date, break_type, time_slot):
         for agent_id, breaks in st.session_state.agent_bookings[date].items():
             if break_type == "lunch" and "lunch" in breaks and breaks["lunch"] == time_slot:
                 count += 1
-            elif break_type == "early_tea" and "early_tea" in breaks and breaks["early_tea"] == time_slot:
+            elif break_type == "First_tea" and "First_tea" in breaks and breaks["First_tea"] == time_slot:
                 count += 1
             elif break_type == "late_tea" and "late_tea" in breaks and breaks["late_tea"] == time_slot:
                 count += 1
@@ -598,9 +598,9 @@ def display_schedule(template):
     
     
     # Create two columns for tea breaks
-    max_rows = max(len(template["tea_breaks"]["early"]), len(template["tea_breaks"]["late"]))
+    max_rows = max(len(template["tea_breaks"]["First"]), len(template["tea_breaks"]["late"]))
     tea_data = {
-        "TEA BREAK": template["tea_breaks"]["early"] + [""] * (max_rows - len(template["tea_breaks"]["early"])),
+        "TEA BREAK": template["tea_breaks"]["First"] + [""] * (max_rows - len(template["tea_breaks"]["First"])),
         "TEA BREAK": template["tea_breaks"]["late"] + [""] * (max_rows - len(template["tea_breaks"]["late"]))
     }
     tea_df = pd.DataFrame(tea_data)
@@ -649,8 +649,8 @@ def admin_break_dashboard():
                     st.session_state.templates[template_name] = {
                         "lunch_breaks": ["19:30", "20:00", "20:30", "21:00", "21:30"],
                         "tea_breaks": {
-                            "early": ["16:00", "16:15", "16:30", "16:45", "17:00", "17:15", "17:30"],
-                            "late": ["21:45", "22:00", "22:15", "22:30"]
+                            "First": ["16:00", "16:15", "16:30", "16:45", "17:00", "17:15", "17:30"],
+                            "First": ["21:45", "22:00", "22:15", "22:30"]
                         }
                     }
                     st.session_state.current_template = template_name
@@ -691,12 +691,12 @@ def admin_break_dashboard():
             )
             
             st.subheader("Edit Tea Breaks")
-            st.write("Early Tea Breaks:")
-            early_tea_breaks = st.text_area(
-                "Early Tea Breaks (one per line):",
-                "\n".join(template["tea_breaks"]["early"]),
+            st.write("First Tea Breaks:")
+            First_tea_breaks = st.text_area(
+                "First Tea Breaks (one per line):",
+                "\n".join(template["tea_breaks"]["First"]),
                 height=150,
-                key="early_tea"
+                key="First_tea"
             )
             
             st.write("Late Tea Breaks:")
@@ -709,7 +709,7 @@ def admin_break_dashboard():
             
             if st.button("Save Changes"):
                 template["lunch_breaks"] = [t.strip() for t in lunch_breaks.split("\n") if t.strip()]
-                template["tea_breaks"]["early"] = [t.strip() for t in early_tea_breaks.split("\n") if t.strip()]
+                template["tea_breaks"]["First"] = [t.strip() for t in First_tea_breaks.split("\n") if t.strip()]
                 template["tea_breaks"]["late"] = [t.strip() for t in late_tea_breaks.split("\n") if t.strip()]
                 save_break_data()
                 st.success("Template updated successfully!")
@@ -723,7 +723,7 @@ def admin_break_dashboard():
         if st.session_state.current_template not in st.session_state.break_limits:
             st.session_state.break_limits[st.session_state.current_template] = {
                 "lunch": {time: 5 for time in template["lunch_breaks"]},
-                "early_tea": {time: 3 for time in template["tea_breaks"]["early"]},
+                "First_tea": {time: 3 for time in template["tea_breaks"]["First"]},
                 "late_tea": {time: 3 for time in template["tea_breaks"]["late"]}
             }
         
@@ -738,15 +738,15 @@ def admin_break_dashboard():
                     key=f"lunch_limit_{time_slot}"
                 )
         
-        st.subheader("Early Tea Break Limits")
-        early_tea_cols = st.columns(len(template["tea_breaks"]["early"]))
-        for i, time_slot in enumerate(template["tea_breaks"]["early"]):
-            with early_tea_cols[i]:
-                st.session_state.break_limits[st.session_state.current_template]["early_tea"][time_slot] = st.number_input(
+        st.subheader("First Tea Break Limits")
+        First_tea_cols = st.columns(len(template["tea_breaks"]["First"]))
+        for i, time_slot in enumerate(template["tea_breaks"]["First"]):
+            with First_tea_cols[i]:
+                st.session_state.break_limits[st.session_state.current_template]["First_tea"][time_slot] = st.number_input(
                     f"Max at {time_slot}",
                     min_value=1,
-                    value=st.session_state.break_limits[st.session_state.current_template]["early_tea"].get(time_slot, 3),
-                    key=f"early_tea_limit_{time_slot}"
+                    value=st.session_state.break_limits[st.session_state.current_template]["First_tea"].get(time_slot, 3),
+                    key=f"First_tea_limit_{time_slot}"
                 )
         
         st.subheader("Late Tea Break Limits")
@@ -775,7 +775,7 @@ def admin_break_dashboard():
                     "Date": date,
                     "Agent ID": agent_id,
                     "Lunch Break": breaks.get("lunch", "-"),
-                    "Early Tea": breaks.get("early_tea", "-"),
+                    "First Tea": breaks.get("First_tea", "-"),
                     "Late Tea": breaks.get("late_tea", "-")
                 })
         
@@ -856,32 +856,32 @@ def agent_break_dashboard():
     
     # Tea break booking
     st.subheader("Tea Breaks")
-    st.write("Early Tea Breaks:")
-    early_tea_cols = st.columns(len(template["tea_breaks"]["early"]))
-    selected_early_tea = None
+    st.write("First Tea Breaks:")
+    First_tea_cols = st.columns(len(template["tea_breaks"]["First"]))
+    selected_First_tea = None
     
-    for i, time_slot in enumerate(template["tea_breaks"]["early"]):
-        with early_tea_cols[i]:
+    for i, time_slot in enumerate(template["tea_breaks"]["First"]):
+        with First_tea_cols[i]:
             # Check if time slot is full
-            current_bookings = count_bookings(st.session_state.selected_date, "early_tea", time_slot)
-            max_limit = break_limits.get("early_tea", {}).get(time_slot, 3)
+            current_bookings = count_bookings(st.session_state.selected_date, "First_tea", time_slot)
+            max_limit = break_limits.get("First_tea", {}).get(time_slot, 3)
             
             if current_bookings >= max_limit:
-                st.button(f"{time_slot} (FULL)", key=f"early_tea_{time_slot}", disabled=True, help="This slot is full")
+                st.button(f"{time_slot} (FULL)", key=f"First_tea_{time_slot}", disabled=True, help="This slot is full")
             else:
-                if st.button(time_slot, key=f"early_tea_{time_slot}"):
-                    selected_early_tea = time_slot
+                if st.button(time_slot, key=f"First_tea_{time_slot}"):
+                    selected_First_tea = time_slot
     
-    if selected_early_tea:
+    if selected_First_tea:
         if st.session_state.selected_date not in st.session_state.agent_bookings:
             st.session_state.agent_bookings[st.session_state.selected_date] = {}
         
         if agent_id not in st.session_state.agent_bookings[st.session_state.selected_date]:
             st.session_state.agent_bookings[st.session_state.selected_date][agent_id] = {}
         
-        st.session_state.agent_bookings[st.session_state.selected_date][agent_id]["early_tea"] = selected_early_tea
+        st.session_state.agent_bookings[st.session_state.selected_date][agent_id]["First_tea"] = selected_First_tea
         save_break_data()
-        st.success(f"Early tea break booked for {selected_early_tea}")
+        st.success(f"First tea break booked for {selected_First_tea}")
         st.rerun()
     
     st.write("Late Tea Breaks:")
@@ -920,8 +920,8 @@ def agent_break_dashboard():
         
         if "lunch" in bookings:
             st.write(f"**Lunch Break:** {bookings['lunch']}")
-        if "early_tea" in bookings:
-            st.write(f"**Early Tea Break:** {bookings['early_tea']}")
+        if "First_tea" in bookings:
+            st.write(f"**First Tea Break:** {bookings['First_tea']}")
         if "late_tea" in bookings:
             st.write(f"**Late Tea Break:** {bookings['late_tea']}")
         
