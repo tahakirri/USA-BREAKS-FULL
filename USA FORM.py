@@ -804,11 +804,9 @@ def agent_break_dashboard():
     st.title("Agent Dashboard")
     st.markdown("---")
     
-    # Agent ID input
-    agent_id = st.text_input("Enter your Agent ID:")
-    if not agent_id:
-        st.warning("Please enter your Agent ID to continue")
-        return
+    # Use the logged-in username directly
+    agent_id = st.session_state.username
+    st.write(f"Booking breaks for: **{agent_id}**")
     
     # Date selection
     schedule_date = st.date_input("Select Date:", datetime.now())
@@ -943,7 +941,6 @@ def agent_break_dashboard():
             save_break_data()
             st.success("All bookings canceled for this date")
             st.rerun()
-
 # --------------------------
 # Streamlit App
 # --------------------------
