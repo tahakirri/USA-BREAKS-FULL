@@ -588,8 +588,6 @@ def count_bookings(date, break_type, time_slot):
 def display_schedule(template):
     st.header("LM US ENG 3:00 PM shift")
     
- 
-    })
     st.table(lunch_df)
     
     st.markdown("**KINDLY RESPECT THE RULES BELOW**")
