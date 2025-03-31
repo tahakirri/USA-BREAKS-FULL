@@ -808,6 +808,12 @@ def agent_break_dashboard():
     st.title("Break Booking")
     st.markdown("---")
     
+    # Initialize session state variables if they don't exist
+    if 'selected_date' not in st.session_state:
+        st.session_state.selected_date = datetime.now().strftime('%Y-%m-%d')
+    if 'agent_bookings' not in st.session_state:
+        st.session_state.agent_bookings = {}
+    
     # Use the logged-in username directly
     agent_id = st.session_state.username
     st.write(f"Booking breaks for: **{agent_id}**")
@@ -821,7 +827,7 @@ def agent_break_dashboard():
         st.error("No break schedules available. Please contact admin.")
         return
     
-    # Get the first template (we're removing the template selection)
+    # Get the first template
     template_name = list(st.session_state.templates.keys())[0]
     template = adjust_template_times(st.session_state.templates[template_name], st.session_state.timezone_offset)
     
@@ -933,26 +939,29 @@ def agent_break_dashboard():
     
     # Display current bookings
 # Display current bookings
-if st.session_state.selected_date in st.session_state.agent_bookings and agent_id in st.session_state.agent_bookings[st.session_state.selected_date]:
-    st.markdown("---")
-    st.header("Your Current Bookings")
-    bookings = st.session_state.agent_bookings[st.session_state.selected_date][agent_id]
-    
-    if "lunch" in bookings:
-        st.write(f"**Lunch Break:** {bookings['lunch']}")
-    if "early_tea" in bookings:
-        st.write(f"**Early Tea Break:** {bookings['early_tea']}")
-    if "late_tea" in bookings:
-        st.write(f"**Late Tea Break:** {bookings['late_tea']}")
-    
-    if st.button("Cancel All Bookings"):
-        if is_killswitch_enabled():
-            st.error("System is locked. Cannot modify bookings.")
-        else:
-            del st.session_state.agent_bookings[st.session_state.selected_date][agent_id]
-            save_break_data()
-            st.success("All bookings canceled for this date")
-            st.rerun()
+ if hasattr(st.session_state, 'selected_date') and hasattr(st.session_state, 'agent_bookings'):
+        if (st.session_state.selected_date in st.session_state.agent_bookings and 
+            agent_id in st.session_state.agent_bookings[st.session_state.selected_date]):
+            
+            st.markdown("---")
+            st.header("Your Current Bookings")
+            bookings = st.session_state.agent_bookings[st.session_state.selected_date][agent_id]
+            
+            if "lunch" in bookings:
+                st.write(f"**Lunch Break:** {bookings['lunch']}")
+            if "early_tea" in bookings:
+                st.write(f"**Early Tea Break:** {bookings['early_tea']}")
+            if "late_tea" in bookings:
+                st.write(f"**Late Tea Break:** {bookings['late_tea']}")
+            
+            if st.button("Cancel All Bookings"):
+                if is_killswitch_enabled():
+                    st.error("System is locked. Cannot modify bookings.")
+                else:
+                    del st.session_state.agent_bookings[st.session_state.selected_date][agent_id]
+                    save_break_data()
+                    st.success("All bookings canceled for this date")
+                    st.rerun()
 
 # --------------------------
 # Streamlit App
