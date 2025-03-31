@@ -932,26 +932,27 @@ def agent_break_dashboard():
             st.rerun()
     
     # Display current bookings
-    if st.session_state.selected_date in st.session_state.agent_bookings and agent_id in st.session_state.agent_bookings[st.session_state.selected_date]:
-        st.markdown("---")
-        st.header("Your Current Bookings")
-        bookings = st.session_state.agent_bookings[st.session_state.selected_date][agent_id]
-        
-        if "lunch" in bookings:
-            st.write(f"**Lunch Break:** {bookings['lunch']}")
-        if "early_tea" in bookings:
-            st.write(f"**Early Tea Break:** {bookings['early_tea']}")
-        if "late_tea" in bookings:
-            st.write(f"**Late Tea Break:** {bookings['late_tea']")
-        
-        if st.button("Cancel All Bookings"):
-            if is_killswitch_enabled():
-                st.error("System is locked. Cannot modify bookings.")
-            else:
-                del st.session_state.agent_bookings[st.session_state.selected_date][agent_id]
-                save_break_data()
-                st.success("All bookings canceled for this date")
-                st.rerun()
+# Display current bookings
+if st.session_state.selected_date in st.session_state.agent_bookings and agent_id in st.session_state.agent_bookings[st.session_state.selected_date]:
+    st.markdown("---")
+    st.header("Your Current Bookings")
+    bookings = st.session_state.agent_bookings[st.session_state.selected_date][agent_id]
+    
+    if "lunch" in bookings:
+        st.write(f"**Lunch Break:** {bookings['lunch']}")
+    if "early_tea" in bookings:
+        st.write(f"**Early Tea Break:** {bookings['early_tea']}")
+    if "late_tea" in bookings:
+        st.write(f"**Late Tea Break:** {bookings['late_tea']}")
+    
+    if st.button("Cancel All Bookings"):
+        if is_killswitch_enabled():
+            st.error("System is locked. Cannot modify bookings.")
+        else:
+            del st.session_state.agent_bookings[st.session_state.selected_date][agent_id]
+            save_break_data()
+            st.success("All bookings canceled for this date")
+            st.rerun()
 
 # --------------------------
 # Streamlit App
