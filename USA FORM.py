@@ -1068,7 +1068,7 @@ def inject_custom_css():
         th {
             background-color: #f2f2f2;
             font-weight: bold;
-        }
+        })
         .warning {
             color: red;
             font-weight: bold;
