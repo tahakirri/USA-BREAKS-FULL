@@ -801,7 +801,7 @@ def admin_break_dashboard():
         st.write("No bookings yet.")
 
 def agent_break_dashboard():
-if is_killswitch_enabled():
+    if is_killswitch_enabled():
         st.error("System is currently locked. Break booking is disabled.")
         return
         
@@ -850,20 +850,20 @@ if is_killswitch_enabled():
                     if st.button(time_slot, key=f"lunch_{time_slot}"):
                         selected_lunch = time_slot
         
-if selected_lunch:
-    if is_killswitch_enabled():
-        st.error("System is locked. Cannot book breaks.")
-    else:
-        if st.session_state.selected_date not in st.session_state.agent_bookings:
-            st.session_state.agent_bookings[st.session_state.selected_date] = {}
-            
-            if agent_id not in st.session_state.agent_bookings[st.session_state.selected_date]:
-                st.session_state.agent_bookings[st.session_state.selected_date][agent_id] = {}
-            
-            st.session_state.agent_bookings[st.session_state.selected_date][agent_id]["lunch"] = selected_lunch
-            save_break_data()
-            st.success(f"Lunch break booked for {selected_lunch}")
-            st.rerun()
+        if selected_lunch:
+            if is_killswitch_enabled():
+                st.error("System is locked. Cannot book breaks.")
+            else:
+                if st.session_state.selected_date not in st.session_state.agent_bookings:
+                    st.session_state.agent_bookings[st.session_state.selected_date] = {}
+                
+                if agent_id not in st.session_state.agent_bookings[st.session_state.selected_date]:
+                    st.session_state.agent_bookings[st.session_state.selected_date][agent_id] = {}
+                
+                st.session_state.agent_bookings[st.session_state.selected_date][agent_id]["lunch"] = selected_lunch
+                save_break_data()
+                st.success(f"Lunch break booked for {selected_lunch}")
+                st.rerun()
     else:
         st.write("No lunch breaks available today.")
     
@@ -885,18 +885,20 @@ if selected_lunch:
                 if st.button(time_slot, key=f"early_tea_{time_slot}"):
                     selected_early_tea = time_slot
     
-if selected_early_tea:
-    if is_killswitch_enabled():
-        st.error("System is locked. Cannot book breaks.")
-    else:
-        
-        if agent_id not in st.session_state.agent_bookings[st.session_state.selected_date]:
-            st.session_state.agent_bookings[st.session_state.selected_date][agent_id] = {}
-        
-        st.session_state.agent_bookings[st.session_state.selected_date][agent_id]["early_tea"] = selected_early_tea
-        save_break_data()
-        st.success(f"Early tea break booked for {selected_early_tea}")
-        st.rerun()
+    if selected_early_tea:
+        if is_killswitch_enabled():
+            st.error("System is locked. Cannot book breaks.")
+        else:
+            if st.session_state.selected_date not in st.session_state.agent_bookings:
+                st.session_state.agent_bookings[st.session_state.selected_date] = {}
+            
+            if agent_id not in st.session_state.agent_bookings[st.session_state.selected_date]:
+                st.session_state.agent_bookings[st.session_state.selected_date][agent_id] = {}
+            
+            st.session_state.agent_bookings[st.session_state.selected_date][agent_id]["early_tea"] = selected_early_tea
+            save_break_data()
+            st.success(f"Early tea break booked for {selected_early_tea}")
+            st.rerun()
     
     st.write("Late Tea Breaks:")
     late_tea_cols = st.columns(len(template["tea_breaks"]["late"]))
@@ -914,18 +916,20 @@ if selected_early_tea:
                 if st.button(time_slot, key=f"late_tea_{time_slot}"):
                     selected_late_tea = time_slot
     
-if selected_late_tea:
-    if is_killswitch_enabled():
-        st.error("System is locked. Cannot book breaks.")
-    else:
-        
-        if agent_id not in st.session_state.agent_bookings[st.session_state.selected_date]:
-            st.session_state.agent_bookings[st.session_state.selected_date][agent_id] = {}
-        
-        st.session_state.agent_bookings[st.session_state.selected_date][agent_id]["late_tea"] = selected_late_tea
-        save_break_data()
-        st.success(f"Late tea break booked for {selected_late_tea}")
-        st.rerun()
+    if selected_late_tea:
+        if is_killswitch_enabled():
+            st.error("System is locked. Cannot book breaks.")
+        else:
+            if st.session_state.selected_date not in st.session_state.agent_bookings:
+                st.session_state.agent_bookings[st.session_state.selected_date] = {}
+            
+            if agent_id not in st.session_state.agent_bookings[st.session_state.selected_date]:
+                st.session_state.agent_bookings[st.session_state.selected_date][agent_id] = {}
+            
+            st.session_state.agent_bookings[st.session_state.selected_date][agent_id]["late_tea"] = selected_late_tea
+            save_break_data()
+            st.success(f"Late tea break booked for {selected_late_tea}")
+            st.rerun()
     
     # Display current bookings
     if st.session_state.selected_date in st.session_state.agent_bookings and agent_id in st.session_state.agent_bookings[st.session_state.selected_date]:
@@ -938,16 +942,16 @@ if selected_late_tea:
         if "early_tea" in bookings:
             st.write(f"**Early Tea Break:** {bookings['early_tea']}")
         if "late_tea" in bookings:
-            st.write(f"**Late Tea Break:** {bookings['late_tea']}")
+            st.write(f"**Late Tea Break:** {bookings['late_tea']")
         
-if st.button("Cancel All Bookings"):
-    if is_killswitch_enabled():
-        st.error("System is locked. Cannot modify bookings.")
-    else:
-        del st.session_state.agent_bookings[st.session_state.selected_date][agent_id]
-        save_break_data()
-        st.success("All bookings canceled for this date")
-        st.rerun()
+        if st.button("Cancel All Bookings"):
+            if is_killswitch_enabled():
+                st.error("System is locked. Cannot modify bookings.")
+            else:
+                del st.session_state.agent_bookings[st.session_state.selected_date][agent_id]
+                save_break_data()
+                st.success("All bookings canceled for this date")
+                st.rerun()
 
 # --------------------------
 # Streamlit App
