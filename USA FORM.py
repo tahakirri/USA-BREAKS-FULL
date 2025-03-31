@@ -1065,7 +1065,7 @@ def inject_custom_css():
             padding: 8px;
             text-align: center;
         }
-        th {
+        the ({
             background-color: #f2f2f2;
             font-weight: bold;
         })
