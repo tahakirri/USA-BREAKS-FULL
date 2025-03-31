@@ -938,8 +938,7 @@ def agent_break_dashboard():
             st.rerun()
     
     # Display current bookings
-# Display current bookings
- if hasattr(st.session_state, 'selected_date') and hasattr(st.session_state, 'agent_bookings'):
+    if hasattr(st.session_state, 'selected_date') and hasattr(st.session_state, 'agent_bookings'):
         if (st.session_state.selected_date in st.session_state.agent_bookings and 
             agent_id in st.session_state.agent_bookings[st.session_state.selected_date]):
             
