@@ -10,12 +10,17 @@ import pandas as pd
 import json
 import plotly.express as px
 import plotly.graph_objects as go
+import subprocess
+import sys
+
+def install(package):
+    subprocess.check_call([sys.executable, "-m", "pip", "install", package])
+
+install("plotly")
 
 # --------------------------
 # Database Functions
 # --------------------------
-pip install plotly
-plotly>=5.0.0
 def hash_password(password):
     return hashlib.sha256(password.encode()).hexdigest()
 
