@@ -801,6 +801,10 @@ def admin_break_dashboard():
         st.write("No bookings yet.")
 
 def agent_break_dashboard():
+if is_killswitch_enabled():
+        st.error("System is currently locked. Break booking is disabled.")
+        return
+        
     st.title("Break Booking")
     st.markdown("---")
     
@@ -846,9 +850,12 @@ def agent_break_dashboard():
                     if st.button(time_slot, key=f"lunch_{time_slot}"):
                         selected_lunch = time_slot
         
-        if selected_lunch:
-            if st.session_state.selected_date not in st.session_state.agent_bookings:
-                st.session_state.agent_bookings[st.session_state.selected_date] = {}
+if selected_lunch:
+    if is_killswitch_enabled():
+        st.error("System is locked. Cannot book breaks.")
+    else:
+        if st.session_state.selected_date not in st.session_state.agent_bookings:
+            st.session_state.agent_bookings[st.session_state.selected_date] = {}
             
             if agent_id not in st.session_state.agent_bookings[st.session_state.selected_date]:
                 st.session_state.agent_bookings[st.session_state.selected_date][agent_id] = {}
@@ -878,9 +885,10 @@ def agent_break_dashboard():
                 if st.button(time_slot, key=f"early_tea_{time_slot}"):
                     selected_early_tea = time_slot
     
-    if selected_early_tea:
-        if st.session_state.selected_date not in st.session_state.agent_bookings:
-            st.session_state.agent_bookings[st.session_state.selected_date] = {}
+if selected_early_tea:
+    if is_killswitch_enabled():
+        st.error("System is locked. Cannot book breaks.")
+    else:
         
         if agent_id not in st.session_state.agent_bookings[st.session_state.selected_date]:
             st.session_state.agent_bookings[st.session_state.selected_date][agent_id] = {}
@@ -906,9 +914,10 @@ def agent_break_dashboard():
                 if st.button(time_slot, key=f"late_tea_{time_slot}"):
                     selected_late_tea = time_slot
     
-    if selected_late_tea:
-        if st.session_state.selected_date not in st.session_state.agent_bookings:
-            st.session_state.agent_bookings[st.session_state.selected_date] = {}
+if selected_late_tea:
+    if is_killswitch_enabled():
+        st.error("System is locked. Cannot book breaks.")
+    else:
         
         if agent_id not in st.session_state.agent_bookings[st.session_state.selected_date]:
             st.session_state.agent_bookings[st.session_state.selected_date][agent_id] = {}
@@ -931,11 +940,14 @@ def agent_break_dashboard():
         if "late_tea" in bookings:
             st.write(f"**Late Tea Break:** {bookings['late_tea']}")
         
-        if st.button("Cancel All Bookings"):
-            del st.session_state.agent_bookings[st.session_state.selected_date][agent_id]
-            save_break_data()
-            st.success("All bookings canceled for this date")
-            st.rerun()
+if st.button("Cancel All Bookings"):
+    if is_killswitch_enabled():
+        st.error("System is locked. Cannot modify bookings.")
+    else:
+        del st.session_state.agent_bookings[st.session_state.selected_date][agent_id]
+        save_break_data()
+        st.success("All bookings canceled for this date")
+        st.rerun()
 
 # --------------------------
 # Streamlit App
