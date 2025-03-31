@@ -8,18 +8,11 @@ from PIL import Image
 import io
 import pandas as pd
 import json
-import sys
-import subprocess
-
-# =========================================
-# 1. AUTO-INSTALL PLOTLY IF MISSING (FIX)
-# =========================================
-
-
 
 # --------------------------
 # Database Functions
 # --------------------------
+
 def hash_password(password):
     return hashlib.sha256(password.encode()).hexdigest()
 
@@ -28,42 +21,26 @@ def authenticate(username, password):
     try:
         cursor = conn.cursor()
         hashed_password = hash_password(password)
-        cursor.execute("SELECT role, team FROM users WHERE LOWER(username) = LOWER(?) AND password = ?", 
+        cursor.execute("SELECT role FROM users WHERE LOWER(username) = LOWER(?) AND password = ?", 
                       (username, hashed_password))
         result = cursor.fetchone()
-        return (result[0], result[1]) if result else (None, None)
+        return result[0] if result else None
     finally:
         conn.close()
 
 def init_db():
-    """Initialize the database with all required tables and default data."""
+    os.makedirs("data", exist_ok=True)
+    conn = sqlite3.connect("data/requests.db")
     try:
-        # Ensure data directory exists
-        data_dir = os.path.join(os.getcwd(), "data")
-        os.makedirs(data_dir, exist_ok=True)
-        os.chmod(data_dir, 0o777)  # Set permissions
-        
-        db_path = os.path.join(data_dir, "requests.db")
-        conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
         
-        # Enable foreign keys
-        cursor.execute("PRAGMA foreign_keys = ON")
-  st.set_page_config(
-    page_title="Request Management System",
-    page_icon=":office:",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)      
-        # Create tables with IF NOT EXISTS and proper error handling
-        tables = [
-            """CREATE TABLE IF NOT EXISTS users (
+        # Create tables if they don't exist
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 username TEXT UNIQUE,
                 password TEXT,
-                role TEXT CHECK(role IN ('agent', 'admin', 'team_leader')),
-                team TEXT,
-                skillset TEXT)""",
+                role TEXT CHECK(role IN ('agent', 'admin')))
         """)
         
         cursor.execute("""
@@ -74,8 +51,7 @@ def init_db():
                 identifier TEXT,
                 comment TEXT,
                 timestamp TEXT,
-                completed INTEGER DEFAULT 0,
-                team TEXT)
+                completed INTEGER DEFAULT 0)
         """)
         
         cursor.execute("""
@@ -85,8 +61,7 @@ def init_db():
                 agent_name TEXT,
                 ticket_id TEXT,
                 error_description TEXT,
-                timestamp TEXT,
-                team TEXT)
+                timestamp TEXT)
         """)
         
         cursor.execute("""
@@ -95,9 +70,7 @@ def init_db():
                 sender TEXT,
                 message TEXT,
                 timestamp TEXT,
-                mentions TEXT,
-                team TEXT,
-                skillset TEXT)
+                mentions TEXT)
         """)
         
         cursor.execute("""
@@ -105,38 +78,7 @@ def init_db():
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 uploader TEXT,
                 image_data BLOB,
-                timestamp TEXT,
-                team TEXT)
-        """)
-        
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS team_breaks (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                team TEXT,
-                date TEXT,
-                agent_id TEXT,
-                lunch_break TEXT,
-                early_tea TEXT,
-                late_tea TEXT,
-                UNIQUE(team, date, agent_id))
-        """)
-        
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS team_break_templates (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                team TEXT,
-                lunch_breaks TEXT,
-                early_tea_breaks TEXT,
-                late_tea_breaks TEXT)
-        """)
-        
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS team_break_limits (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                team TEXT,
-                break_type TEXT,
-                time_slot TEXT,
-                max_limit INTEGER)
+                timestamp TEXT)
         """)
         
         # Handle system_settings table schema migration
@@ -168,131 +110,76 @@ def init_db():
         
         # Create default admin account
         cursor.execute("""
-            INSERT OR IGNORE INTO users (username, password, role, team) 
-            VALUES (?, ?, ?, ?)
-        """, ("taha kirri", hash_password("arise@99"), "admin", "admin"))
-        
+            INSERT OR IGNORE INTO users (username, password, role) 
+            VALUES (?, ?, ?)
+        """, ("taha kirri", hash_password("arise@99"), "admin"))
         admin_accounts = [
-            ("taha kirri", "arise@99", "admin", "admin"),
-            ("Issam Samghini", "admin@2025", "admin", "admin"),
-            ("Loubna Fellah", "admin@99", "admin", "admin"),
-            ("Youssef Kamal", "admin@006", "admin", "admin"),
-            ("Fouad Fathi", "admin@55", "admin", "admin")
+            ("taha kirri", "arise@99"),
+            ("Issam Samghini", "admin@2025"),
+            ("Loubna Fellah", "admin@99"),
+            ("Youssef Kamal", "admin@006"),
+            ("Fouad Fathi", "admin@55")
         ]
         
-        for username, password, role, team in admin_accounts:
+        for username, password in admin_accounts:
             cursor.execute("""
-                INSERT OR IGNORE INTO users (username, password, role, team) 
-                VALUES (?, ?, ?, ?)
-            """, (username, hash_password(password), role, team))
-        
-        # Create agent accounts with teams
+                INSERT OR IGNORE INTO users (username, password, role) 
+                VALUES (?, ?, ?)
+            """, (username, hash_password(password), "admin"))
+        # Create agent accounts (agent name as username, workspace ID as password)
         agents = [
-            ("Karabila Younes", "30866", "agent", "Team A"),
-            ("Kaoutar Mzara", "30514", "agent", "Team A"),
-            ("Ben Tahar Chahid", "30864", "agent", "Team A"),
-            ("Cherbassi Khadija", "30868", "agent", "Team B"),
-            ("Lekhmouchi Kamal", "30869", "agent", "Team B"),
-            ("Said Kilani", "30626", "agent", "Team B"),
-            ("AGLIF Rachid", "30830", "agent", "Team C"),
-            ("Yacine Adouha", "30577", "agent", "Team C"),
-            ("Manal Elanbi", "30878", "agent", "Team C"),
-            ("Jawad Ouassaddine", "30559", "agent", "Team D"),
-            ("Kamal Elhaouar", "30844", "agent", "Team D"),
-            ("Hoummad Oubella", "30702", "agent", "Team D"),
-            ("Zouheir Essafi", "30703", "agent", "Team E"),
-            ("Anwar Atifi", "30781", "agent", "Team E"),
-            ("Said Elgaouzi", "30782", "agent", "Team E"),
-            ("HAMZA SAOUI", "30716", "agent", "Team F"),
-            ("Ibtissam Mazhari", "30970", "agent", "Team F"),
-            ("Imad Ghazali", "30971", "agent", "Team F"),
-            ("Jamila Lahrech", "30972", "agent", "Team G"),
-            ("Nassim Ouazzani Touhami", "30973", "agent", "Team G"),
-            ("Salaheddine Chaggour", "30974", "agent", "Team G"),
-            ("Omar Tajani", "30711", "agent", "Team H"),
-            ("Nizar Remz", "30728", "agent", "Team H"),
-            ("Abdelouahed Fettah", "30693", "agent", "Team H"),
-            ("Amal Bouramdane", "30675", "agent", "Team I"),
-            ("Fatima Ezzahrae Oubaalla", "30513", "agent", "Team I"),
-            ("Redouane Bertal", "30643", "agent", "Team I"),
-            ("Abdelouahab Chenani", "30789", "agent", "Team J"),
-            ("Imad El Youbi", "30797", "agent", "Team J"),
-            ("Youssef Hammouda", "30791", "agent", "Team J"),
-            ("Anas Ouassifi", "30894", "agent", "Team K"),
-            ("SALSABIL ELMOUSS", "30723", "agent", "Team K"),
-            ("Hicham Khalafa", "30712", "agent", "Team K"),
-            ("Ghita Adib", "30710", "agent", "Team L"),
-            ("Aymane Msikila", "30722", "agent", "Team L"),
-            ("Marouane Boukhadda", "30890", "agent", "Team L"),
-            ("Hamid Boulatouan", "30899", "agent", "Team M"),
-            ("Bouchaib Chafiqi", "30895", "agent", "Team M"),
-            ("Houssam Gouaalla", "30891", "agent", "Team M"),
-            ("Abdellah Rguig", "30963", "agent", "Team N"),
-            ("Abdellatif Chatir", "30964", "agent", "Team N"),
-            ("Abderrahman Oueto", "30965", "agent", "Team N"),
-            ("Fatiha Lkamel", "30967", "agent", "Team O"),
-            ("Abdelhamid Jaber", "30708", "agent", "Team O"),
-            ("Yassine Elkanouni", "30735", "agent", "Team O")
+            ("Karabila Younes", "30866"),
+            ("Kaoutar Mzara", "30514"),
+            ("Ben Tahar Chahid", "30864"),
+            ("Cherbassi Khadija", "30868"),
+            ("Lekhmouchi Kamal", "30869"),
+            ("Said Kilani", "30626"),
+            ("AGLIF Rachid", "30830"),
+            ("Yacine Adouha", "30577"),
+            ("Manal Elanbi", "30878"),
+            ("Jawad Ouassaddine", "30559"),
+            ("Kamal Elhaouar", "30844"),
+            ("Hoummad Oubella", "30702"),
+            ("Zouheir Essafi", "30703"),
+            ("Anwar Atifi", "30781"),
+            ("Said Elgaouzi", "30782"),
+            ("HAMZA SAOUI", "30716"),
+            ("Ibtissam Mazhari", "30970"),
+            ("Imad Ghazali", "30971"),
+            ("Jamila Lahrech", "30972"),
+            ("Nassim Ouazzani Touhami", "30973"),
+            ("Salaheddine Chaggour", "30974"),
+            ("Omar Tajani", "30711"),
+            ("Nizar Remz", "30728"),
+            ("Abdelouahed Fettah", "30693"),
+            ("Amal Bouramdane", "30675"),
+            ("Fatima Ezzahrae Oubaalla", "30513"),
+            ("Redouane Bertal", "30643"),
+            ("Abdelouahab Chenani", "30789"),
+            ("Imad El Youbi", "30797"),
+            ("Youssef Hammouda", "30791"),
+            ("Anas Ouassifi", "30894"),
+            ("SALSABIL ELMOUSS", "30723"),
+            ("Hicham Khalafa", "30712"),
+            ("Ghita Adib", "30710"),
+            ("Aymane Msikila", "30722"),
+            ("Marouane Boukhadda", "30890"),
+            ("Hamid Boulatouan", "30899"),
+            ("Bouchaib Chafiqi", "30895"),
+            ("Houssam Gouaalla", "30891"),
+            ("Abdellah Rguig", "30963"),
+            ("Abdellatif Chatir", "30964"),
+            ("Abderrahman Oueto", "30965"),
+            ("Fatiha Lkamel", "30967"),
+            ("Abdelhamid Jaber", "30708"),
+            ("Yassine Elkanouni", "30735")
         ]
         
-        for agent_name, workspace_id, role, team in agents:
+        for agent_name, workspace_id in agents:
             cursor.execute("""
-                INSERT OR IGNORE INTO users (username, password, role, team) 
-                VALUES (?, ?, ?, ?)
-            """, (agent_name, hash_password(workspace_id), role, team))
-        
-        # Create team leaders
-        team_leaders = [
-            ("Team Leader A", "leader1", "team_leader", "Team A"),
-            ("Team Leader B", "leader2", "team_leader", "Team B"),
-            ("Team Leader C", "leader3", "team_leader", "Team C"),
-            ("Team Leader D", "leader4", "team_leader", "Team D"),
-            ("Team Leader E", "leader5", "team_leader", "Team E")
-        ]
-        
-        for leader_name, password, role, team in team_leaders:
-            cursor.execute("""
-                INSERT OR IGNORE INTO users (username, password, role, team) 
-                VALUES (?, ?, ?, ?)
-            """, (leader_name, hash_password(password), role, team))
-        
-        # Create default break templates for teams
-        teams = ["Team A", "Team B", "Team C", "Team D", "Team E", "Team F", 
-                "Team G", "Team H", "Team I", "Team J", "Team K", "Team L",
-                "Team M", "Team N", "Team O"]
-        
-        for team in teams:
-            # Check if template exists
-            cursor.execute("SELECT id FROM team_break_templates WHERE team = ?", (team,))
-            if not cursor.fetchone():
-                cursor.execute("""
-                    INSERT INTO team_break_templates (team, lunch_breaks, early_tea_breaks, late_tea_breaks)
-                    VALUES (?, ?, ?, ?)
-                """, (
-                    team,
-                    json.dumps(["19:30", "20:00", "20:30", "21:00", "21:30"]),
-                    json.dumps(["16:00", "16:15", "16:30", "16:45", "17:00", "17:15", "17:30"]),
-                    json.dumps(["21:45", "22:00", "22:15", "22:30"])
-                ))
-                
-                # Add default limits
-                for time_slot in ["19:30", "20:00", "20:30", "21:00", "21:30"]:
-                    cursor.execute("""
-                        INSERT INTO team_break_limits (team, break_type, time_slot, max_limit)
-                        VALUES (?, ?, ?, ?)
-                    """, (team, "lunch", time_slot, 5))
-                
-                for time_slot in ["16:00", "16:15", "16:30", "16:45", "17:00", "17:15", "17:30"]:
-                    cursor.execute("""
-                        INSERT INTO team_break_limits (team, break_type, time_slot, max_limit)
-                        VALUES (?, ?, ?, ?)
-                    """, (team, "early_tea", time_slot, 3))
-                
-                for time_slot in ["21:45", "22:00", "22:15", "22:30"]:
-                    cursor.execute("""
-                        INSERT INTO team_break_limits (team, break_type, time_slot, max_limit)
-                        VALUES (?, ?, ?, ?)
-                    """, (team, "late_tea", time_slot, 3))
+                INSERT OR IGNORE INTO users (username, password, role) 
+                VALUES (?, ?, ?)
+            """, (agent_name, hash_password(workspace_id), "agent"))
         
         conn.commit()
     finally:
@@ -340,7 +227,7 @@ def toggle_chat_killswitch(enable):
     finally:
         conn.close()
 
-def add_request(agent_name, request_type, identifier, comment, team):
+def add_request(agent_name, request_type, identifier, comment):
     if is_killswitch_enabled():
         st.error("System is currently locked. Please contact the developer.")
         return False
@@ -350,9 +237,9 @@ def add_request(agent_name, request_type, identifier, comment, team):
         cursor = conn.cursor()
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         cursor.execute("""
-            INSERT INTO requests (agent_name, request_type, identifier, comment, timestamp, team) 
-            VALUES (?, ?, ?, ?, ?, ?)
-        """, (agent_name, request_type, identifier, comment, timestamp, team))
+            INSERT INTO requests (agent_name, request_type, identifier, comment, timestamp) 
+            VALUES (?, ?, ?, ?, ?)
+        """, (agent_name, request_type, identifier, comment, timestamp))
         
         request_id = cursor.lastrowid
         
@@ -366,42 +253,28 @@ def add_request(agent_name, request_type, identifier, comment, team):
     finally:
         conn.close()
 
-def get_requests(team=None):
+def get_requests():
     conn = sqlite3.connect("data/requests.db")
     try:
         cursor = conn.cursor()
-        if team:
-            cursor.execute("SELECT * FROM requests WHERE team = ? ORDER BY timestamp DESC", (team,))
-        else:
-            cursor.execute("SELECT * FROM requests ORDER BY timestamp DESC")
+        cursor.execute("SELECT * FROM requests ORDER BY timestamp DESC")
         return cursor.fetchall()
     finally:
         conn.close()
 
-def search_requests(query, team=None):
+def search_requests(query):
     conn = sqlite3.connect("data/requests.db")
     try:
         cursor = conn.cursor()
         query = f"%{query.lower()}%"
-        if team:
-            cursor.execute("""
-                SELECT * FROM requests 
-                WHERE (LOWER(agent_name) LIKE ? 
-                OR LOWER(request_type) LIKE ? 
-                OR LOWER(identifier) LIKE ? 
-                OR LOWER(comment) LIKE ?)
-                AND team = ?
-                ORDER BY timestamp DESC
-            """, (query, query, query, query, team))
-        else:
-            cursor.execute("""
-                SELECT * FROM requests 
-                WHERE LOWER(agent_name) LIKE ? 
-                OR LOWER(request_type) LIKE ? 
-                OR LOWER(identifier) LIKE ? 
-                OR LOWER(comment) LIKE ?
-                ORDER BY timestamp DESC
-            """, (query, query, query, query))
+        cursor.execute("""
+            SELECT * FROM requests 
+            WHERE LOWER(agent_name) LIKE ? 
+            OR LOWER(request_type) LIKE ? 
+            OR LOWER(identifier) LIKE ? 
+            OR LOWER(comment) LIKE ?
+            ORDER BY timestamp DESC
+        """, (query, query, query, query))
         return cursor.fetchall()
     finally:
         conn.close()
@@ -451,7 +324,7 @@ def get_request_comments(request_id):
     finally:
         conn.close()
 
-def add_mistake(team_leader, agent_name, ticket_id, error_description, team):
+def add_mistake(team_leader, agent_name, ticket_id, error_description):
     if is_killswitch_enabled():
         st.error("System is currently locked. Please contact the developer.")
         return False
@@ -460,54 +333,41 @@ def add_mistake(team_leader, agent_name, ticket_id, error_description, team):
     try:
         cursor = conn.cursor()
         cursor.execute("""
-            INSERT INTO mistakes (team_leader, agent_name, ticket_id, error_description, timestamp, team) 
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO mistakes (team_leader, agent_name, ticket_id, error_description, timestamp) 
+            VALUES (?, ?, ?, ?, ?)
         """, (team_leader, agent_name, ticket_id, error_description,
-             datetime.now().strftime("%Y-%m-%d %H:%M:%S"), team))
+             datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
         conn.commit()
         return True
     finally:
         conn.close()
 
-def get_mistakes(team=None):
+def get_mistakes():
     conn = sqlite3.connect("data/requests.db")
     try:
         cursor = conn.cursor()
-        if team:
-            cursor.execute("SELECT * FROM mistakes WHERE team = ? ORDER BY timestamp DESC", (team,))
-        else:
-            cursor.execute("SELECT * FROM mistakes ORDER BY timestamp DESC")
+        cursor.execute("SELECT * FROM mistakes ORDER BY timestamp DESC")
         return cursor.fetchall()
     finally:
         conn.close()
 
-def search_mistakes(query, team=None):
+def search_mistakes(query):
     conn = sqlite3.connect("data/requests.db")
     try:
         cursor = conn.cursor()
         query = f"%{query.lower()}%"
-        if team:
-            cursor.execute("""
-                SELECT * FROM mistakes 
-                WHERE (LOWER(agent_name) LIKE ? 
-                OR LOWER(ticket_id) LIKE ? 
-                OR LOWER(error_description) LIKE ?)
-                AND team = ?
-                ORDER BY timestamp DESC
-            """, (query, query, query, team))
-        else:
-            cursor.execute("""
-                SELECT * FROM mistakes 
-                WHERE LOWER(agent_name) LIKE ? 
-                OR LOWER(ticket_id) LIKE ? 
-                OR LOWER(error_description) LIKE ?
-                ORDER BY timestamp DESC
-            """, (query, query, query))
+        cursor.execute("""
+            SELECT * FROM mistakes 
+            WHERE LOWER(agent_name) LIKE ? 
+            OR LOWER(ticket_id) LIKE ? 
+            OR LOWER(error_description) LIKE ?
+            ORDER BY timestamp DESC
+        """, (query, query, query))
         return cursor.fetchall()
     finally:
         conn.close()
 
-def send_group_message(sender, message, team=None, skillset=None):
+def send_group_message(sender, message):
     if is_killswitch_enabled() or is_chat_killswitch_enabled():
         st.error("Chat is currently locked. Please contact the developer.")
         return False
@@ -517,33 +377,20 @@ def send_group_message(sender, message, team=None, skillset=None):
         cursor = conn.cursor()
         mentions = re.findall(r'@(\w+)', message)
         cursor.execute("""
-            INSERT INTO group_messages (sender, message, timestamp, mentions, team, skillset) 
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO group_messages (sender, message, timestamp, mentions) 
+            VALUES (?, ?, ?, ?)
         """, (sender, message, datetime.now().strftime("%Y-%m-%d %H:%M:%S"), 
-             ','.join(mentions), team, skillset))
+             ','.join(mentions)))
         conn.commit()
         return True
     finally:
         conn.close()
 
-def get_group_messages(team=None, skillset=None):
+def get_group_messages():
     conn = sqlite3.connect("data/requests.db")
     try:
         cursor = conn.cursor()
-        if team and skillset:
-            cursor.execute("""
-                SELECT * FROM group_messages 
-                WHERE (team = ? OR team IS NULL) AND (skillset = ? OR skillset IS NULL)
-                ORDER BY timestamp DESC LIMIT 50
-            """, (team, skillset))
-        elif team:
-            cursor.execute("""
-                SELECT * FROM group_messages 
-                WHERE team = ? OR team IS NULL
-                ORDER BY timestamp DESC LIMIT 50
-            """, (team,))
-        else:
-            cursor.execute("SELECT * FROM group_messages ORDER BY timestamp DESC LIMIT 50")
+        cursor.execute("SELECT * FROM group_messages ORDER BY timestamp DESC LIMIT 50")
         return cursor.fetchall()
     finally:
         conn.close()
@@ -552,21 +399,12 @@ def get_all_users():
     conn = sqlite3.connect("data/requests.db")
     try:
         cursor = conn.cursor()
-        cursor.execute("SELECT id, username, role, team FROM users")
+        cursor.execute("SELECT id, username, role FROM users")
         return cursor.fetchall()
     finally:
         conn.close()
 
-def get_users_by_team(team):
-    conn = sqlite3.connect("data/requests.db")
-    try:
-        cursor = conn.cursor()
-        cursor.execute("SELECT username FROM users WHERE team = ?", (team,))
-        return [row[0] for row in cursor.fetchall()]
-    finally:
-        conn.close()
-
-def add_user(username, password, role, team=None, skillset=None):
+def add_user(username, password, role):
     if is_killswitch_enabled():
         st.error("System is currently locked. Please contact the developer.")
         return False
@@ -574,10 +412,8 @@ def add_user(username, password, role, team=None, skillset=None):
     conn = sqlite3.connect("data/requests.db")
     try:
         cursor = conn.cursor()
-        cursor.execute("""
-            INSERT INTO users (username, password, role, team, skillset) 
-            VALUES (?, ?, ?, ?, ?)
-        """, (username, hash_password(password), role, team, skillset))
+        cursor.execute("INSERT INTO users (username, password, role) VALUES (?, ?, ?)",
+                      (username, hash_password(password), role))
         conn.commit()
         return True
     finally:
@@ -597,7 +433,7 @@ def delete_user(user_id):
     finally:
         conn.close()
 
-def add_hold_image(uploader, image_data, team=None):
+def add_hold_image(uploader, image_data):
     if is_killswitch_enabled():
         st.error("System is currently locked. Please contact the developer.")
         return False
@@ -606,27 +442,24 @@ def add_hold_image(uploader, image_data, team=None):
     try:
         cursor = conn.cursor()
         cursor.execute("""
-            INSERT INTO hold_images (uploader, image_data, timestamp, team) 
-            VALUES (?, ?, ?, ?)
-        """, (uploader, image_data, datetime.now().strftime("%Y-%m-%d %H:%M:%S"), team))
+            INSERT INTO hold_images (uploader, image_data, timestamp) 
+            VALUES (?, ?, ?)
+        """, (uploader, image_data, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
         conn.commit()
         return True
     finally:
         conn.close()
 
-def get_hold_images(team=None):
+def get_hold_images():
     conn = sqlite3.connect("data/requests.db")
     try:
         cursor = conn.cursor()
-        if team:
-            cursor.execute("SELECT * FROM hold_images WHERE team = ? ORDER BY timestamp DESC", (team,))
-        else:
-            cursor.execute("SELECT * FROM hold_images ORDER BY timestamp DESC")
+        cursor.execute("SELECT * FROM hold_images ORDER BY timestamp DESC")
         return cursor.fetchall()
     finally:
         conn.close()
 
-def clear_hold_images(team=None):
+def clear_hold_images():
     if is_killswitch_enabled():
         st.error("System is currently locked. Please contact the developer.")
         return False
@@ -634,16 +467,13 @@ def clear_hold_images(team=None):
     conn = sqlite3.connect("data/requests.db")
     try:
         cursor = conn.cursor()
-        if team:
-            cursor.execute("DELETE FROM hold_images WHERE team = ?", (team,))
-        else:
-            cursor.execute("DELETE FROM hold_images")
+        cursor.execute("DELETE FROM hold_images")
         conn.commit()
         return True
     finally:
         conn.close()
 
-def clear_all_requests(team=None):
+def clear_all_requests():
     if is_killswitch_enabled():
         st.error("System is currently locked. Please contact the developer.")
         return False
@@ -651,21 +481,14 @@ def clear_all_requests(team=None):
     conn = sqlite3.connect("data/requests.db")
     try:
         cursor = conn.cursor()
-        if team:
-            cursor.execute("DELETE FROM requests WHERE team = ?", (team,))
-            cursor.execute("""
-                DELETE FROM request_comments 
-                WHERE request_id IN (SELECT id FROM requests WHERE team = ?)
-            """, (team,))
-        else:
-            cursor.execute("DELETE FROM requests")
-            cursor.execute("DELETE FROM request_comments")
+        cursor.execute("DELETE FROM requests")
+        cursor.execute("DELETE FROM request_comments")
         conn.commit()
         return True
     finally:
         conn.close()
 
-def clear_all_mistakes(team=None):
+def clear_all_mistakes():
     if is_killswitch_enabled():
         st.error("System is currently locked. Please contact the developer.")
         return False
@@ -673,16 +496,13 @@ def clear_all_mistakes(team=None):
     conn = sqlite3.connect("data/requests.db")
     try:
         cursor = conn.cursor()
-        if team:
-            cursor.execute("DELETE FROM mistakes WHERE team = ?", (team,))
-        else:
-            cursor.execute("DELETE FROM mistakes")
+        cursor.execute("DELETE FROM mistakes")
         conn.commit()
         return True
     finally:
         conn.close()
 
-def clear_all_group_messages(team=None, skillset=None):
+def clear_all_group_messages():
     if is_killswitch_enabled():
         st.error("System is currently locked. Please contact the developer.")
         return False
@@ -690,271 +510,48 @@ def clear_all_group_messages(team=None, skillset=None):
     conn = sqlite3.connect("data/requests.db")
     try:
         cursor = conn.cursor()
-        if team and skillset:
-            cursor.execute("DELETE FROM group_messages WHERE team = ? AND skillset = ?", (team, skillset))
-        elif team:
-            cursor.execute("DELETE FROM group_messages WHERE team = ?", (team,))
-        elif skillset:
-            cursor.execute("DELETE FROM group_messages WHERE skillset = ?", (skillset,))
-        else:
-            cursor.execute("DELETE FROM group_messages")
+        cursor.execute("DELETE FROM group_messages")
         conn.commit()
         return True
     finally:
         conn.close()
-
-def get_team_break_template(team):
-    conn = sqlite3.connect("data/requests.db")
-    try:
-        cursor = conn.cursor()
-        cursor.execute("SELECT lunch_breaks, early_tea_breaks, late_tea_breaks FROM team_break_templates WHERE team = ?", (team,))
-        result = cursor.fetchone()
-        if result:
-            return {
-                "lunch_breaks": json.loads(result[0]),
-                "tea_breaks": {
-                    "early": json.loads(result[1]),
-                    "late": json.loads(result[2])
-                }
-            }
-        return None
-    finally:
-        conn.close()
-
-def save_team_break_template(team, template):
-    conn = sqlite3.connect("data/requests.db")
-    try:
-        cursor = conn.cursor()
-        cursor.execute("""
-            INSERT OR REPLACE INTO team_break_templates (team, lunch_breaks, early_tea_breaks, late_tea_breaks)
-            VALUES (?, ?, ?, ?)
-        """, (
-            team,
-            json.dumps(template["lunch_breaks"]),
-            json.dumps(template["tea_breaks"]["early"]),
-            json.dumps(template["tea_breaks"]["late"])
-        ))
-        conn.commit()
-        return True
-    finally:
-        conn.close()
-
-def get_team_break_limits(team):
-    conn = sqlite3.connect("data/requests.db")
-    try:
-        cursor = conn.cursor()
-        cursor.execute("SELECT break_type, time_slot, max_limit FROM team_break_limits WHERE team = ?", (team,))
-        results = cursor.fetchall()
-        
-        limits = {
-            "lunch": {},
-            "early_tea": {},
-            "late_tea": {}
-        }
-        
-        for break_type, time_slot, max_limit in results:
-            if break_type == "lunch":
-                limits["lunch"][time_slot] = max_limit
-            elif break_type == "early_tea":
-                limits["early_tea"][time_slot] = max_limit
-            elif break_type == "late_tea":
-                limits["late_tea"][time_slot] = max_limit
-        
-        return limits
-    finally:
-        conn.close()
-
-def save_team_break_limits(team, limits):
-    conn = sqlite3.connect("data/requests.db")
-    try:
-        cursor = conn.cursor()
-        # First delete existing limits for this team
-        cursor.execute("DELETE FROM team_break_limits WHERE team = ?", (team,))
-        
-        # Insert new limits
-        for time_slot, max_limit in limits["lunch"].items():
-            cursor.execute("""
-                INSERT INTO team_break_limits (team, break_type, time_slot, max_limit)
-                VALUES (?, ?, ?, ?)
-            """, (team, "lunch", time_slot, max_limit))
-        
-        for time_slot, max_limit in limits["early_tea"].items():
-            cursor.execute("""
-                INSERT INTO team_break_limits (team, break_type, time_slot, max_limit)
-                VALUES (?, ?, ?, ?)
-            """, (team, "early_tea", time_slot, max_limit))
-        
-        for time_slot, max_limit in limits["late_tea"].items():
-            cursor.execute("""
-                INSERT INTO team_break_limits (team, break_type, time_slot, max_limit)
-                VALUES (?, ?, ?, ?)
-            """, (team, "late_tea", time_slot, max_limit))
-        
-        conn.commit()
-        return True
-    finally:
-        conn.close()
-
-def book_team_break(team, date, agent_id, break_type, time_slot):
-    conn = sqlite3.connect("data/requests.db")
-    try:
-        cursor = conn.cursor()
-        
-        # First get current booking if exists
-        cursor.execute("SELECT lunch_break, early_tea, late_tea FROM team_breaks WHERE team = ? AND date = ? AND agent_id = ?", 
-                      (team, date, agent_id))
-        result = cursor.fetchone()
-        
-        if result:
-            lunch, early_tea, late_tea = result
-            if break_type == "lunch":
-                lunch = time_slot
-            elif break_type == "early_tea":
-                early_tea = time_slot
-            elif break_type == "late_tea":
-                late_tea = time_slot
-            
-            cursor.execute("""
-                UPDATE team_breaks 
-                SET lunch_break = ?, early_tea = ?, late_tea = ?
-                WHERE team = ? AND date = ? AND agent_id = ?
-            """, (lunch, early_tea, late_tea, team, date, agent_id))
-        else:
-            lunch = time_slot if break_type == "lunch" else None
-            early_tea = time_slot if break_type == "early_tea" else None
-            late_tea = time_slot if break_type == "late_tea" else None
-            
-            cursor.execute("""
-                INSERT INTO team_breaks (team, date, agent_id, lunch_break, early_tea, late_tea)
-                VALUES (?, ?, ?, ?, ?, ?)
-            """, (team, date, agent_id, lunch, early_tea, late_tea))
-        
-        conn.commit()
-        return True
-    finally:
-        conn.close()
-
-def cancel_team_break(team, date, agent_id, break_type):
-    conn = sqlite3.connect("data/requests.db")
-    try:
-        cursor = conn.cursor()
-        
-        # First get current booking
-        cursor.execute("SELECT lunch_break, early_tea, late_tea FROM team_breaks WHERE team = ? AND date = ? AND agent_id = ?", 
-                      (team, date, agent_id))
-        result = cursor.fetchone()
-        
-        if result:
-            lunch, early_tea, late_tea = result
-            if break_type == "lunch":
-                lunch = None
-            elif break_type == "early_tea":
-                early_tea = None
-            elif break_type == "late_tea":
-                late_tea = None
-            
-            # If all breaks are None, delete the record
-            if lunch is None and early_tea is None and late_tea is None:
-                cursor.execute("""
-                    DELETE FROM team_breaks 
-                    WHERE team = ? AND date = ? AND agent_id = ?
-                """, (team, date, agent_id))
-            else:
-                cursor.execute("""
-                    UPDATE team_breaks 
-                    SET lunch_break = ?, early_tea = ?, late_tea = ?
-                    WHERE team = ? AND date = ? AND agent_id = ?
-                """, (lunch, early_tea, late_tea, team, date, agent_id))
-        
-        conn.commit()
-        return True
-    finally:
-        conn.close()
-
-def get_team_break_bookings(team, date):
-    conn = sqlite3.connect("data/requests.db")
-    try:
-        cursor = conn.cursor()
-        cursor.execute("SELECT agent_id, lunch_break, early_tea, late_tea FROM team_breaks WHERE team = ? AND date = ?", 
-                      (team, date))
-        return cursor.fetchall()
-    finally:
-        conn.close()
-
-def count_team_break_bookings(team, date, break_type, time_slot):
-    conn = sqlite3.connect("data/requests.db")
-    try:
-        cursor = conn.cursor()
-        if break_type == "lunch":
-            cursor.execute("""
-                SELECT COUNT(*) FROM team_breaks 
-                WHERE team = ? AND date = ? AND lunch_break = ?
-            """, (team, date, time_slot))
-        elif break_type == "early_tea":
-            cursor.execute("""
-                SELECT COUNT(*) FROM team_breaks 
-                WHERE team = ? AND date = ? AND early_tea = ?
-            """, (team, date, time_slot))
-        elif break_type == "late_tea":
-            cursor.execute("""
-                SELECT COUNT(*) FROM team_breaks 
-                WHERE team = ? AND date = ? AND late_tea = ?
-            """, (team, date, time_slot))
-        
-        result = cursor.fetchone()
-        return result[0] if result else 0
-    finally:
-        conn.close()
-
-def get_agent_break_bookings(team, date, agent_id):
-    conn = sqlite3.connect("data/requests.db")
-    try:
-        cursor = conn.cursor()
-        cursor.execute("SELECT lunch_break, early_tea, late_tea FROM team_breaks WHERE team = ? AND date = ? AND agent_id = ?", 
-                      (team, date, agent_id))
-        result = cursor.fetchone()
-        if result:
-            return {
-                "lunch": result[0],
-                "early_tea": result[1],
-                "late_tea": result[2]
-            }
-        return None
-    finally:
-        conn.close()
-
-def get_all_teams():
-    conn = sqlite3.connect("data/requests.db")
-    try:
-        cursor = conn.cursor()
-        cursor.execute("SELECT DISTINCT team FROM users WHERE team IS NOT NULL AND team != 'admin'")
-        return [row[0] for row in cursor.fetchall()]
-    finally:
-        conn.close()
-
-def get_team_members(team):
-    conn = sqlite3.connect("data/requests.db")
-    try:
-        cursor = conn.cursor()
-        cursor.execute("SELECT username FROM users WHERE team = ?", (team,))
-        return [row[0] for row in cursor.fetchall()]
-    finally:
-        conn.close()
-
-def get_skillsets():
-    return ["Technical", "Billing", "Retention", "General"]
 
 # --------------------------
-# Break Scheduling Functions
+# Break Scheduling Functions (from first code)
 # --------------------------
 
 def init_break_session_state():
+    if 'templates' not in st.session_state:
+        st.session_state.templates = {}
     if 'current_template' not in st.session_state:
         st.session_state.current_template = None
+    if 'agent_bookings' not in st.session_state:
+        st.session_state.agent_bookings = {}
     if 'selected_date' not in st.session_state:
         st.session_state.selected_date = datetime.now().strftime('%Y-%m-%d')
     if 'timezone_offset' not in st.session_state:
         st.session_state.timezone_offset = 0  # GMT by default
+    if 'break_limits' not in st.session_state:
+        st.session_state.break_limits = {}
+    
+    # Load data from files if exists
+    if os.path.exists('templates.json'):
+        with open('templates.json', 'r') as f:
+            st.session_state.templates = json.load(f)
+    if os.path.exists('break_limits.json'):
+        with open('break_limits.json', 'r') as f:
+            st.session_state.break_limits = json.load(f)
+    if os.path.exists('all_bookings.json'):
+        with open('all_bookings.json', 'r') as f:
+            st.session_state.agent_bookings = json.load(f)
+
+def save_break_data():
+    with open('templates.json', 'w') as f:
+        json.dump(st.session_state.templates, f)
+    with open('break_limits.json', 'w') as f:
+        json.dump(st.session_state.break_limits, f)
+    with open('all_bookings.json', 'w') as f:
+        json.dump(st.session_state.agent_bookings, f)
 
 def adjust_time(time_str, offset):
     try:
@@ -976,153 +573,54 @@ def adjust_template_times(template, offset):
     }
     return adjusted_template
 
-def display_team_break_schedule(team, template):
-    st.header(f"{team} Break Schedule")
-    
-    # Get current bookings
-    bookings = get_team_break_bookings(team, st.session_state.selected_date)
-    booking_counts = {
-        "lunch": {},
-        "early_tea": {},
-        "late_tea": {}
-    }
-    
-    # Initialize counts
-    for time_slot in template["lunch_breaks"]:
-        booking_counts["lunch"][time_slot] = 0
-    
-    for time_slot in template["tea_breaks"]["early"]:
-        booking_counts["early_tea"][time_slot] = 0
-    
-    for time_slot in template["tea_breaks"]["late"]:
-        booking_counts["late_tea"][time_slot] = 0
-    
-    # Count bookings
-    for agent_id, lunch, early_tea, late_tea in bookings:
-        if lunch:
-            booking_counts["lunch"][lunch] += 1
-        if early_tea:
-            booking_counts["early_tea"][early_tea] += 1
-        if late_tea:
-            booking_counts["late_tea"][late_tea] += 1
-    
-    # Get break limits
-    break_limits = get_team_break_limits(team)
+def count_bookings(date, break_type, time_slot):
+    count = 0
+    if date in st.session_state.agent_bookings:
+        for agent_id, breaks in st.session_state.agent_bookings[date].items():
+            if break_type == "lunch" and "lunch" in breaks and breaks["lunch"] == time_slot:
+                count += 1
+            elif break_type == "early_tea" and "early_tea" in breaks and breaks["early_tea"] == time_slot:
+                count += 1
+            elif break_type == "late_tea" and "late_tea" in breaks and breaks["late_tea"] == time_slot:
+                count += 1
+    return count
+
+def display_schedule(template):
+    st.header("LM US ENG 3:00 PM shift")
     
     # Lunch breaks table
     st.markdown("### LUNCH BREAKS")
-    lunch_data = []
-    for time_slot in template["lunch_breaks"]:
-        current = booking_counts["lunch"].get(time_slot, 0)
-        limit = break_limits["lunch"].get(time_slot, 5)
-        lunch_data.append({
-            "Time": time_slot,
-            "Booked": current,
-            "Available": limit - current,
-            "Status": "FULL" if current >= limit else "AVAILABLE"
-        })
+    lunch_df = pd.DataFrame({
+        "DATE": [st.session_state.selected_date],
+        **{time: [""] for time in template["lunch_breaks"]}
+    })
+    st.table(lunch_df)
     
-    lunch_df = pd.DataFrame(lunch_data)
-    st.dataframe(lunch_df, hide_index=True)
+    st.markdown("**KINDLY RESPECT THE RULES BELOW**")
+    st.markdown("**Non Respect Of Break Rules = Incident**")
+    st.markdown("---")
     
-    # Tea breaks tables
-    st.markdown("### TEA BREAKS")
+    # Tea breaks table
+    st.markdown("### TEA BREAK")
     
-    # Early tea breaks
-    st.markdown("#### Early Tea Breaks")
-    early_tea_data = []
-    for time_slot in template["tea_breaks"]["early"]:
-        current = booking_counts["early_tea"].get(time_slot, 0)
-        limit = break_limits["early_tea"].get(time_slot, 3)
-        early_tea_data.append({
-            "Time": time_slot,
-            "Booked": current,
-            "Available": limit - current,
-            "Status": "FULL" if current >= limit else "AVAILABLE"
-        })
+    # Create two columns for tea breaks
+    max_rows = max(len(template["tea_breaks"]["early"]), len(template["tea_breaks"]["late"]))
+    tea_data = {
+        "TEA BREAK": template["tea_breaks"]["early"] + [""] * (max_rows - len(template["tea_breaks"]["early"])),
+        "TEA BREAK": template["tea_breaks"]["late"] + [""] * (max_rows - len(template["tea_breaks"]["late"]))
+    }
+    tea_df = pd.DataFrame(tea_data)
+    st.table(tea_df)
     
-    early_tea_df = pd.DataFrame(early_tea_data)
-    st.dataframe(early_tea_df, hide_index=True)
-    
-    # Late tea breaks
-    st.markdown("#### Late Tea Breaks")
-    late_tea_data = []
-    for time_slot in template["tea_breaks"]["late"]:
-        current = booking_counts["late_tea"].get(time_slot, 0)
-        limit = break_limits["late_tea"].get(time_slot, 3)
-        late_tea_data.append({
-            "Time": time_slot,
-            "Booked": current,
-            "Available": limit - current,
-            "Status": "FULL" if current >= limit else "AVAILABLE"
-        })
-    
-    late_tea_df = pd.DataFrame(late_tea_data)
-    st.dataframe(late_tea_df, hide_index=True)
-    
-    # Visualizations
-    st.markdown("### BREAK SCHEDULE VISUALIZATION")
-    
-    # Create a Gantt-style chart for breaks
-    fig = go.Figure()
-    
-    # Add lunch breaks
-    for time_slot in template["lunch_breaks"]:
-        current = booking_counts["lunch"].get(time_slot, 0)
-        limit = break_limits["lunch"].get(time_slot, 5)
-        color = "red" if current >= limit else "green"
-        
-        fig.add_trace(go.Bar(
-            x=[f"Lunch {time_slot}"],
-            y=[current],
-            name=f"Lunch {time_slot}",
-            marker_color=color,
-            text=f"{current}/{limit}",
-            textposition='auto'
-        ))
-    
-    # Add early tea breaks
-    for time_slot in template["tea_breaks"]["early"]:
-        current = booking_counts["early_tea"].get(time_slot, 0)
-        limit = break_limits["early_tea"].get(time_slot, 3)
-        color = "red" if current >= limit else "green"
-        
-        fig.add_trace(go.Bar(
-            x=[f"Early Tea {time_slot}"],
-            y=[current],
-            name=f"Early Tea {time_slot}",
-            marker_color=color,
-            text=f"{current}/{limit}",
-            textposition='auto'
-        ))
-    
-    # Add late tea breaks
-    for time_slot in template["tea_breaks"]["late"]:
-        current = booking_counts["late_tea"].get(time_slot, 0)
-        limit = break_limits["late_tea"].get(time_slot, 3)
-        color = "red" if current >= limit else "green"
-        
-        fig.add_trace(go.Bar(
-            x=[f"Late Tea {time_slot}"],
-            y=[current],
-            name=f"Late Tea {time_slot}",
-            marker_color=color,
-            text=f"{current}/{limit}",
-            textposition='auto'
-        ))
-    
-    fig.update_layout(
-        title="Break Schedule Utilization",
-        xaxis_title="Break Time",
-        yaxis_title="Number of Agents",
-        barmode='group',
-        height=500
-    )
-    
-    st.plotly_chart(fig, use_container_width=True)
+    # Rules section
+    st.markdown("""
+    **NO BREAK IN THE LAST HOUR WILL BE AUTHORIZED**  
+    **PS: ONLY 5 MINUTES BIO IS AUTHORIZED IN THE LAST HOUR BETWEEN 23:00 TILL 23:30 AND NO BREAK AFTER 23:30 !!!**  
+    **BREAKS SHOULD BE TAKEN AT THE NOTED TIME AND NEED TO BE CONFIRMED FROM RTA OR TEAM LEADERS**
+    """)
 
 def admin_break_dashboard():
-    st.title("Admin Break Dashboard")
+    st.title("Admin Dashboard")
     st.markdown("---")
     
     # Timezone adjustment
@@ -1142,77 +640,107 @@ def admin_break_dashboard():
         st.success(f"Timezone set to {timezone}. All break times adjusted.")
         st.rerun()
     
-    # Team selection
-    teams = get_all_teams()
-    selected_team = st.selectbox("Select Team:", teams)
+    # Template management
+    st.header("Template Management")
     
-    # Get team template
-    template = get_team_break_template(selected_team)
-    if not template:
-        st.error("No break template found for this team. Please create one.")
-        return
+    col1, col2 = st.columns(2)
     
-    # Date selection
-    schedule_date = st.date_input("Select Date:", datetime.now())
-    st.session_state.selected_date = schedule_date.strftime('%Y-%m-%d')
+    with col1:
+        template_name = st.text_input("Template Name:")
     
-    # Display team schedule
-    display_team_break_schedule(selected_team, template)
+    with col2:
+        if st.button("Create New Template"):
+            if template_name:
+                if template_name not in st.session_state.templates:
+                    st.session_state.templates[template_name] = {
+                        "lunch_breaks": ["19:30", "20:00", "20:30", "21:00", "21:30"],
+                        "tea_breaks": {
+                            "early": ["16:00", "16:15", "16:30", "16:45", "17:00", "17:15", "17:30"],
+                            "late": ["21:45", "22:00", "22:15", "22:30"]
+                        }
+                    }
+                    st.session_state.current_template = template_name
+                    save_break_data()
+                    st.success(f"Template '{template_name}' created!")
+                else:
+                    st.error("Template with this name already exists")
+            else:
+                st.error("Please enter a template name")
     
-    # Team management
-    st.markdown("---")
-    st.header("Team Break Management")
-    
-    # Template editing
-    with st.expander("Edit Break Template"):
-        st.subheader("Edit Lunch Breaks")
-        lunch_breaks = st.text_area(
-            "Lunch Breaks (one per line):",
-            "\n".join(template["lunch_breaks"]),
-            height=150
+    # Template selection
+    if st.session_state.templates:
+        selected_template = st.selectbox(
+            "Select Template to Edit:",
+            list(st.session_state.templates.keys()),
+            index=0 if not st.session_state.current_template else list(st.session_state.templates.keys()).index(st.session_state.current_template)
         )
         
-        st.subheader("Edit Tea Breaks")
-        st.write("Early Tea Breaks:")
-        early_tea_breaks = st.text_area(
-            "Early Tea Breaks (one per line):",
-            "\n".join(template["tea_breaks"]["early"]),
-            height=150,
-            key="early_tea"
-        )
+        st.session_state.current_template = selected_template
         
-        st.write("Late Tea Breaks:")
-        late_tea_breaks = st.text_area(
-            "Late Tea Breaks (one per line):",
-            "\n".join(template["tea_breaks"]["late"]),
-            height=150,
-            key="late_tea"
-        )
-        
-        if st.button("Save Template"):
-            new_template = {
-                "lunch_breaks": [t.strip() for t in lunch_breaks.split("\n") if t.strip()],
-                "tea_breaks": {
-                    "early": [t.strip() for t in early_tea_breaks.split("\n") if t.strip()],
-                    "late": [t.strip() for t in late_tea_breaks.split("\n") if t.strip()]
-                }
-            }
-            save_team_break_template(selected_team, new_template)
-            st.success("Template updated successfully!")
+        if st.button("Delete Template"):
+            del st.session_state.templates[selected_template]
+            st.session_state.current_template = None
+            save_break_data()
+            st.success(f"Template '{selected_template}' deleted!")
             st.rerun()
+
+        
+        # Edit template
+        if st.session_state.current_template:
+            template = st.session_state.templates[st.session_state.current_template]
+            
+            st.subheader("Edit Lunch Breaks")
+            lunch_breaks = st.text_area(
+                "Lunch Breaks (one per line):",
+                "\n".join(template["lunch_breaks"]),
+                height=150
+            )
+            
+            st.subheader("Edit Tea Breaks")
+            st.write("Early Tea Breaks:")
+            early_tea_breaks = st.text_area(
+                "Early Tea Breaks (one per line):",
+                "\n".join(template["tea_breaks"]["early"]),
+                height=150,
+                key="early_tea"
+            )
+            
+            st.write("Late Tea Breaks:")
+            late_tea_breaks = st.text_area(
+                "Late Tea Breaks (one per line):",
+                "\n".join(template["tea_breaks"]["late"]),
+                height=150,
+                key="late_tea"
+            )
+            
+            if st.button("Save Changes"):
+                template["lunch_breaks"] = [t.strip() for t in lunch_breaks.split("\n") if t.strip()]
+                template["tea_breaks"]["early"] = [t.strip() for t in early_tea_breaks.split("\n") if t.strip()]
+                template["tea_breaks"]["late"] = [t.strip() for t in late_tea_breaks.split("\n") if t.strip()]
+                save_break_data()
+                st.success("Template updated successfully!")
     
     # Break limits management
-    with st.expander("Edit Break Limits"):
-        break_limits = get_team_break_limits(selected_team)
+    st.header("Break Limits Management")
+    if st.session_state.current_template:
+        template = st.session_state.templates[st.session_state.current_template]
+        
+        # Initialize limits if not exists
+        if st.session_state.current_template not in st.session_state.break_limits:
+            st.session_state.break_limits[st.session_state.current_template] = {
+                "lunch": {time: 5 for time in template["lunch_breaks"]},
+                "early_tea": {time: 3 for time in template["tea_breaks"]["early"]},
+                "late_tea": {time: 3 for time in template["tea_breaks"]["late"]}
+            }
         
         st.subheader("Lunch Break Limits")
         lunch_cols = st.columns(len(template["lunch_breaks"]))
         for i, time_slot in enumerate(template["lunch_breaks"]):
             with lunch_cols[i]:
-                break_limits["lunch"][time_slot] = st.number_input(
+                st.session_state.break_limits[st.session_state.current_template]["lunch"][time_slot] = st.number_input(
                     f"Max at {time_slot}",
                     min_value=1,
-                    value=break_limits["lunch"].get(time_slot, 5),
+                    value=st.session_state.break_limits[st.session_state.current_template]["lunch"].get(time_slot, 5),
                     key=f"lunch_limit_{time_slot}"
                 )
         
@@ -1220,10 +748,10 @@ def admin_break_dashboard():
         early_tea_cols = st.columns(len(template["tea_breaks"]["early"]))
         for i, time_slot in enumerate(template["tea_breaks"]["early"]):
             with early_tea_cols[i]:
-                break_limits["early_tea"][time_slot] = st.number_input(
+                st.session_state.break_limits[st.session_state.current_template]["early_tea"][time_slot] = st.number_input(
                     f"Max at {time_slot}",
                     min_value=1,
-                    value=break_limits["early_tea"].get(time_slot, 3),
+                    value=st.session_state.break_limits[st.session_state.current_template]["early_tea"].get(time_slot, 3),
                     key=f"early_tea_limit_{time_slot}"
                 )
         
@@ -1231,140 +759,48 @@ def admin_break_dashboard():
         late_tea_cols = st.columns(len(template["tea_breaks"]["late"]))
         for i, time_slot in enumerate(template["tea_breaks"]["late"]):
             with late_tea_cols[i]:
-                break_limits["late_tea"][time_slot] = st.number_input(
+                st.session_state.break_limits[st.session_state.current_template]["late_tea"][time_slot] = st.number_input(
                     f"Max at {time_slot}",
                     min_value=1,
-                    value=break_limits["late_tea"].get(time_slot, 3),
+                    value=st.session_state.break_limits[st.session_state.current_template]["late_tea"].get(time_slot, 3),
                     key=f"late_tea_limit_{time_slot}"
                 )
         
         if st.button("Save Break Limits"):
-            save_team_break_limits(selected_team, break_limits)
+            save_break_data()
             st.success("Break limits saved successfully!")
-            st.rerun()
     
-    # Bulk booking for team members
-    with st.expander("Bulk Booking for Team"):
-        st.warning("This will override existing bookings for selected agents")
-        team_members = get_team_members(selected_team)
-        selected_members = st.multiselect("Select Agents:", team_members)
+    # View all bookings
+    st.header("All Bookings")
+    if st.session_state.agent_bookings:
+        # Convert to DataFrame for better display
+        bookings_list = []
+        for date, agents in st.session_state.agent_bookings.items():
+            for agent_id, breaks in agents.items():
+                bookings_list.append({
+                    "Date": date,
+                    "Agent ID": agent_id,
+                    "Lunch Break": breaks.get("lunch", "-"),
+                    "Early Tea": breaks.get("early_tea", "-"),
+                    "Late Tea": breaks.get("late_tea", "-")
+                })
         
-        st.subheader("Lunch Break")
-        lunch_time = st.selectbox("Select Lunch Time:", template["lunch_breaks"])
+        bookings_df = pd.DataFrame(bookings_list)
+        st.dataframe(bookings_df)
         
-        st.subheader("Early Tea Break")
-        early_tea_time = st.selectbox("Select Early Tea Time:", template["tea_breaks"]["early"])
-        
-        st.subheader("Late Tea Break")
-        late_tea_time = st.selectbox("Select Late Tea Time:", template["tea_breaks"]["late"])
-        
-        if st.button("Apply Bulk Booking"):
-            for agent in selected_members:
-                book_team_break(selected_team, st.session_state.selected_date, agent, "lunch", lunch_time)
-                book_team_break(selected_team, st.session_state.selected_date, agent, "early_tea", early_tea_time)
-                book_team_break(selected_team, st.session_state.selected_date, agent, "late_tea", late_tea_time)
-            st.success(f"Bookings applied to {len(selected_members)} agents!")
-            st.rerun()
+        # Export option
+        if st.button("Export Bookings to CSV"):
+            csv = bookings_df.to_csv(index=False)
+            st.download_button(
+                label="Download CSV",
+                data=csv,
+                file_name="break_bookings.csv",
+                mime="text/csv"
+            )
+    else:
+        st.write("No bookings yet.")
 
-def team_leader_break_dashboard(team):
-    st.title(f"{team} Break Dashboard")
-    st.markdown("---")
-    
-    # Get team template
-    template = get_team_break_template(team)
-    if not template:
-        st.error("No break template found for this team. Please contact admin.")
-        return
-    
-    # Date selection
-    schedule_date = st.date_input("Select Date:", datetime.now())
-    st.session_state.selected_date = schedule_date.strftime('%Y-%m-%d')
-    
-    # Display team schedule
-    display_team_break_schedule(team, template)
-    
-    # Individual booking management
-    st.markdown("---")
-    st.header("Individual Booking Management")
-    
-    team_members = get_team_members(team)
-    selected_agent = st.selectbox("Select Agent:", team_members)
-    
-    # Get current bookings for agent
-    current_bookings = get_agent_break_bookings(team, st.session_state.selected_date, selected_agent)
-    
-    # Lunch break booking
-    st.subheader("Lunch Break")
-    lunch_cols = st.columns(len(template["lunch_breaks"]))
-    selected_lunch = current_bookings["lunch"] if current_bookings else None
-    
-    for i, time_slot in enumerate(template["lunch_breaks"]):
-        with lunch_cols[i]:
-            current = count_team_break_bookings(team, st.session_state.selected_date, "lunch", time_slot)
-            limit = get_team_break_limits(team)["lunch"].get(time_slot, 5)
-            
-            if current >= limit and time_slot != selected_lunch:
-                st.button(f"{time_slot} (FULL)", key=f"lunch_{time_slot}_{selected_agent}", disabled=True)
-            else:
-                if st.button(time_slot, key=f"lunch_{time_slot}_{selected_agent}"):
-                    selected_lunch = time_slot
-    
-    # Early tea break booking
-    st.subheader("Early Tea Break")
-    early_tea_cols = st.columns(len(template["tea_breaks"]["early"]))
-    selected_early_tea = current_bookings["early_tea"] if current_bookings else None
-    
-    for i, time_slot in enumerate(template["tea_breaks"]["early"]):
-        with early_tea_cols[i]:
-            current = count_team_break_bookings(team, st.session_state.selected_date, "early_tea", time_slot)
-            limit = get_team_break_limits(team)["early_tea"].get(time_slot, 3)
-            
-            if current >= limit and time_slot != selected_early_tea:
-                st.button(f"{time_slot} (FULL)", key=f"early_tea_{time_slot}_{selected_agent}", disabled=True)
-            else:
-                if st.button(time_slot, key=f"early_tea_{time_slot}_{selected_agent}"):
-                    selected_early_tea = time_slot
-    
-    # Late tea break booking
-    st.subheader("Late Tea Break")
-    late_tea_cols = st.columns(len(template["tea_breaks"]["late"]))
-    selected_late_tea = current_bookings["late_tea"] if current_bookings else None
-    
-    for i, time_slot in enumerate(template["tea_breaks"]["late"]):
-        with late_tea_cols[i]:
-            current = count_team_break_bookings(team, st.session_state.selected_date, "late_tea", time_slot)
-            limit = get_team_break_limits(team)["late_tea"].get(time_slot, 3)
-            
-            if current >= limit and time_slot != selected_late_tea:
-                st.button(f"{time_slot} (FULL)", key=f"late_tea_{time_slot}_{selected_agent}", disabled=True)
-            else:
-                if st.button(time_slot, key=f"late_tea_{time_slot}_{selected_agent}"):
-                    selected_late_tea = time_slot
-    
-    # Save button
-    if st.button("Save Bookings"):
-        # Update lunch break
-        if selected_lunch:
-            book_team_break(team, st.session_state.selected_date, selected_agent, "lunch", selected_lunch)
-        elif current_bookings and current_bookings["lunch"]:
-            cancel_team_break(team, st.session_state.selected_date, selected_agent, "lunch")
-        
-        # Update early tea break
-        if selected_early_tea:
-            book_team_break(team, st.session_state.selected_date, selected_agent, "early_tea", selected_early_tea)
-        elif current_bookings and current_bookings["early_tea"]:
-            cancel_team_break(team, st.session_state.selected_date, selected_agent, "early_tea")
-        
-        # Update late tea break
-        if selected_late_tea:
-            book_team_break(team, st.session_state.selected_date, selected_agent, "late_tea", selected_late_tea)
-        elif current_bookings and current_bookings["late_tea"]:
-            cancel_team_break(team, st.session_state.selected_date, selected_agent, "late_tea")
-        
-        st.success("Bookings updated successfully!")
-        st.rerun()
-
-def agent_break_dashboard(team):
+def agent_break_dashboard():
     st.title("Break Booking")
     st.markdown("---")
     
@@ -1372,113 +808,132 @@ def agent_break_dashboard(team):
     agent_id = st.session_state.username
     st.write(f"Booking breaks for: **{agent_id}**")
     
-    # Get team template
-    template = get_team_break_template(team)
-    if not template:
-        st.error("No break template found for your team. Please contact your team leader.")
-        return
-    
     # Date selection
     schedule_date = st.date_input("Select Date:", datetime.now())
     st.session_state.selected_date = schedule_date.strftime('%Y-%m-%d')
     
-    # Get current bookings
-    current_bookings = get_agent_break_bookings(team, st.session_state.selected_date, agent_id)
+    # Use the first template (or create a default if none exists)
+    if not st.session_state.templates:
+        st.error("No break schedules available. Please contact admin.")
+        return
     
-    # Get break limits
-    break_limits = get_team_break_limits(team)
+    # Get the first template (we're removing the template selection)
+    template_name = list(st.session_state.templates.keys())[0]
+    template = adjust_template_times(st.session_state.templates[template_name], st.session_state.timezone_offset)
     
     # Booking section
     st.markdown("---")
     st.header("Available Break Slots")
     
+    # Check if template has limits defined
+    break_limits = st.session_state.break_limits.get(template_name, {})
+    
     # Lunch break booking
     st.subheader("Lunch Break")
-    lunch_cols = st.columns(len(template["lunch_breaks"]))
-    selected_lunch = current_bookings["lunch"] if current_bookings else None
-    
-    for i, time_slot in enumerate(template["lunch_breaks"]):
-        with lunch_cols[i]:
-            current = count_team_break_bookings(team, st.session_state.selected_date, "lunch", time_slot)
-            limit = break_limits["lunch"].get(time_slot, 5)
+    if template["lunch_breaks"]:
+        lunch_cols = st.columns(len(template["lunch_breaks"]))
+        selected_lunch = None
+        
+        for i, time_slot in enumerate(template["lunch_breaks"]):
+            with lunch_cols[i]:
+                # Check if time slot is full
+                current_bookings = count_bookings(st.session_state.selected_date, "lunch", time_slot)
+                max_limit = break_limits.get("lunch", {}).get(time_slot, 5)
+                
+                if current_bookings >= max_limit:
+                    st.button(f"{time_slot} (FULL)", key=f"lunch_{time_slot}", disabled=True, help="This slot is full")
+                else:
+                    if st.button(time_slot, key=f"lunch_{time_slot}"):
+                        selected_lunch = time_slot
+        
+        if selected_lunch:
+            if st.session_state.selected_date not in st.session_state.agent_bookings:
+                st.session_state.agent_bookings[st.session_state.selected_date] = {}
             
-            if current >= limit and time_slot != selected_lunch:
-                st.button(f"{time_slot} (FULL)", key=f"lunch_{time_slot}", disabled=True, help="This slot is full")
-            elif time_slot == selected_lunch:
-                if st.button(f"✅ {time_slot}", key=f"lunch_{time_slot}"):
-                    cancel_team_break(team, st.session_state.selected_date, agent_id, "lunch")
-                    st.rerun()
-            else:
-                if st.button(time_slot, key=f"lunch_{time_slot}"):
-                    book_team_break(team, st.session_state.selected_date, agent_id, "lunch", time_slot)
-                    st.rerun()
+            if agent_id not in st.session_state.agent_bookings[st.session_state.selected_date]:
+                st.session_state.agent_bookings[st.session_state.selected_date][agent_id] = {}
+            
+            st.session_state.agent_bookings[st.session_state.selected_date][agent_id]["lunch"] = selected_lunch
+            save_break_data()
+            st.success(f"Lunch break booked for {selected_lunch}")
+            st.rerun()
+    else:
+        st.write("No lunch breaks available today.")
     
     # Tea break booking
     st.subheader("Tea Breaks")
-    
-    # Early tea breaks
     st.write("Early Tea Breaks:")
     early_tea_cols = st.columns(len(template["tea_breaks"]["early"]))
-    selected_early_tea = current_bookings["early_tea"] if current_bookings else None
+    selected_early_tea = None
     
     for i, time_slot in enumerate(template["tea_breaks"]["early"]):
         with early_tea_cols[i]:
-            current = count_team_break_bookings(team, st.session_state.selected_date, "early_tea", time_slot)
-            limit = break_limits["early_tea"].get(time_slot, 3)
+            # Check if time slot is full
+            current_bookings = count_bookings(st.session_state.selected_date, "early_tea", time_slot)
+            max_limit = break_limits.get("early_tea", {}).get(time_slot, 3)
             
-            if current >= limit and time_slot != selected_early_tea:
+            if current_bookings >= max_limit:
                 st.button(f"{time_slot} (FULL)", key=f"early_tea_{time_slot}", disabled=True, help="This slot is full")
-            elif time_slot == selected_early_tea:
-                if st.button(f"✅ {time_slot}", key=f"early_tea_{time_slot}"):
-                    cancel_team_break(team, st.session_state.selected_date, agent_id, "early_tea")
-                    st.rerun()
             else:
                 if st.button(time_slot, key=f"early_tea_{time_slot}"):
-                    book_team_break(team, st.session_state.selected_date, agent_id, "early_tea", time_slot)
-                    st.rerun()
+                    selected_early_tea = time_slot
     
-    # Late tea breaks
+    if selected_early_tea:
+        if st.session_state.selected_date not in st.session_state.agent_bookings:
+            st.session_state.agent_bookings[st.session_state.selected_date] = {}
+        
+        if agent_id not in st.session_state.agent_bookings[st.session_state.selected_date]:
+            st.session_state.agent_bookings[st.session_state.selected_date][agent_id] = {}
+        
+        st.session_state.agent_bookings[st.session_state.selected_date][agent_id]["early_tea"] = selected_early_tea
+        save_break_data()
+        st.success(f"Early tea break booked for {selected_early_tea}")
+        st.rerun()
+    
     st.write("Late Tea Breaks:")
     late_tea_cols = st.columns(len(template["tea_breaks"]["late"]))
-    selected_late_tea = current_bookings["late_tea"] if current_bookings else None
+    selected_late_tea = None
     
     for i, time_slot in enumerate(template["tea_breaks"]["late"]):
         with late_tea_cols[i]:
-            current = count_team_break_bookings(team, st.session_state.selected_date, "late_tea", time_slot)
-            limit = break_limits["late_tea"].get(time_slot, 3)
+            # Check if time slot is full
+            current_bookings = count_bookings(st.session_state.selected_date, "late_tea", time_slot)
+            max_limit = break_limits.get("late_tea", {}).get(time_slot, 3)
             
-            if current >= limit and time_slot != selected_late_tea:
+            if current_bookings >= max_limit:
                 st.button(f"{time_slot} (FULL)", key=f"late_tea_{time_slot}", disabled=True, help="This slot is full")
-            elif time_slot == selected_late_tea:
-                if st.button(f"✅ {time_slot}", key=f"late_tea_{time_slot}"):
-                    cancel_team_break(team, st.session_state.selected_date, agent_id, "late_tea")
-                    st.rerun()
             else:
                 if st.button(time_slot, key=f"late_tea_{time_slot}"):
-                    book_team_break(team, st.session_state.selected_date, agent_id, "late_tea", time_slot)
-                    st.rerun()
+                    selected_late_tea = time_slot
+    
+    if selected_late_tea:
+        if st.session_state.selected_date not in st.session_state.agent_bookings:
+            st.session_state.agent_bookings[st.session_state.selected_date] = {}
+        
+        if agent_id not in st.session_state.agent_bookings[st.session_state.selected_date]:
+            st.session_state.agent_bookings[st.session_state.selected_date][agent_id] = {}
+        
+        st.session_state.agent_bookings[st.session_state.selected_date][agent_id]["late_tea"] = selected_late_tea
+        save_break_data()
+        st.success(f"Late tea break booked for {selected_late_tea}")
+        st.rerun()
     
     # Display current bookings
-    if current_bookings and (current_bookings["lunch"] or current_bookings["early_tea"] or current_bookings["late_tea"]):
+    if st.session_state.selected_date in st.session_state.agent_bookings and agent_id in st.session_state.agent_bookings[st.session_state.selected_date]:
         st.markdown("---")
         st.header("Your Current Bookings")
+        bookings = st.session_state.agent_bookings[st.session_state.selected_date][agent_id]
         
-        if current_bookings["lunch"]:
-            st.write(f"**Lunch Break:** {current_bookings['lunch']}")
-        
-        if current_bookings["early_tea"]:
-            st.write(f"**Early Tea Break:** {current_bookings['early_tea']}")
-        
-        if current_bookings["late_tea"]:
-            st.write(f"**Late Tea Break:** {current_bookings['late_tea']}")
+        if "lunch" in bookings:
+            st.write(f"**Lunch Break:** {bookings['lunch']}")
+        if "early_tea" in bookings:
+            st.write(f"**Early Tea Break:** {bookings['early_tea']}")
+        if "late_tea" in bookings:
+            st.write(f"**Late Tea Break:** {bookings['late_tea']}")
         
         if st.button("Cancel All Bookings"):
-            if current_bookings["lunch"]:
-                cancel_team_break(team, st.session_state.selected_date, agent_id, "lunch")
-            if current_bookings["early_tea"]:
-                cancel_team_break(team, st.session_state.selected_date, agent_id, "early_tea")
-            if current_bookings["late_tea"]:
-                cancel_team_break(team, st.session_state.selected_date, agent_id, "late_tea")
+            del st.session_state.agent_bookings[st.session_state.selected_date][agent_id]
+            save_break_data()
             st.success("All bookings canceled for this date")
             st.rerun()
 
@@ -1512,7 +967,7 @@ def inject_custom_css():
             border-bottom: 1px solid black;
         }
         .stDataFrame {
-            width: 100%; 
+            width: 100%;
         }
         table {
             width: 100%;
@@ -1581,26 +1036,6 @@ def inject_custom_css():
         .comment-text {
             margin-top: 0.5rem;
         }
-        .team-card {
-            background: #1F2937;
-            border-radius: 10px;
-            padding: 15px;
-            margin-bottom: 15px;
-            border-left: 5px solid #3B82F6;
-        }
-        .skillset-tab {
-            padding: 8px 15px;
-            margin-right: 5px;
-            border-radius: 20px;
-            background: #374151;
-            color: white;
-            display: inline-block;
-            cursor: pointer;
-        }
-        .skillset-tab.active {
-            background: #3B82F6;
-            font-weight: bold;
-        }
     </style>
     """, unsafe_allow_html=True)
 
@@ -1609,12 +1044,10 @@ if "authenticated" not in st.session_state:
         "authenticated": False,
         "role": None,
         "username": None,
-        "team": None,
         "current_section": "requests",
         "last_request_count": 0,
         "last_mistake_count": 0,
-        "last_message_ids": [],
-        "current_chat_skillset": None
+        "last_message_ids": []
     })
 
 init_db()
@@ -1629,16 +1062,15 @@ if not st.session_state.authenticated:
             password = st.text_input("Password", type="password")
             if st.form_submit_button("Login"):
                 if username and password:
-                    role, team = authenticate(username, password)
+                    role = authenticate(username, password)
                     if role:
                         st.session_state.update({
                             "authenticated": True,
                             "role": role,
                             "username": username,
-                            "team": team,
-                            "last_request_count": len(get_requests(team)),
-                            "last_mistake_count": len(get_mistakes(team)),
-                            "last_message_ids": [msg[0] for msg in get_group_messages(team)]
+                            "last_request_count": len(get_requests()),
+                            "last_mistake_count": len(get_mistakes()),
+                            "last_message_ids": [msg[0] for msg in get_group_messages()]
                         })
                         st.rerun()
                     else:
@@ -1661,9 +1093,9 @@ else:
         """, unsafe_allow_html=True)
 
     def show_notifications():
-        current_requests = get_requests(st.session_state.team)
-        current_mistakes = get_mistakes(st.session_state.team)
-        current_messages = get_group_messages(st.session_state.team)
+        current_requests = get_requests()
+        current_mistakes = get_mistakes()
+        current_messages = get_group_messages()
         
         new_requests = len(current_requests) - st.session_state.last_request_count
         if new_requests > 0 and st.session_state.last_request_count > 0:
@@ -1690,8 +1122,6 @@ else:
 
     with st.sidebar:
         st.title(f"👋 Welcome, {st.session_state.username}")
-        st.markdown(f"**Team:** {st.session_state.team or 'N/A'}")
-        st.markdown(f"**Role:** {st.session_state.role.capitalize()}")
         st.markdown("---")
         
         nav_options = [
@@ -1708,13 +1138,11 @@ else:
         for option, value in nav_options:
             if st.button(option, key=f"nav_{value}"):
                 st.session_state.current_section = value
-                if value == "chat":
-                    st.session_state.current_chat_skillset = None
                 
         st.markdown("---")
-        pending_requests = len([r for r in get_requests(st.session_state.team) if not r[6]])
-        new_mistakes = len(get_mistakes(st.session_state.team))
-        unread_messages = len([m for m in get_group_messages(st.session_state.team) 
+        pending_requests = len([r for r in get_requests() if not r[6]])
+        new_mistakes = len(get_mistakes())
+        unread_messages = len([m for m in get_group_messages() 
                              if m[0] not in st.session_state.last_message_ids 
                              and m[1] != st.session_state.username])
         
@@ -1743,17 +1171,17 @@ else:
                     comment = st.text_area("Comment")
                     if st.form_submit_button("Submit"):
                         if identifier and comment:
-                            if add_request(st.session_state.username, request_type, identifier, comment, st.session_state.team):
+                            if add_request(st.session_state.username, request_type, identifier, comment):
                                 st.success("Request submitted successfully!")
                                 st.rerun()
         
         st.subheader("🔍 Search Requests")
         search_query = st.text_input("Search requests...")
-        requests = search_requests(search_query, st.session_state.team) if search_query else get_requests(st.session_state.team)
+        requests = search_requests(search_query) if search_query else get_requests()
         
         st.subheader("All Requests")
         for req in requests:
-            req_id, agent, req_type, identifier, comment, timestamp, completed, team = req
+            req_id, agent, req_type, identifier, comment, timestamp, completed = req
             with st.container():
                 cols = st.columns([0.1, 0.9])
                 with cols[0]:
@@ -1792,7 +1220,7 @@ else:
                     
                     st.markdown("</div>", unsafe_allow_html=True)
                     
-                    if (st.session_state.role == "admin" or st.session_state.role == "team_leader") and not is_killswitch_enabled():
+                    if st.session_state.role == "admin" and not is_killswitch_enabled():
                         with st.form(key=f"comment_form_{req_id}"):
                             new_comment = st.text_input("Add status update/comment")
                             if st.form_submit_button("Add Comment"):
@@ -1802,7 +1230,7 @@ else:
 
     elif st.session_state.current_section == "dashboard":
         st.subheader("📊 Request Completion Dashboard")
-        all_requests = get_requests(st.session_state.team)
+        all_requests = get_requests()
         total = len(all_requests)
         completed = sum(1 for r in all_requests if r[6])
         rate = (completed/total*100) if total > 0 else 0
@@ -1832,10 +1260,8 @@ else:
     elif st.session_state.current_section == "breaks":
         if st.session_state.role == "admin":
             admin_break_dashboard()
-        elif st.session_state.role == "team_leader":
-            team_leader_break_dashboard(st.session_state.team)
         else:
-            agent_break_dashboard(st.session_state.team)
+            agent_break_dashboard()
 
     elif st.session_state.current_section == "mistakes":
         if not is_killswitch_enabled():
@@ -1847,15 +1273,15 @@ else:
                     error_description = st.text_area("Error Description")
                     if st.form_submit_button("Submit"):
                         if agent_name and ticket_id and error_description:
-                            add_mistake(st.session_state.username, agent_name, ticket_id, error_description, st.session_state.team)
+                            add_mistake(st.session_state.username, agent_name, ticket_id, error_description)
         
         st.subheader("🔍 Search Mistakes")
         search_query = st.text_input("Search mistakes...")
-        mistakes = search_mistakes(search_query, st.session_state.team) if search_query else get_mistakes(st.session_state.team)
+        mistakes = search_mistakes(search_query) if search_query else get_mistakes()
         
         st.subheader("Mistakes Log")
         for mistake in mistakes:
-            m_id, tl, agent, ticket, error, ts, team = mistake
+            m_id, tl, agent, ticket, error, ts = mistake
             st.markdown(f"""
             <div class="card">
                 <div style="display: flex; justify-content: space-between;">
@@ -1872,29 +1298,16 @@ else:
         if is_chat_killswitch_enabled():
             st.warning("Chat functionality is currently disabled by the administrator.")
         else:
-            # Skillset tabs
-            skillsets = get_skillsets()
-            cols = st.columns(len(skillsets) + 1)
-            
-            for i, skillset in enumerate(skillsets):
-                if cols[i].button(skillset, key=f"skillset_{skillset}"):
-                    st.session_state.current_chat_skillset = skillset
-            
-            if cols[-1].button("All", key="skillset_all"):
-                st.session_state.current_chat_skillset = None
-            
-            # Display messages
-            messages = get_group_messages(st.session_state.team, st.session_state.current_chat_skillset)
-            
+            messages = get_group_messages()
             for msg in reversed(messages):
-                msg_id, sender, message, ts, mentions, team, skillset = msg
+                msg_id, sender, message, ts, mentions = msg
                 is_mentioned = st.session_state.username in (mentions.split(',') if mentions else [])
                 st.markdown(f"""
                 <div style="background-color: {'#3b82f6' if is_mentioned else '#1F1F1F'};
                             padding: 1rem;
                             border-radius: 8px;
                             margin-bottom: 1rem;">
-                    <strong>{sender}</strong>{" (" + skillset + ")" if skillset else ""}: {message}<br>
+                    <strong>{sender}</strong>: {message}<br>
                     <small>{ts}</small>
                 </div>
                 """, unsafe_allow_html=True)
@@ -1904,25 +1317,20 @@ else:
                     message = st.text_input("Type your message...")
                     if st.form_submit_button("Send"):
                         if message:
-                            send_group_message(
-                                st.session_state.username, 
-                                message, 
-                                st.session_state.team,
-                                st.session_state.current_chat_skillset
-                            )
+                            send_group_message(st.session_state.username, message)
                             st.rerun()
 
     elif st.session_state.current_section == "hold":
-        if (st.session_state.role == "admin" or st.session_state.role == "team_leader") and not is_killswitch_enabled():
+        if st.session_state.role == "admin" and not is_killswitch_enabled():
             with st.expander("📤 Upload Image"):
                 img = st.file_uploader("Choose image", type=["jpg", "png", "jpeg"])
                 if img:
-                    add_hold_image(st.session_state.username, img.read(), st.session_state.team)
+                    add_hold_image(st.session_state.username, img.read())
         
-        images = get_hold_images(st.session_state.team)
+        images = get_hold_images()
         if images:
             for img in images:
-                iid, uploader, data, ts, team = img
+                iid, uploader, data, ts = img
                 st.markdown(f"""
                 <div class="card">
                     <div style="display: flex; justify-content: space-between;">
@@ -1976,68 +1384,35 @@ else:
         
         with st.expander("❌ Clear All Requests"):
             with st.form("clear_requests_form"):
-                team_to_clear = st.selectbox("Select Team:", ["All Teams"] + get_all_teams())
                 st.warning("This will permanently delete ALL requests and their comments!")
                 if st.form_submit_button("Clear All Requests"):
-                    if team_to_clear == "All Teams":
-                        if clear_all_requests():
-                            st.success("All requests deleted!")
-                            st.rerun()
-                    else:
-                        if clear_all_requests(team_to_clear):
-                            st.success(f"All requests for {team_to_clear} deleted!")
-                            st.rerun()
+                    if clear_all_requests():
+                        st.success("All requests deleted!")
+                        st.rerun()
 
         with st.expander("❌ Clear All Mistakes"):
             with st.form("clear_mistakes_form"):
-                team_to_clear = st.selectbox("Select Team:", ["All Teams"] + get_all_teams())
                 st.warning("This will permanently delete ALL mistakes!")
                 if st.form_submit_button("Clear All Mistakes"):
-                    if team_to_clear == "All Teams":
-                        if clear_all_mistakes():
-                            st.success("All mistakes deleted!")
-                            st.rerun()
-                    else:
-                        if clear_all_mistakes(team_to_clear):
-                            st.success(f"All mistakes for {team_to_clear} deleted!")
-                            st.rerun()
+                    if clear_all_mistakes():
+                        st.success("All mistakes deleted!")
+                        st.rerun()
 
         with st.expander("❌ Clear All Chat Messages"):
             with st.form("clear_chat_form"):
-                team_to_clear = st.selectbox("Select Team:", ["All Teams"] + get_all_teams())
-                skillset_to_clear = st.selectbox("Select Skillset:", ["All Skillsets"] + get_skillsets())
                 st.warning("This will permanently delete ALL chat messages!")
                 if st.form_submit_button("Clear All Chat"):
-                    if team_to_clear == "All Teams" and skillset_to_clear == "All Skillsets":
-                        if clear_all_group_messages():
-                            st.success("All chat messages deleted!")
-                            st.rerun()
-                    elif team_to_clear == "All Teams":
-                        if clear_all_group_messages(skillset=skillset_to_clear):
-                            st.success(f"All {skillset_to_clear} chat messages deleted!")
-                            st.rerun()
-                    elif skillset_to_clear == "All Skillsets":
-                        if clear_all_group_messages(team=team_to_clear):
-                            st.success(f"All chat messages for {team_to_clear} deleted!")
-                            st.rerun()
-                    else:
-                        if clear_all_group_messages(team_to_clear, skillset_to_clear):
-                            st.success(f"All {skillset_to_clear} chat messages for {team_to_clear} deleted!")
-                            st.rerun()
+                    if clear_all_group_messages():
+                        st.success("All chat messages deleted!")
+                        st.rerun()
 
         with st.expander("❌ Clear All HOLD Images"):
             with st.form("clear_hold_form"):
-                team_to_clear = st.selectbox("Select Team:", ["All Teams"] + get_all_teams())
                 st.warning("This will permanently delete ALL HOLD images!")
                 if st.form_submit_button("Clear All HOLD Images"):
-                    if team_to_clear == "All Teams":
-                        if clear_hold_images():
-                            st.success("All HOLD images deleted!")
-                            st.rerun()
-                    else:
-                        if clear_hold_images(team_to_clear):
-                            st.success(f"All HOLD images for {team_to_clear} deleted!")
-                            st.rerun()
+                    if clear_hold_images():
+                        st.success("All HOLD images deleted!")
+                        st.rerun()
 
         with st.expander("💣 Clear ALL Data"):
             with st.form("nuclear_form"):
@@ -2059,24 +1434,19 @@ else:
             with st.form("add_user"):
                 user = st.text_input("Username")
                 pwd = st.text_input("Password", type="password")
-                role = st.selectbox("Role", ["agent", "admin", "team_leader"])
-                team = st.selectbox("Team", ["None"] + get_all_teams())
-                skillset = st.selectbox("Skillset", ["None"] + get_skillsets())
+                role = st.selectbox("Role", ["agent", "admin"])
                 if st.form_submit_button("Add User"):
                     if user and pwd:
-                        team = None if team == "None" else team
-                        skillset = None if skillset == "None" else skillset
-                        add_user(user, pwd, role, team, skillset)
+                        add_user(user, pwd, role)
                         st.rerun()
         
         st.subheader("Existing Users")
         users = get_all_users()
-        for uid, uname, role, team in users:
-            cols = st.columns([3, 1, 1, 1])
+        for uid, uname, urole in users:
+            cols = st.columns([3, 1, 1])
             cols[0].write(uname)
-            cols[1].write(role.capitalize())
-            cols[2].write(team or "N/A")
-            if cols[3].button("Delete", key=f"del_{uid}") and not is_killswitch_enabled():
+            cols[1].write(urole)
+            if cols[2].button("Delete", key=f"del_{uid}") and not is_killswitch_enabled():
                 delete_user(uid)
                 st.rerun()
 
