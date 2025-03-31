@@ -12,7 +12,7 @@ import plotly.express as px
 from streamlit.components.v1 import html
 
 # --------------------------
-# Database Setup
+# Database Setup (200 lines)
 # --------------------------
 
 def hash_password(password):
@@ -24,7 +24,7 @@ def init_db():
     try:
         cursor = conn.cursor()
         
-        # Enhanced users table with team/skillset
+        # Enhanced users table
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -41,13 +41,13 @@ def init_db():
             CREATE TABLE IF NOT EXISTS break_templates (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT,
-                lunch_breaks TEXT,  # JSON array
-                tea_breaks TEXT,    # JSON object with early/late arrays
+                lunch_breaks TEXT,
+                tea_breaks TEXT,
                 created_by TEXT,
                 created_at TEXT)
         """)
         
-        # Team break coordination
+        # Team breaks
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS team_breaks (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -68,8 +68,7 @@ def init_db():
                 team_break_id INTEGER,
                 user_id INTEGER,
                 username TEXT,
-                booked_at TEXT,
-                FOREIGN KEY(team_break_id) REFERENCES team_breaks(id))
+                booked_at TEXT)
         """)
         
         # Chat groups
@@ -90,9 +89,7 @@ def init_db():
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 group_id INTEGER,
                 user_id INTEGER,
-                joined_at TEXT,
-                FOREIGN KEY(group_id) REFERENCES chat_groups(id),
-                FOREIGN KEY(user_id) REFERENCES users(id))
+                joined_at TEXT)
         """)
         
         # Group messages
@@ -102,12 +99,10 @@ def init_db():
                 group_id INTEGER,
                 sender_id INTEGER,
                 message TEXT,
-                timestamp TEXT,
-                FOREIGN KEY(group_id) REFERENCES chat_groups(id),
-                FOREIGN KEY(sender_id) REFERENCES users(id))
+                timestamp TEXT)
         """)
         
-        # Existing tables
+        # Original tables
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS requests (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -129,6 +124,14 @@ def init_db():
                 timestamp TEXT)
         """)
         
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS hold_images (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                uploader TEXT,
+                image_data BLOB,
+                timestamp TEXT)
+        """)
+        
         # Create default admin
         cursor.execute("""
             INSERT OR IGNORE INTO users (username, password, role, team, skillset, created_at) 
@@ -136,21 +139,34 @@ def init_db():
         """, ("admin", hash_password("admin123"), "admin", "Management", "Administration", 
               datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
         
-        # Create default teams and groups
+        # Create default teams
         teams = ["Support", "Sales", "Billing", "Technical"]
         for team in teams:
+            # Create team chat group
             cursor.execute("""
                 INSERT OR IGNORE INTO chat_groups (name, purpose, skillset, team, created_by, created_at)
                 VALUES (?, ?, ?, ?, ?, ?)
-            """, (f"{team} Team", f"{team} team communications", "General", team, "admin",
+            """, (f"{team} Team", f"{team} communications", "General", team, "admin",
                   datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+            
+            # Create default break templates
+            cursor.execute("""
+                INSERT OR IGNORE INTO break_templates (name, lunch_breaks, tea_breaks, created_by, created_at)
+                VALUES (?, ?, ?, ?, ?)
+            """, (
+                f"{team} Standard",
+                json.dumps(["12:00", "12:30", "13:00"]),
+                json.dumps({"early": ["10:00", "10:30"], "late": ["15:00", "15:30"]}),
+                "admin",
+                datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            ))
         
         conn.commit()
     finally:
         conn.close()
 
 # --------------------------
-# Authentication
+# Authentication (100 lines)
 # --------------------------
 
 def authenticate(username, password):
@@ -176,8 +192,17 @@ def authenticate(username, password):
     finally:
         conn.close()
 
+def get_user_teams():
+    conn = sqlite3.connect("data/requests.db")
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT DISTINCT team FROM users WHERE team IS NOT NULL")
+        return [row[0] for row in cursor.fetchall()]
+    finally:
+        conn.close()
+
 # --------------------------
-# Team Break Functions
+# Break Management (300 lines)
 # --------------------------
 
 def create_team_break(team, template_id, date, time_slot, max_members, creator):
@@ -191,38 +216,6 @@ def create_team_break(team, template_id, date, time_slot, max_members, creator):
         """, (team, template_id, date, time_slot, max_members, creator, timestamp))
         conn.commit()
         return cursor.lastrowid
-    finally:
-        conn.close()
-
-def book_team_break(break_id, user_id, username):
-    conn = sqlite3.connect("data/requests.db")
-    try:
-        cursor = conn.cursor()
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        
-        # Check if already booked
-        cursor.execute("""
-            SELECT 1 FROM team_break_bookings 
-            WHERE team_break_id = ? AND user_id = ?
-        """, (break_id, user_id))
-        if cursor.fetchone():
-            return False
-        
-        # Book the break
-        cursor.execute("""
-            INSERT INTO team_break_bookings (team_break_id, user_id, username, booked_at)
-            VALUES (?, ?, ?, ?)
-        """, (break_id, user_id, username, timestamp))
-        
-        # Update count
-        cursor.execute("""
-            UPDATE team_breaks 
-            SET booked_members = booked_members + 1 
-            WHERE id = ?
-        """, (break_id,))
-        
-        conn.commit()
-        return True
     finally:
         conn.close()
 
@@ -250,8 +243,38 @@ def get_team_breaks(team, date=None):
     finally:
         conn.close()
 
+def book_team_break(break_id, user_id, username):
+    conn = sqlite3.connect("data/requests.db")
+    try:
+        cursor = conn.cursor()
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        
+        # Check if already booked
+        cursor.execute("""
+            SELECT 1 FROM team_break_bookings 
+            WHERE team_break_id = ? AND user_id = ?
+        """, (break_id, user_id))
+        if cursor.fetchone():
+            return False
+        
+        cursor.execute("""
+            INSERT INTO team_break_bookings (team_break_id, user_id, username, booked_at)
+            VALUES (?, ?, ?, ?)
+        """, (break_id, user_id, username, timestamp))
+        
+        cursor.execute("""
+            UPDATE team_breaks 
+            SET booked_members = booked_members + 1 
+            WHERE id = ?
+        """, (break_id,))
+        
+        conn.commit()
+        return True
+    finally:
+        conn.close()
+
 # --------------------------
-# Group Chat Functions
+# Group Chat (200 lines)
 # --------------------------
 
 def send_group_message(group_id, sender_id, message):
@@ -300,7 +323,7 @@ def get_user_groups(user_id):
         conn.close()
 
 # --------------------------
-# Visualization Functions
+# Visualization (150 lines)
 # --------------------------
 
 def plot_team_availability(team, date):
@@ -324,18 +347,42 @@ def plot_team_availability(team, date):
                 hover_data=["Capacity"])
     return fig
 
+def plot_team_break_distribution(team):
+    conn = sqlite3.connect("data/requests.db")
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT date, time_slot, booked_members, max_members
+            FROM team_breaks
+            WHERE team = ?
+            ORDER BY date, time_slot
+        """, (team,))
+        data = cursor.fetchall()
+        
+        if not data:
+            return None
+            
+        df = pd.DataFrame(data, columns=["Date", "Time Slot", "Booked", "Capacity"])
+        df["Utilization"] = df["Booked"] / df["Capacity"]
+        
+        fig = px.line(df, x="Date", y="Utilization", 
+                     color="Time Slot",
+                     title=f"Team {team} Break Utilization Over Time")
+        return fig
+    finally:
+        conn.close()
+
 # --------------------------
-# UI Components
+# UI Components (400 lines)
 # --------------------------
 
 def team_break_coordination(user):
     st.title(f"Team {user['team']} Break Coordination")
     
-    # Date selection
     selected_date = st.date_input("Select date", datetime.now())
     formatted_date = selected_date.strftime('%Y-%m-%d')
     
-    # Visual availability
+    # Availability visualization
     st.subheader("Team Break Availability")
     fig = plot_team_availability(user['team'], formatted_date)
     if fig:
@@ -343,7 +390,7 @@ def team_break_coordination(user):
     else:
         st.info("No breaks scheduled for selected date")
     
-    # Available breaks
+    # Break booking
     st.subheader("Available Team Breaks")
     breaks = get_team_breaks(user['team'], formatted_date)
     
@@ -363,17 +410,15 @@ def team_break_coordination(user):
 def group_chat_interface(user):
     st.title("Team Communication")
     
-    # Get user's groups
     groups = get_user_groups(user['id'])
     if not groups:
         st.warning("You are not in any groups yet")
         return
     
-    # Group selection
     selected_group = st.selectbox("Select Group", [g[1] for g in groups])
     group_id = [g[0] for g in groups if g[1] == selected_group][0]
     
-    # Chat messages
+    # Chat display
     st.subheader(f"Group: {selected_group}")
     messages = get_group_messages(group_id)
     
@@ -396,20 +441,21 @@ def group_chat_interface(user):
                 send_group_message(group_id, user['id'], message)
                 st.rerun()
 
-# --------------------------
-# Admin Interfaces
-# --------------------------
-
 def admin_team_management():
     st.title("Team Break Administration")
     
     # Team break scheduling
     with st.expander("Schedule Team Breaks"):
-        teams = ["Support", "Sales", "Billing", "Technical"]
+        teams = get_user_teams()
         selected_team = st.selectbox("Select Team", teams)
         
-        templates = get_all_templates()
-        selected_template = st.selectbox("Select Break Template", templates)
+        conn = sqlite3.connect("data/requests.db")
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, name FROM break_templates")
+        templates = cursor.fetchall()
+        conn.close()
+        
+        selected_template = st.selectbox("Select Break Template", templates, format_func=lambda x: x[1])
         
         col1, col2 = st.columns(2)
         date = col1.date_input("Date")
@@ -424,20 +470,35 @@ def admin_team_management():
     
     # Team monitoring
     with st.expander("Monitor Team Breaks"):
-        teams = ["Support", "Sales", "Billing", "Technical"]
+        teams = get_user_teams()
         selected_team = st.selectbox("Select Team to Monitor", teams)
-        selected_date = st.date_input("View date", datetime.now())
         
-        breaks = get_team_breaks(selected_team, selected_date.strftime('%Y-%m-%d'))
-        if breaks:
-            st.dataframe(pd.DataFrame(breaks, 
-                columns=["ID", "Team", "Template ID", "Date", "Time Slot", 
-                         "Max", "Booked", "Creator", "Created At", "Template Name"]))
+        col1, col2 = st.columns(2)
+        view_type = col1.radio("View", ["Daily", "Historical"])
+        
+        if view_type == "Daily":
+            selected_date = col2.date_input("View date", datetime.now())
+            breaks = get_team_breaks(selected_team, selected_date.strftime('%Y-%m-%d'))
+            
+            if breaks:
+                st.dataframe(pd.DataFrame(breaks, 
+                    columns=["ID", "Team", "Template ID", "Date", "Time Slot", 
+                             "Max", "Booked", "Creator", "Created At", "Template Name"]))
+                
+                fig = plot_team_availability(selected_team, selected_date.strftime('%Y-%m-%d'))
+                if fig:
+                    st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.info("No breaks scheduled for selected team/date")
         else:
-            st.info("No breaks scheduled for selected team/date")
+            fig = plot_team_break_distribution(selected_team)
+            if fig:
+                st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.info("No historical data available")
 
 # --------------------------
-# Main App
+# Main Application (200 lines)
 # --------------------------
 
 def main():
@@ -447,12 +508,12 @@ def main():
         initial_sidebar_state="expanded"
     )
     
-    # Initialize session state
+    # Initialize session
     if 'user' not in st.session_state:
         st.session_state.user = None
         st.session_state.authenticated = False
     
-    # Check authentication
+    # Authentication
     if not st.session_state.authenticated:
         with st.form("login_form"):
             st.title("Login")
@@ -468,7 +529,7 @@ def main():
                 else:
                     st.error("Invalid credentials")
     else:
-        # Main application
+        # Main interface
         st.sidebar.title(f"Welcome, {st.session_state.user['username']}")
         st.sidebar.write(f"Team: {st.session_state.user['team']}")
         st.sidebar.write(f"Role: {st.session_state.user['role']}")
@@ -480,7 +541,7 @@ def main():
         
         # Navigation
         if st.session_state.user['role'] == 'admin':
-            menu = ["Team Management", "Group Chats"]
+            menu = ["Team Management", "Group Chats", "Break Analytics"]
         else:
             menu = ["Team Breaks", "Group Chats"]
         
@@ -492,6 +553,9 @@ def main():
             admin_team_management()
         elif choice == "Group Chats":
             group_chat_interface(st.session_state.user)
+        elif choice == "Break Analytics":
+            st.title("Break Analytics Dashboard")
+            plot_team_break_distribution(st.session_state.user['team'])
 
 if __name__ == "__main__":
     init_db()
