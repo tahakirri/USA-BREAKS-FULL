@@ -816,12 +816,7 @@ def agent_break_dashboard():
     if not st.session_state.templates:
         st.error("No break schedules available. Please contact admin.")
         return
-  def agent_break_dashboard()
-     if is_killswitch_enabled():
-        st.error("System is currently locked. Please contact the developer.")
-        return False
-        
-    conn = sqlite3.connect("data/requests.db")
+    
     # Get the first template (we're removing the template selection)
     template_name = list(st.session_state.templates.keys())[0]
     template = adjust_template_times(st.session_state.templates[template_name], st.session_state.timezone_offset)
