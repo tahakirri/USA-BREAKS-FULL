@@ -1507,7 +1507,7 @@ def inject_custom_css():
             border-bottom: 1px solid black;
         }
         .stDataFrame {
-            width: 100%;
+            width: 100%; 
         }
         table {
             width: 100%;
