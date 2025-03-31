@@ -14,13 +14,7 @@ import subprocess
 # =========================================
 # 1. AUTO-INSTALL PLOTLY IF MISSING (FIX)
 # =========================================
-try:
-    import plotly.express as px
-    import plotly.graph_objects as go
-except ImportError:
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "plotly"])
-    import plotly.express as px
-    import plotly.graph_objects as go
+
 
 
 # --------------------------
