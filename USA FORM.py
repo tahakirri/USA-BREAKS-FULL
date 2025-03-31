@@ -517,7 +517,7 @@ def clear_all_group_messages():
         conn.close()
 
 # --------------------------
-# Break Scheduling Functions (from first code)
+# Break Scheduling Functions
 # --------------------------
 
 def init_break_session_state():
@@ -573,16 +573,17 @@ def adjust_template_times(template, offset):
     }
     return adjusted_template
 
-def count_bookings(date, break_type, time_slot):
+def count_bookings(date, break_type, time_slot, template_name):
     count = 0
     if date in st.session_state.agent_bookings:
-        for agent_id, breaks in st.session_state.agent_bookings[date].items():
-            if break_type == "lunch" and "lunch" in breaks and breaks["lunch"] == time_slot:
-                count += 1
-            elif break_type == "early_tea" and "early_tea" in breaks and breaks["early_tea"] == time_slot:
-                count += 1
-            elif break_type == "late_tea" and "late_tea" in breaks and breaks["late_tea"] == time_slot:
-                count += 1
+        for agent_id, booking_data in st.session_state.agent_bookings[date].items():
+            if booking_data.get("template") == template_name:
+                if break_type == "lunch" and "lunch" in booking_data and booking_data["lunch"] == time_slot:
+                    count += 1
+                elif break_type == "early_tea" and "early_tea" in booking_data and booking_data["early_tea"] == time_slot:
+                    count += 1
+                elif break_type == "late_tea" and "late_tea" in booking_data and booking_data["late_tea"] == time_slot:
+                    count += 1
     return count
 
 def display_schedule(template):
@@ -776,13 +777,15 @@ def admin_break_dashboard():
         # Convert to DataFrame for better display
         bookings_list = []
         for date, agents in st.session_state.agent_bookings.items():
-            for agent_id, breaks in agents.items():
+            for agent_id, booking_data in agents.items():
+                template_name = booking_data.get("template", "Unknown")
                 bookings_list.append({
                     "Date": date,
                     "Agent ID": agent_id,
-                    "Lunch Break": breaks.get("lunch", "-"),
-                    "Early Tea": breaks.get("early_tea", "-"),
-                    "Late Tea": breaks.get("late_tea", "-")
+                    "Template": template_name,
+                    "Lunch Break": booking_data.get("lunch", "-"),
+                    "Early Tea": booking_data.get("early_tea", "-"),
+                    "Late Tea": booking_data.get("late_tea", "-")
                 })
         
         bookings_df = pd.DataFrame(bookings_list)
@@ -822,21 +825,25 @@ def agent_break_dashboard():
     schedule_date = st.date_input("Select Date:", datetime.now())
     st.session_state.selected_date = schedule_date.strftime('%Y-%m-%d')
     
-    # Use the first template (or create a default if none exists)
+    # Check if there are any templates available
     if not st.session_state.templates:
         st.error("No break schedules available. Please contact admin.")
         return
     
-    # Get the first template
-    template_name = list(st.session_state.templates.keys())[0]
-    template = adjust_template_times(st.session_state.templates[template_name], st.session_state.timezone_offset)
+    # Template selection for agents
+    selected_template = st.selectbox(
+        "Select Schedule Template:",
+        list(st.session_state.templates.keys())
+    )
+    
+    template = adjust_template_times(st.session_state.templates[selected_template], st.session_state.timezone_offset)
     
     # Booking section
     st.markdown("---")
     st.header("Available Break Slots")
     
     # Check if template has limits defined
-    break_limits = st.session_state.break_limits.get(template_name, {})
+    break_limits = st.session_state.break_limits.get(selected_template, {})
     
     # Lunch break booking
     st.subheader("Lunch Break")
@@ -847,7 +854,7 @@ def agent_break_dashboard():
         for i, time_slot in enumerate(template["lunch_breaks"]):
             with lunch_cols[i]:
                 # Check if time slot is full
-                current_bookings = count_bookings(st.session_state.selected_date, "lunch", time_slot)
+                current_bookings = count_bookings(st.session_state.selected_date, "lunch", time_slot, selected_template)
                 max_limit = break_limits.get("lunch", {}).get(time_slot, 5)
                 
                 if current_bookings >= max_limit:
@@ -864,7 +871,7 @@ def agent_break_dashboard():
                     st.session_state.agent_bookings[st.session_state.selected_date] = {}
                 
                 if agent_id not in st.session_state.agent_bookings[st.session_state.selected_date]:
-                    st.session_state.agent_bookings[st.session_state.selected_date][agent_id] = {}
+                    st.session_state.agent_bookings[st.session_state.selected_date][agent_id] = {"template": selected_template}
                 
                 st.session_state.agent_bookings[st.session_state.selected_date][agent_id]["lunch"] = selected_lunch
                 save_break_data()
@@ -882,7 +889,7 @@ def agent_break_dashboard():
     for i, time_slot in enumerate(template["tea_breaks"]["early"]):
         with early_tea_cols[i]:
             # Check if time slot is full
-            current_bookings = count_bookings(st.session_state.selected_date, "early_tea", time_slot)
+            current_bookings = count_bookings(st.session_state.selected_date, "early_tea", time_slot, selected_template)
             max_limit = break_limits.get("early_tea", {}).get(time_slot, 3)
             
             if current_bookings >= max_limit:
@@ -899,7 +906,7 @@ def agent_break_dashboard():
                 st.session_state.agent_bookings[st.session_state.selected_date] = {}
             
             if agent_id not in st.session_state.agent_bookings[st.session_state.selected_date]:
-                st.session_state.agent_bookings[st.session_state.selected_date][agent_id] = {}
+                st.session_state.agent_bookings[st.session_state.selected_date][agent_id] = {"template": selected_template}
             
             st.session_state.agent_bookings[st.session_state.selected_date][agent_id]["early_tea"] = selected_early_tea
             save_break_data()
@@ -913,7 +920,7 @@ def agent_break_dashboard():
     for i, time_slot in enumerate(template["tea_breaks"]["late"]):
         with late_tea_cols[i]:
             # Check if time slot is full
-            current_bookings = count_bookings(st.session_state.selected_date, "late_tea", time_slot)
+            current_bookings = count_bookings(st.session_state.selected_date, "late_tea", time_slot, selected_template)
             max_limit = break_limits.get("late_tea", {}).get(time_slot, 3)
             
             if current_bookings >= max_limit:
@@ -930,7 +937,7 @@ def agent_break_dashboard():
                 st.session_state.agent_bookings[st.session_state.selected_date] = {}
             
             if agent_id not in st.session_state.agent_bookings[st.session_state.selected_date]:
-                st.session_state.agent_bookings[st.session_state.selected_date][agent_id] = {}
+                st.session_state.agent_bookings[st.session_state.selected_date][agent_id] = {"template": selected_template}
             
             st.session_state.agent_bookings[st.session_state.selected_date][agent_id]["late_tea"] = selected_late_tea
             save_break_data()
@@ -946,6 +953,7 @@ def agent_break_dashboard():
             st.header("Your Current Bookings")
             bookings = st.session_state.agent_bookings[st.session_state.selected_date][agent_id]
             
+            st.write(f"**Template:** {bookings.get('template', 'Unknown')}")
             if "lunch" in bookings:
                 st.write(f"**Lunch Break:** {bookings['lunch']}")
             if "early_tea" in bookings:
