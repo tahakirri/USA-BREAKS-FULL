@@ -49,7 +49,12 @@ def init_db():
         
         # Enable foreign keys
         cursor.execute("PRAGMA foreign_keys = ON")
-        
+  st.set_page_config(
+    page_title="Request Management System",
+    page_icon=":office:",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)      
         # Create tables with IF NOT EXISTS and proper error handling
         tables = [
             """CREATE TABLE IF NOT EXISTS users (
