@@ -1168,7 +1168,7 @@ if not st.session_state.authenticated:
                             "last_request_count": len(get_requests(skillset) if role == "agent" else len(get_requests()),
                             "last_mistake_count": len(get_mistakes(skillset) if role == "agent" else len(get_mistakes()),
                             "last_message_ids": [msg[0] for msg in get_group_messages(skillset) if role == "agent" else [msg[0] for msg in get_group_messages()]
-                        })
+                        ])
                         st.rerun()
                     else:
                         st.error("Invalid credentials")
