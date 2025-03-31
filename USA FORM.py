@@ -21,10 +21,10 @@ def authenticate(username, password):
     try:
         cursor = conn.cursor()
         hashed_password = hash_password(password)
-        cursor.execute("SELECT role FROM users WHERE LOWER(username) = LOWER(?) AND password = ?", 
+        cursor.execute("SELECT role, skillset FROM users WHERE LOWER(username) = LOWER(?) AND password = ?", 
                       (username, hashed_password))
         result = cursor.fetchone()
-        return result[0] if result else None
+        return (result[0], result[1]) if result else (None, None)
     finally:
         conn.close()
 
@@ -40,7 +40,8 @@ def init_db():
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 username TEXT UNIQUE,
                 password TEXT,
-                role TEXT CHECK(role IN ('agent', 'admin')))
+                role TEXT CHECK(role IN ('agent', 'admin')),
+                skillset TEXT
         """)
         
         cursor.execute("""
@@ -51,7 +52,8 @@ def init_db():
                 identifier TEXT,
                 comment TEXT,
                 timestamp TEXT,
-                completed INTEGER DEFAULT 0)
+                completed INTEGER DEFAULT 0,
+                skillset TEXT)
         """)
         
         cursor.execute("""
@@ -61,7 +63,8 @@ def init_db():
                 agent_name TEXT,
                 ticket_id TEXT,
                 error_description TEXT,
-                timestamp TEXT)
+                timestamp TEXT,
+                skillset TEXT)
         """)
         
         cursor.execute("""
@@ -70,7 +73,8 @@ def init_db():
                 sender TEXT,
                 message TEXT,
                 timestamp TEXT,
-                mentions TEXT)
+                mentions TEXT,
+                skillset TEXT)
         """)
         
         cursor.execute("""
@@ -78,7 +82,8 @@ def init_db():
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 uploader TEXT,
                 image_data BLOB,
-                timestamp TEXT)
+                timestamp TEXT,
+                skillset TEXT)
         """)
         
         # Handle system_settings table schema migration
@@ -109,77 +114,74 @@ def init_db():
         """)
         
         # Create default admin account
-        cursor.execute("""
-            INSERT OR IGNORE INTO users (username, password, role) 
-            VALUES (?, ?, ?)
-        """, ("taha kirri", hash_password("arise@99"), "admin"))
         admin_accounts = [
-            ("taha kirri", "arise@99"),
-            ("Issam Samghini", "admin@2025"),
-            ("Loubna Fellah", "admin@99"),
-            ("Youssef Kamal", "admin@006"),
-            ("Fouad Fathi", "admin@55")
+            ("taha kirri", "arise@99", "admin", "LM_CS_LMUSA_EN"),
+            ("Issam Samghini", "admin@2025", "admin", "LM_CS_LMUSA_ES"),
+            ("Loubna Fellah", "admin@99", "admin", "LM_CS_LMUSA_EN"),
+            ("Youssef Kamal", "admin@006", "admin", "LM_CS_LMUSA_EN"),
+            ("Fouad Fathi", "admin@55", "admin", "LM_CS_LMUSA_EN")
         ]
         
-        for username, password in admin_accounts:
+        for username, password, role, skillset in admin_accounts:
             cursor.execute("""
-                INSERT OR IGNORE INTO users (username, password, role) 
-                VALUES (?, ?, ?)
-            """, (username, hash_password(password), "admin"))
-        # Create agent accounts (agent name as username, workspace ID as password)
+                INSERT OR IGNORE INTO users (username, password, role, skillset) 
+                VALUES (?, ?, ?, ?)
+            """, (username, hash_password(password), role, skillset))
+        
+        # Create agent accounts with skillsets
         agents = [
-            ("Karabila Younes", "30866"),
-            ("Kaoutar Mzara", "30514"),
-            ("Ben Tahar Chahid", "30864"),
-            ("Cherbassi Khadija", "30868"),
-            ("Lekhmouchi Kamal", "30869"),
-            ("Said Kilani", "30626"),
-            ("AGLIF Rachid", "30830"),
-            ("Yacine Adouha", "30577"),
-            ("Manal Elanbi", "30878"),
-            ("Jawad Ouassaddine", "30559"),
-            ("Kamal Elhaouar", "30844"),
-            ("Hoummad Oubella", "30702"),
-            ("Zouheir Essafi", "30703"),
-            ("Anwar Atifi", "30781"),
-            ("Said Elgaouzi", "30782"),
-            ("HAMZA SAOUI", "30716"),
-            ("Ibtissam Mazhari", "30970"),
-            ("Imad Ghazali", "30971"),
-            ("Jamila Lahrech", "30972"),
-            ("Nassim Ouazzani Touhami", "30973"),
-            ("Salaheddine Chaggour", "30974"),
-            ("Omar Tajani", "30711"),
-            ("Nizar Remz", "30728"),
-            ("Abdelouahed Fettah", "30693"),
-            ("Amal Bouramdane", "30675"),
-            ("Fatima Ezzahrae Oubaalla", "30513"),
-            ("Redouane Bertal", "30643"),
-            ("Abdelouahab Chenani", "30789"),
-            ("Imad El Youbi", "30797"),
-            ("Youssef Hammouda", "30791"),
-            ("Anas Ouassifi", "30894"),
-            ("SALSABIL ELMOUSS", "30723"),
-            ("Hicham Khalafa", "30712"),
-            ("Ghita Adib", "30710"),
-            ("Aymane Msikila", "30722"),
-            ("Marouane Boukhadda", "30890"),
-            ("Hamid Boulatouan", "30899"),
-            ("Bouchaib Chafiqi", "30895"),
-            ("Houssam Gouaalla", "30891"),
-            ("Abdellah Rguig", "30963"),
-            ("Abdellatif Chatir", "30964"),
-            ("Abderrahman Oueto", "30965"),
-            ("Fatiha Lkamel", "30967"),
-            ("Abdelhamid Jaber", "30708"),
-            ("Yassine Elkanouni", "30735")
+            ("Karabila Younes", "30866", "agent", "LM_CS_LMUSA_ES"),
+            ("Kaoutar Mzara", "30514", "agent", "LM_CS_LMUSA_ES"),
+            ("Ben Tahar Chahid", "30864", "agent", "LM_CS_LMUSA_ES"),
+            ("Cherbassi Khadija", "30868", "agent", "LM_CS_LMUSA_ES"),
+            ("Lekhmouchi Kamal", "30869", "agent", "LM_CS_LMUSA_ES"),
+            ("Said Kilani", "30626", "agent", "LM_CS_LMUSA_ES"),
+            ("AGLIF Rachid", "30830", "agent", "LM_CS_LMUSA_ES"),
+            ("Yacine Adouha", "30577", "agent", "LM_CS_LMUSA_ES"),
+            ("Manal Elanbi", "30878", "agent", "LM_CS_LMUSA_ES"),
+            ("Jawad Ouassaddine", "30559", "agent", "LM_CS_LMUSA_ES"),
+            ("Kamal Elhaouar", "30844", "agent", "LM_CS_LMUSA_ES"),
+            ("Hoummad Oubella", "30702", "agent", "LM_CS_LMUSA_ES"),
+            ("Zouheir Essafi", "30703", "agent", "LM_CS_LMUSA_ES"),
+            ("Anwar Atifi", "30781", "agent", "LM_CS_LMUSA_ES"),
+            ("Said Elgaouzi", "30782", "agent", "LM_CS_LMUSA_ES"),
+            ("HAMZA SAOUI", "30716", "agent", "LM_CS_LMUSA_EN"),
+            ("Ibtissam Mazhari", "30970", "agent", "LM_CS_LMUSA_EN"),
+            ("Imad Ghazali", "30971", "agent", "LM_CS_LMUSA_EN"),
+            ("Jamila Lahrech", "30972", "agent", "LM_CS_LMUSA_EN"),
+            ("Nassim Ouazzani Touhami", "30973", "agent", "LM_CS_LMUSA_EN"),
+            ("Salaheddine Chaggour", "30974", "agent", "LM_CS_LMUSA_EN"),
+            ("Omar Tajani", "30711", "agent", "LM_CS_LMUSA_EN"),
+            ("Nizar Remz", "30728", "agent", "LM_CS_LMUSA_EN"),
+            ("Abdelouahed Fettah", "30693", "agent", "LM_CS_LMUSA_EN"),
+            ("Amal Bouramdane", "30675", "agent", "LM_CS_LMUSA_EN"),
+            ("Fatima Ezzahrae Oubaalla", "30513", "agent", "LM_CS_LMUSA_EN"),
+            ("Redouane Bertal", "30643", "agent", "LM_CS_LMUSA_EN"),
+            ("Abdelouahab Chenani", "30789", "agent", "LM_CS_LMUSA_EN"),
+            ("Imad El Youbi", "30797", "agent", "LM_CS_LMUSA_EN"),
+            ("Youssef Hammouda", "30791", "agent", "LM_CS_LMUSA_EN"),
+            ("Anas Ouassifi", "30894", "agent", "LM_CS_LMUSA_EN"),
+            ("SALSABIL ELMOUSS", "30723", "agent", "LM_CS_LMUSA_EN"),
+            ("Hicham Khalafa", "30712", "agent", "LM_CS_LMUSA_EN"),
+            ("Ghita Adib", "30710", "agent", "LM_CS_LMUSA_EN"),
+            ("Aymane Msikila", "30722", "agent", "LM_CS_LMUSA_EN"),
+            ("Marouane Boukhadda", "30890", "agent", "LM_CS_LMUSA_EN"),
+            ("Hamid Boulatouan", "30899", "agent", "LM_CS_LMUSA_EN"),
+            ("Bouchaib Chafiqi", "30895", "agent", "LM_CS_LMUSA_EN"),
+            ("Houssam Gouaalla", "30891", "agent", "LM_CS_LMUSA_EN"),
+            ("Abdellah Rguig", "30963", "agent", "LM_CS_LMUSA_EN"),
+            ("Abdellatif Chatir", "30964", "agent", "LM_CS_LMUSA_EN"),
+            ("Abderrahman Oueto", "30965", "agent", "LM_CS_LMUSA_EN"),
+            ("Fatiha Lkamel", "30967", "agent", "LM_CS_LMUSA_EN"),
+            ("Abdelhamid Jaber", "30708", "agent", "LM_CS_LMUSA_EN"),
+            ("Yassine Elkanouni", "30735", "agent", "LM_CS_LMUSA_EN")
         ]
         
-        for agent_name, workspace_id in agents:
+        for agent_name, workspace_id, role, skillset in agents:
             cursor.execute("""
-                INSERT OR IGNORE INTO users (username, password, role) 
-                VALUES (?, ?, ?)
-            """, (agent_name, hash_password(workspace_id), "agent"))
+                INSERT OR IGNORE INTO users (username, password, role, skillset) 
+                VALUES (?, ?, ?, ?)
+            """, (agent_name, hash_password(workspace_id), role, skillset))
         
         conn.commit()
     finally:
@@ -227,7 +229,7 @@ def toggle_chat_killswitch(enable):
     finally:
         conn.close()
 
-def add_request(agent_name, request_type, identifier, comment):
+def add_request(agent_name, request_type, identifier, comment, skillset):
     if is_killswitch_enabled():
         st.error("System is currently locked. Please contact the developer.")
         return False
@@ -237,9 +239,9 @@ def add_request(agent_name, request_type, identifier, comment):
         cursor = conn.cursor()
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         cursor.execute("""
-            INSERT INTO requests (agent_name, request_type, identifier, comment, timestamp) 
-            VALUES (?, ?, ?, ?, ?)
-        """, (agent_name, request_type, identifier, comment, timestamp))
+            INSERT INTO requests (agent_name, request_type, identifier, comment, timestamp, skillset) 
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (agent_name, request_type, identifier, comment, timestamp, skillset))
         
         request_id = cursor.lastrowid
         
@@ -253,28 +255,42 @@ def add_request(agent_name, request_type, identifier, comment):
     finally:
         conn.close()
 
-def get_requests():
+def get_requests(skillset=None):
     conn = sqlite3.connect("data/requests.db")
     try:
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM requests ORDER BY timestamp DESC")
+        if skillset:
+            cursor.execute("SELECT * FROM requests WHERE skillset = ? ORDER BY timestamp DESC", (skillset,))
+        else:
+            cursor.execute("SELECT * FROM requests ORDER BY timestamp DESC")
         return cursor.fetchall()
     finally:
         conn.close()
 
-def search_requests(query):
+def search_requests(query, skillset=None):
     conn = sqlite3.connect("data/requests.db")
     try:
         cursor = conn.cursor()
         query = f"%{query.lower()}%"
-        cursor.execute("""
-            SELECT * FROM requests 
-            WHERE LOWER(agent_name) LIKE ? 
-            OR LOWER(request_type) LIKE ? 
-            OR LOWER(identifier) LIKE ? 
-            OR LOWER(comment) LIKE ?
-            ORDER BY timestamp DESC
-        """, (query, query, query, query))
+        if skillset:
+            cursor.execute("""
+                SELECT * FROM requests 
+                WHERE (LOWER(agent_name) LIKE ? 
+                OR LOWER(request_type) LIKE ? 
+                OR LOWER(identifier) LIKE ? 
+                OR LOWER(comment) LIKE ?)
+                AND skillset = ?
+                ORDER BY timestamp DESC
+            """, (query, query, query, query, skillset))
+        else:
+            cursor.execute("""
+                SELECT * FROM requests 
+                WHERE LOWER(agent_name) LIKE ? 
+                OR LOWER(request_type) LIKE ? 
+                OR LOWER(identifier) LIKE ? 
+                OR LOWER(comment) LIKE ?
+                ORDER BY timestamp DESC
+            """, (query, query, query, query))
         return cursor.fetchall()
     finally:
         conn.close()
@@ -324,7 +340,7 @@ def get_request_comments(request_id):
     finally:
         conn.close()
 
-def add_mistake(team_leader, agent_name, ticket_id, error_description):
+def add_mistake(team_leader, agent_name, ticket_id, error_description, skillset):
     if is_killswitch_enabled():
         st.error("System is currently locked. Please contact the developer.")
         return False
@@ -333,41 +349,54 @@ def add_mistake(team_leader, agent_name, ticket_id, error_description):
     try:
         cursor = conn.cursor()
         cursor.execute("""
-            INSERT INTO mistakes (team_leader, agent_name, ticket_id, error_description, timestamp) 
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO mistakes (team_leader, agent_name, ticket_id, error_description, timestamp, skillset) 
+            VALUES (?, ?, ?, ?, ?, ?)
         """, (team_leader, agent_name, ticket_id, error_description,
-             datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+             datetime.now().strftime("%Y-%m-%d %H:%M:%S"), skillset))
         conn.commit()
         return True
     finally:
         conn.close()
 
-def get_mistakes():
+def get_mistakes(skillset=None):
     conn = sqlite3.connect("data/requests.db")
     try:
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM mistakes ORDER BY timestamp DESC")
+        if skillset:
+            cursor.execute("SELECT * FROM mistakes WHERE skillset = ? ORDER BY timestamp DESC", (skillset,))
+        else:
+            cursor.execute("SELECT * FROM mistakes ORDER BY timestamp DESC")
         return cursor.fetchall()
     finally:
         conn.close()
 
-def search_mistakes(query):
+def search_mistakes(query, skillset=None):
     conn = sqlite3.connect("data/requests.db")
     try:
         cursor = conn.cursor()
         query = f"%{query.lower()}%"
-        cursor.execute("""
-            SELECT * FROM mistakes 
-            WHERE LOWER(agent_name) LIKE ? 
-            OR LOWER(ticket_id) LIKE ? 
-            OR LOWER(error_description) LIKE ?
-            ORDER BY timestamp DESC
-        """, (query, query, query))
+        if skillset:
+            cursor.execute("""
+                SELECT * FROM mistakes 
+                WHERE (LOWER(agent_name) LIKE ? 
+                OR LOWER(ticket_id) LIKE ? 
+                OR LOWER(error_description) LIKE ?)
+                AND skillset = ?
+                ORDER BY timestamp DESC
+            """, (query, query, query, skillset))
+        else:
+            cursor.execute("""
+                SELECT * FROM mistakes 
+                WHERE LOWER(agent_name) LIKE ? 
+                OR LOWER(ticket_id) LIKE ? 
+                OR LOWER(error_description) LIKE ?
+                ORDER BY timestamp DESC
+            """, (query, query, query))
         return cursor.fetchall()
     finally:
         conn.close()
 
-def send_group_message(sender, message):
+def send_group_message(sender, message, skillset):
     if is_killswitch_enabled() or is_chat_killswitch_enabled():
         st.error("Chat is currently locked. Please contact the developer.")
         return False
@@ -377,20 +406,23 @@ def send_group_message(sender, message):
         cursor = conn.cursor()
         mentions = re.findall(r'@(\w+)', message)
         cursor.execute("""
-            INSERT INTO group_messages (sender, message, timestamp, mentions) 
-            VALUES (?, ?, ?, ?)
+            INSERT INTO group_messages (sender, message, timestamp, mentions, skillset) 
+            VALUES (?, ?, ?, ?, ?)
         """, (sender, message, datetime.now().strftime("%Y-%m-%d %H:%M:%S"), 
-             ','.join(mentions)))
+             ','.join(mentions), skillset))
         conn.commit()
         return True
     finally:
         conn.close()
 
-def get_group_messages():
+def get_group_messages(skillset=None):
     conn = sqlite3.connect("data/requests.db")
     try:
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM group_messages ORDER BY timestamp DESC LIMIT 50")
+        if skillset:
+            cursor.execute("SELECT * FROM group_messages WHERE skillset = ? ORDER BY timestamp DESC LIMIT 50", (skillset,))
+        else:
+            cursor.execute("SELECT * FROM group_messages ORDER BY timestamp DESC LIMIT 50")
         return cursor.fetchall()
     finally:
         conn.close()
@@ -399,12 +431,30 @@ def get_all_users():
     conn = sqlite3.connect("data/requests.db")
     try:
         cursor = conn.cursor()
-        cursor.execute("SELECT id, username, role FROM users")
+        cursor.execute("SELECT id, username, role, skillset FROM users")
         return cursor.fetchall()
     finally:
         conn.close()
 
-def add_user(username, password, role):
+def get_users_by_skillset(skillset):
+    conn = sqlite3.connect("data/requests.db")
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT username FROM users WHERE skillset = ?", (skillset,))
+        return [row[0] for row in cursor.fetchall()]
+    finally:
+        conn.close()
+
+def get_all_skillsets():
+    conn = sqlite3.connect("data/requests.db")
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT DISTINCT skillset FROM users WHERE skillset IS NOT NULL")
+        return [row[0] for row in cursor.fetchall()]
+    finally:
+        conn.close()
+
+def add_user(username, password, role, skillset):
     if is_killswitch_enabled():
         st.error("System is currently locked. Please contact the developer.")
         return False
@@ -412,8 +462,8 @@ def add_user(username, password, role):
     conn = sqlite3.connect("data/requests.db")
     try:
         cursor = conn.cursor()
-        cursor.execute("INSERT INTO users (username, password, role) VALUES (?, ?, ?)",
-                      (username, hash_password(password), role))
+        cursor.execute("INSERT INTO users (username, password, role, skillset) VALUES (?, ?, ?, ?)",
+                      (username, hash_password(password), role, skillset))
         conn.commit()
         return True
     finally:
@@ -433,7 +483,7 @@ def delete_user(user_id):
     finally:
         conn.close()
 
-def add_hold_image(uploader, image_data):
+def add_hold_image(uploader, image_data, skillset):
     if is_killswitch_enabled():
         st.error("System is currently locked. Please contact the developer.")
         return False
@@ -442,24 +492,27 @@ def add_hold_image(uploader, image_data):
     try:
         cursor = conn.cursor()
         cursor.execute("""
-            INSERT INTO hold_images (uploader, image_data, timestamp) 
-            VALUES (?, ?, ?)
-        """, (uploader, image_data, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+            INSERT INTO hold_images (uploader, image_data, timestamp, skillset) 
+            VALUES (?, ?, ?, ?)
+        """, (uploader, image_data, datetime.now().strftime("%Y-%m-%d %H:%M:%S"), skillset))
         conn.commit()
         return True
     finally:
         conn.close()
 
-def get_hold_images():
+def get_hold_images(skillset=None):
     conn = sqlite3.connect("data/requests.db")
     try:
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM hold_images ORDER BY timestamp DESC")
+        if skillset:
+            cursor.execute("SELECT * FROM hold_images WHERE skillset = ? ORDER BY timestamp DESC", (skillset,))
+        else:
+            cursor.execute("SELECT * FROM hold_images ORDER BY timestamp DESC")
         return cursor.fetchall()
     finally:
         conn.close()
 
-def clear_hold_images():
+def clear_hold_images(skillset=None):
     if is_killswitch_enabled():
         st.error("System is currently locked. Please contact the developer.")
         return False
@@ -467,13 +520,16 @@ def clear_hold_images():
     conn = sqlite3.connect("data/requests.db")
     try:
         cursor = conn.cursor()
-        cursor.execute("DELETE FROM hold_images")
+        if skillset:
+            cursor.execute("DELETE FROM hold_images WHERE skillset = ?", (skillset,))
+        else:
+            cursor.execute("DELETE FROM hold_images")
         conn.commit()
         return True
     finally:
         conn.close()
 
-def clear_all_requests():
+def clear_all_requests(skillset=None):
     if is_killswitch_enabled():
         st.error("System is currently locked. Please contact the developer.")
         return False
@@ -481,14 +537,23 @@ def clear_all_requests():
     conn = sqlite3.connect("data/requests.db")
     try:
         cursor = conn.cursor()
-        cursor.execute("DELETE FROM requests")
-        cursor.execute("DELETE FROM request_comments")
+        if skillset:
+            cursor.execute("DELETE FROM requests WHERE skillset = ?", (skillset,))
+            cursor.execute("""
+                DELETE FROM request_comments 
+                WHERE request_id IN (
+                    SELECT id FROM requests WHERE skillset = ?
+                )
+            """, (skillset,))
+        else:
+            cursor.execute("DELETE FROM requests")
+            cursor.execute("DELETE FROM request_comments")
         conn.commit()
         return True
     finally:
         conn.close()
 
-def clear_all_mistakes():
+def clear_all_mistakes(skillset=None):
     if is_killswitch_enabled():
         st.error("System is currently locked. Please contact the developer.")
         return False
@@ -496,13 +561,16 @@ def clear_all_mistakes():
     conn = sqlite3.connect("data/requests.db")
     try:
         cursor = conn.cursor()
-        cursor.execute("DELETE FROM mistakes")
+        if skillset:
+            cursor.execute("DELETE FROM mistakes WHERE skillset = ?", (skillset,))
+        else:
+            cursor.execute("DELETE FROM mistakes")
         conn.commit()
         return True
     finally:
         conn.close()
 
-def clear_all_group_messages():
+def clear_all_group_messages(skillset=None):
     if is_killswitch_enabled():
         st.error("System is currently locked. Please contact the developer.")
         return False
@@ -510,14 +578,17 @@ def clear_all_group_messages():
     conn = sqlite3.connect("data/requests.db")
     try:
         cursor = conn.cursor()
-        cursor.execute("DELETE FROM group_messages")
+        if skillset:
+            cursor.execute("DELETE FROM group_messages WHERE skillset = ?", (skillset,))
+        else:
+            cursor.execute("DELETE FROM group_messages")
         conn.commit()
         return True
     finally:
         conn.close()
 
 # --------------------------
-# Break Scheduling Functions (from first code)
+# Break Scheduling Functions
 # --------------------------
 
 def init_break_session_state():
@@ -533,6 +604,8 @@ def init_break_session_state():
         st.session_state.timezone_offset = 0  # GMT by default
     if 'break_limits' not in st.session_state:
         st.session_state.break_limits = {}
+    if 'skillset_templates' not in st.session_state:
+        st.session_state.skillset_templates = {}
     
     # Load data from files if exists
     if os.path.exists('templates.json'):
@@ -544,6 +617,9 @@ def init_break_session_state():
     if os.path.exists('all_bookings.json'):
         with open('all_bookings.json', 'r') as f:
             st.session_state.agent_bookings = json.load(f)
+    if os.path.exists('skillset_templates.json'):
+        with open('skillset_templates.json', 'r') as f:
+            st.session_state.skillset_templates = json.load(f)
 
 def save_break_data():
     with open('templates.json', 'w') as f:
@@ -552,6 +628,8 @@ def save_break_data():
         json.dump(st.session_state.break_limits, f)
     with open('all_bookings.json', 'w') as f:
         json.dump(st.session_state.agent_bookings, f)
+    with open('skillset_templates.json', 'w') as f:
+        json.dump(st.session_state.skillset_templates, f)
 
 def adjust_time(time_str, offset):
     try:
@@ -573,20 +651,21 @@ def adjust_template_times(template, offset):
     }
     return adjusted_template
 
-def count_bookings(date, break_type, time_slot):
+def count_bookings(date, break_type, time_slot, skillset):
     count = 0
     if date in st.session_state.agent_bookings:
         for agent_id, breaks in st.session_state.agent_bookings[date].items():
-            if break_type == "lunch" and "lunch" in breaks and breaks["lunch"] == time_slot:
-                count += 1
-            elif break_type == "early_tea" and "early_tea" in breaks and breaks["early_tea"] == time_slot:
-                count += 1
-            elif break_type == "late_tea" and "late_tea" in breaks and breaks["late_tea"] == time_slot:
-                count += 1
+            if 'skillset' in breaks and breaks['skillset'] == skillset:
+                if break_type == "lunch" and "lunch" in breaks and breaks["lunch"] == time_slot:
+                    count += 1
+                elif break_type == "early_tea" and "early_tea" in breaks and breaks["early_tea"] == time_slot:
+                    count += 1
+                elif break_type == "late_tea" and "late_tea" in breaks and breaks["late_tea"] == time_slot:
+                    count += 1
     return count
 
-def display_schedule(template):
-    st.header("LM US ENG 3:00 PM shift")
+def display_schedule(template, skillset):
+    st.header(f"Schedule for {skillset}")
     
     # Lunch breaks table
     st.markdown("### LUNCH BREAKS")
@@ -649,85 +728,92 @@ def admin_break_dashboard():
         template_name = st.text_input("Template Name:")
     
     with col2:
-        if st.button("Create New Template"):
-            if template_name:
-                if template_name not in st.session_state.templates:
-                    st.session_state.templates[template_name] = {
-                        "lunch_breaks": ["19:30", "20:00", "20:30", "21:00", "21:30"],
-                        "tea_breaks": {
-                            "early": ["16:00", "16:15", "16:30", "16:45", "17:00", "17:15", "17:30"],
-                            "late": ["21:45", "22:00", "22:15", "22:30"]
-                        }
+        skillset = st.selectbox("Skillset", get_all_skillsets())
+    
+    if st.button("Create New Template"):
+        if template_name and skillset:
+            if skillset not in st.session_state.skillset_templates:
+                st.session_state.skillset_templates[skillset] = template_name
+            
+            if template_name not in st.session_state.templates:
+                st.session_state.templates[template_name] = {
+                    "lunch_breaks": ["19:30", "20:00", "20:30", "21:00", "21:30"],
+                    "tea_breaks": {
+                        "early": ["16:00", "16:15", "16:30", "16:45", "17:00", "17:15", "17:30"],
+                        "late": ["21:45", "22:00", "22:15", "22:30"]
                     }
-                    st.session_state.current_template = template_name
-                    save_break_data()
-                    st.success(f"Template '{template_name}' created!")
-                else:
-                    st.error("Template with this name already exists")
+                }
+                st.session_state.current_template = template_name
+                save_break_data()
+                st.success(f"Template '{template_name}' created for {skillset}!")
             else:
-                st.error("Please enter a template name")
+                st.error("Template with this name already exists")
+        else:
+            st.error("Please enter a template name and select skillset")
     
     # Template selection
     if st.session_state.templates:
-        selected_template = st.selectbox(
-            "Select Template to Edit:",
-            list(st.session_state.templates.keys()),
-            index=0 if not st.session_state.current_template else list(st.session_state.templates.keys()).index(st.session_state.current_template)
+        selected_skillset = st.selectbox(
+            "Select Skillset:",
+            list(st.session_state.skillset_templates.keys()),
+            key="skillset_select"
         )
         
-        st.session_state.current_template = selected_template
-        
-        if st.button("Delete Template"):
-            del st.session_state.templates[selected_template]
-            st.session_state.current_template = None
-            save_break_data()
-            st.success(f"Template '{selected_template}' deleted!")
-            st.rerun()
-
-        
-        # Edit template
-        if st.session_state.current_template:
-            template = st.session_state.templates[st.session_state.current_template]
+        if selected_skillset in st.session_state.skillset_templates:
+            selected_template = st.session_state.skillset_templates[selected_skillset]
+            st.session_state.current_template = selected_template
             
-            st.subheader("Edit Lunch Breaks")
-            lunch_breaks = st.text_area(
-                "Lunch Breaks (one per line):",
-                "\n".join(template["lunch_breaks"]),
-                height=150
-            )
-            
-            st.subheader("Edit Tea Breaks")
-            st.write("Early Tea Breaks:")
-            early_tea_breaks = st.text_area(
-                "Early Tea Breaks (one per line):",
-                "\n".join(template["tea_breaks"]["early"]),
-                height=150,
-                key="early_tea"
-            )
-            
-            st.write("Late Tea Breaks:")
-            late_tea_breaks = st.text_area(
-                "Late Tea Breaks (one per line):",
-                "\n".join(template["tea_breaks"]["late"]),
-                height=150,
-                key="late_tea"
-            )
-            
-            if st.button("Save Changes"):
-                template["lunch_breaks"] = [t.strip() for t in lunch_breaks.split("\n") if t.strip()]
-                template["tea_breaks"]["early"] = [t.strip() for t in early_tea_breaks.split("\n") if t.strip()]
-                template["tea_breaks"]["late"] = [t.strip() for t in late_tea_breaks.split("\n") if t.strip()]
+            if st.button("Delete Template"):
+                del st.session_state.templates[selected_template]
+                del st.session_state.skillset_templates[selected_skillset]
+                st.session_state.current_template = None
                 save_break_data()
-                st.success("Template updated successfully!")
+                st.success(f"Template for {selected_skillset} deleted!")
+                st.rerun()
+
+            # Edit template
+            if st.session_state.current_template:
+                template = st.session_state.templates[st.session_state.current_template]
+                
+                st.subheader("Edit Lunch Breaks")
+                lunch_breaks = st.text_area(
+                    "Lunch Breaks (one per line):",
+                    "\n".join(template["lunch_breaks"]),
+                    height=150
+                )
+                
+                st.subheader("Edit Tea Breaks")
+                st.write("Early Tea Breaks:")
+                early_tea_breaks = st.text_area(
+                    "Early Tea Breaks (one per line):",
+                    "\n".join(template["tea_breaks"]["early"]),
+                    height=150,
+                    key="early_tea"
+                )
+                
+                st.write("Late Tea Breaks:")
+                late_tea_breaks = st.text_area(
+                    "Late Tea Breaks (one per line):",
+                    "\n".join(template["tea_breaks"]["late"]),
+                    height=150,
+                    key="late_tea"
+                )
+                
+                if st.button("Save Changes"):
+                    template["lunch_breaks"] = [t.strip() for t in lunch_breaks.split("\n") if t.strip()]
+                    template["tea_breaks"]["early"] = [t.strip() for t in early_tea_breaks.split("\n") if t.strip()]
+                    template["tea_breaks"]["late"] = [t.strip() for t in late_tea_breaks.split("\n") if t.strip()]
+                    save_break_data()
+                    st.success("Template updated successfully!")
     
     # Break limits management
     st.header("Break Limits Management")
-    if st.session_state.current_template:
+    if st.session_state.current_template and selected_skillset:
         template = st.session_state.templates[st.session_state.current_template]
         
         # Initialize limits if not exists
-        if st.session_state.current_template not in st.session_state.break_limits:
-            st.session_state.break_limits[st.session_state.current_template] = {
+        if selected_skillset not in st.session_state.break_limits:
+            st.session_state.break_limits[selected_skillset] = {
                 "lunch": {time: 5 for time in template["lunch_breaks"]},
                 "early_tea": {time: 3 for time in template["tea_breaks"]["early"]},
                 "late_tea": {time: 3 for time in template["tea_breaks"]["late"]}
@@ -737,10 +823,10 @@ def admin_break_dashboard():
         lunch_cols = st.columns(len(template["lunch_breaks"]))
         for i, time_slot in enumerate(template["lunch_breaks"]):
             with lunch_cols[i]:
-                st.session_state.break_limits[st.session_state.current_template]["lunch"][time_slot] = st.number_input(
+                st.session_state.break_limits[selected_skillset]["lunch"][time_slot] = st.number_input(
                     f"Max at {time_slot}",
                     min_value=1,
-                    value=st.session_state.break_limits[st.session_state.current_template]["lunch"].get(time_slot, 5),
+                    value=st.session_state.break_limits[selected_skillset]["lunch"].get(time_slot, 5),
                     key=f"lunch_limit_{time_slot}"
                 )
         
@@ -748,10 +834,10 @@ def admin_break_dashboard():
         early_tea_cols = st.columns(len(template["tea_breaks"]["early"]))
         for i, time_slot in enumerate(template["tea_breaks"]["early"]):
             with early_tea_cols[i]:
-                st.session_state.break_limits[st.session_state.current_template]["early_tea"][time_slot] = st.number_input(
+                st.session_state.break_limits[selected_skillset]["early_tea"][time_slot] = st.number_input(
                     f"Max at {time_slot}",
                     min_value=1,
-                    value=st.session_state.break_limits[st.session_state.current_template]["early_tea"].get(time_slot, 3),
+                    value=st.session_state.break_limits[selected_skillset]["early_tea"].get(time_slot, 3),
                     key=f"early_tea_limit_{time_slot}"
                 )
         
@@ -759,10 +845,10 @@ def admin_break_dashboard():
         late_tea_cols = st.columns(len(template["tea_breaks"]["late"]))
         for i, time_slot in enumerate(template["tea_breaks"]["late"]):
             with late_tea_cols[i]:
-                st.session_state.break_limits[st.session_state.current_template]["late_tea"][time_slot] = st.number_input(
+                st.session_state.break_limits[selected_skillset]["late_tea"][time_slot] = st.number_input(
                     f"Max at {time_slot}",
                     min_value=1,
-                    value=st.session_state.break_limits[st.session_state.current_template]["late_tea"].get(time_slot, 3),
+                    value=st.session_state.break_limits[selected_skillset]["late_tea"].get(time_slot, 3),
                     key=f"late_tea_limit_{time_slot}"
                 )
         
@@ -777,13 +863,15 @@ def admin_break_dashboard():
         bookings_list = []
         for date, agents in st.session_state.agent_bookings.items():
             for agent_id, breaks in agents.items():
-                bookings_list.append({
-                    "Date": date,
-                    "Agent ID": agent_id,
-                    "Lunch Break": breaks.get("lunch", "-"),
-                    "Early Tea": breaks.get("early_tea", "-"),
-                    "Late Tea": breaks.get("late_tea", "-")
-                })
+                if 'skillset' in breaks:
+                    bookings_list.append({
+                        "Date": date,
+                        "Agent ID": agent_id,
+                        "Skillset": breaks['skillset'],
+                        "Lunch Break": breaks.get("lunch", "-"),
+                        "Early Tea": breaks.get("early_tea", "-"),
+                        "Late Tea": breaks.get("late_tea", "-")
+                    })
         
         bookings_df = pd.DataFrame(bookings_list)
         st.dataframe(bookings_df)
@@ -800,7 +888,7 @@ def admin_break_dashboard():
     else:
         st.write("No bookings yet.")
 
-def agent_break_dashboard():
+def agent_break_dashboard(skillset):
     st.title("Break Booking")
     st.markdown("---")
     
@@ -812,13 +900,12 @@ def agent_break_dashboard():
     schedule_date = st.date_input("Select Date:", datetime.now())
     st.session_state.selected_date = schedule_date.strftime('%Y-%m-%d')
     
-    # Use the first template (or create a default if none exists)
-    if not st.session_state.templates:
-        st.error("No break schedules available. Please contact admin.")
+    # Get template for this skillset
+    if skillset not in st.session_state.skillset_templates:
+        st.error("No break schedule available for your skillset. Please contact admin.")
         return
     
-    # Get the first template (we're removing the template selection)
-    template_name = list(st.session_state.templates.keys())[0]
+    template_name = st.session_state.skillset_templates[skillset]
     template = adjust_template_times(st.session_state.templates[template_name], st.session_state.timezone_offset)
     
     # Booking section
@@ -826,7 +913,7 @@ def agent_break_dashboard():
     st.header("Available Break Slots")
     
     # Check if template has limits defined
-    break_limits = st.session_state.break_limits.get(template_name, {})
+    break_limits = st.session_state.break_limits.get(skillset, {})
     
     # Lunch break booking
     st.subheader("Lunch Break")
@@ -837,7 +924,7 @@ def agent_break_dashboard():
         for i, time_slot in enumerate(template["lunch_breaks"]):
             with lunch_cols[i]:
                 # Check if time slot is full
-                current_bookings = count_bookings(st.session_state.selected_date, "lunch", time_slot)
+                current_bookings = count_bookings(st.session_state.selected_date, "lunch", time_slot, skillset)
                 max_limit = break_limits.get("lunch", {}).get(time_slot, 5)
                 
                 if current_bookings >= max_limit:
@@ -851,7 +938,7 @@ def agent_break_dashboard():
                 st.session_state.agent_bookings[st.session_state.selected_date] = {}
             
             if agent_id not in st.session_state.agent_bookings[st.session_state.selected_date]:
-                st.session_state.agent_bookings[st.session_state.selected_date][agent_id] = {}
+                st.session_state.agent_bookings[st.session_state.selected_date][agent_id] = {"skillset": skillset}
             
             st.session_state.agent_bookings[st.session_state.selected_date][agent_id]["lunch"] = selected_lunch
             save_break_data()
@@ -869,7 +956,7 @@ def agent_break_dashboard():
     for i, time_slot in enumerate(template["tea_breaks"]["early"]):
         with early_tea_cols[i]:
             # Check if time slot is full
-            current_bookings = count_bookings(st.session_state.selected_date, "early_tea", time_slot)
+            current_bookings = count_bookings(st.session_state.selected_date, "early_tea", time_slot, skillset)
             max_limit = break_limits.get("early_tea", {}).get(time_slot, 3)
             
             if current_bookings >= max_limit:
@@ -883,7 +970,7 @@ def agent_break_dashboard():
             st.session_state.agent_bookings[st.session_state.selected_date] = {}
         
         if agent_id not in st.session_state.agent_bookings[st.session_state.selected_date]:
-            st.session_state.agent_bookings[st.session_state.selected_date][agent_id] = {}
+            st.session_state.agent_bookings[st.session_state.selected_date][agent_id] = {"skillset": skillset}
         
         st.session_state.agent_bookings[st.session_state.selected_date][agent_id]["early_tea"] = selected_early_tea
         save_break_data()
@@ -897,7 +984,7 @@ def agent_break_dashboard():
     for i, time_slot in enumerate(template["tea_breaks"]["late"]):
         with late_tea_cols[i]:
             # Check if time slot is full
-            current_bookings = count_bookings(st.session_state.selected_date, "late_tea", time_slot)
+            current_bookings = count_bookings(st.session_state.selected_date, "late_tea", time_slot, skillset)
             max_limit = break_limits.get("late_tea", {}).get(time_slot, 3)
             
             if current_bookings >= max_limit:
@@ -911,7 +998,7 @@ def agent_break_dashboard():
             st.session_state.agent_bookings[st.session_state.selected_date] = {}
         
         if agent_id not in st.session_state.agent_bookings[st.session_state.selected_date]:
-            st.session_state.agent_bookings[st.session_state.selected_date][agent_id] = {}
+            st.session_state.agent_bookings[st.session_state.selected_date][agent_id] = {"skillset": skillset}
         
         st.session_state.agent_bookings[st.session_state.selected_date][agent_id]["late_tea"] = selected_late_tea
         save_break_data()
@@ -1036,6 +1123,12 @@ def inject_custom_css():
         .comment-text {
             margin-top: 0.5rem;
         }
+        .skillset-selector {
+            margin-bottom: 1rem;
+            padding: 0.5rem;
+            background: #1F2937;
+            border-radius: 8px;
+        }
     </style>
     """, unsafe_allow_html=True)
 
@@ -1044,10 +1137,12 @@ if "authenticated" not in st.session_state:
         "authenticated": False,
         "role": None,
         "username": None,
+        "skillset": None,
         "current_section": "requests",
         "last_request_count": 0,
         "last_mistake_count": 0,
-        "last_message_ids": []
+        "last_message_ids": [],
+        "selected_chat_skillset": None
     })
 
 init_db()
@@ -1062,15 +1157,17 @@ if not st.session_state.authenticated:
             password = st.text_input("Password", type="password")
             if st.form_submit_button("Login"):
                 if username and password:
-                    role = authenticate(username, password)
+                    role, skillset = authenticate(username, password)
                     if role:
                         st.session_state.update({
                             "authenticated": True,
                             "role": role,
                             "username": username,
-                            "last_request_count": len(get_requests()),
-                            "last_mistake_count": len(get_mistakes()),
-                            "last_message_ids": [msg[0] for msg in get_group_messages()]
+                            "skillset": skillset,
+                            "selected_chat_skillset": skillset if role == "agent" else None,
+                            "last_request_count": len(get_requests(skillset) if role == "agent" else len(get_requests()),
+                            "last_mistake_count": len(get_mistakes(skillset) if role == "agent" else len(get_mistakes()),
+                            "last_message_ids": [msg[0] for msg in get_group_messages(skillset) if role == "agent" else [msg[0] for msg in get_group_messages()]
                         })
                         st.rerun()
                     else:
@@ -1093,9 +1190,9 @@ else:
         """, unsafe_allow_html=True)
 
     def show_notifications():
-        current_requests = get_requests()
-        current_mistakes = get_mistakes()
-        current_messages = get_group_messages()
+        current_requests = get_requests(st.session_state.skillset if st.session_state.role == "agent" else None)
+        current_mistakes = get_mistakes(st.session_state.skillset if st.session_state.role == "agent" else None)
+        current_messages = get_group_messages(st.session_state.skillset if st.session_state.role == "agent" else None)
         
         new_requests = len(current_requests) - st.session_state.last_request_count
         if new_requests > 0 and st.session_state.last_request_count > 0:
@@ -1122,6 +1219,7 @@ else:
 
     with st.sidebar:
         st.title(f"👋 Welcome, {st.session_state.username}")
+        st.markdown(f"**Skillset:** {st.session_state.skillset}")
         st.markdown("---")
         
         nav_options = [
@@ -1140,9 +1238,9 @@ else:
                 st.session_state.current_section = value
                 
         st.markdown("---")
-        pending_requests = len([r for r in get_requests() if not r[6]])
-        new_mistakes = len(get_mistakes())
-        unread_messages = len([m for m in get_group_messages() 
+        pending_requests = len([r for r in get_requests(st.session_state.skillset if st.session_state.role == "agent" else None) if not r[6]])
+        new_mistakes = len(get_mistakes(st.session_state.skillset if st.session_state.role == "agent" else None))
+        unread_messages = len([m for m in get_group_messages(st.session_state.skillset if st.session_state.role == "agent" else None) 
                              if m[0] not in st.session_state.last_message_ids 
                              and m[1] != st.session_state.username])
         
@@ -1171,21 +1269,21 @@ else:
                     comment = st.text_area("Comment")
                     if st.form_submit_button("Submit"):
                         if identifier and comment:
-                            if add_request(st.session_state.username, request_type, identifier, comment):
+                            if add_request(st.session_state.username, request_type, identifier, comment, st.session_state.skillset):
                                 st.success("Request submitted successfully!")
                                 st.rerun()
         
         st.subheader("🔍 Search Requests")
         search_query = st.text_input("Search requests...")
-        requests = search_requests(search_query) if search_query else get_requests()
+        requests = search_requests(search_query, st.session_state.skillset if st.session_state.role == "agent" else None) if search_query else get_requests(st.session_state.skillset if st.session_state.role == "agent" else None)
         
         st.subheader("All Requests")
         for req in requests:
-            req_id, agent, req_type, identifier, comment, timestamp, completed = req
+            req_id, agent, req_type, identifier, comment, timestamp, completed, skillset = req
             with st.container():
                 cols = st.columns([0.1, 0.9])
                 with cols[0]:
-                    if not is_killswitch_enabled():
+                    if not is_killswitch_enabled() and st.session_state.role == "admin":
                         st.checkbox("Done", value=bool(completed), 
                                    key=f"check_{req_id}", 
                                    on_change=update_request_status,
@@ -1201,6 +1299,7 @@ else:
                         </div>
                         <p>Agent: {agent}</p>
                         <p>Identifier: {identifier}</p>
+                        <p>Skillset: {skillset}</p>
                         <div style="margin-top: 1rem;">
                             <h5>Status Updates:</h5>
                     """, unsafe_allow_html=True)
@@ -1230,7 +1329,7 @@ else:
 
     elif st.session_state.current_section == "dashboard":
         st.subheader("📊 Request Completion Dashboard")
-        all_requests = get_requests()
+        all_requests = get_requests(st.session_state.skillset if st.session_state.role == "agent" else None)
         total = len(all_requests)
         completed = sum(1 for r in all_requests if r[6])
         rate = (completed/total*100) if total > 0 else 0
@@ -1261,7 +1360,7 @@ else:
         if st.session_state.role == "admin":
             admin_break_dashboard()
         else:
-            agent_break_dashboard()
+            agent_break_dashboard(st.session_state.skillset)
 
     elif st.session_state.current_section == "mistakes":
         if not is_killswitch_enabled():
@@ -1273,15 +1372,15 @@ else:
                     error_description = st.text_area("Error Description")
                     if st.form_submit_button("Submit"):
                         if agent_name and ticket_id and error_description:
-                            add_mistake(st.session_state.username, agent_name, ticket_id, error_description)
+                            add_mistake(st.session_state.username, agent_name, ticket_id, error_description, st.session_state.skillset)
         
         st.subheader("🔍 Search Mistakes")
         search_query = st.text_input("Search mistakes...")
-        mistakes = search_mistakes(search_query) if search_query else get_mistakes()
+        mistakes = search_mistakes(search_query, st.session_state.skillset if st.session_state.role == "agent" else None) if search_query else get_mistakes(st.session_state.skillset if st.session_state.role == "agent" else None)
         
         st.subheader("Mistakes Log")
         for mistake in mistakes:
-            m_id, tl, agent, ticket, error, ts = mistake
+            m_id, tl, agent, ticket, error, ts, skillset = mistake
             st.markdown(f"""
             <div class="card">
                 <div style="display: flex; justify-content: space-between;">
@@ -1290,17 +1389,33 @@ else:
                 </div>
                 <p>Agent: {agent}</p>
                 <p>Ticket: {ticket}</p>
+                <p>Skillset: {skillset}</p>
                 <p>Error: {error}</p>
             </div>
             """, unsafe_allow_html=True)
 
     elif st.session_state.current_section == "chat":
+        if st.session_state.role == "admin":
+            st.markdown("""
+            <div class="skillset-selector">
+                <h4>Select Skillset Channel</h4>
+            </div>
+            """, unsafe_allow_html=True)
+            skillset_options = get_all_skillsets()
+            selected_skillset = st.selectbox(
+                "Choose channel:",
+                skillset_options,
+                index=skillset_options.index(st.session_state.selected_chat_skillset) if st.session_state.selected_chat_skillset in skillset_options else 0,
+                key="chat_skillset_selector"
+            )
+            st.session_state.selected_chat_skillset = selected_skillset
+        
         if is_chat_killswitch_enabled():
             st.warning("Chat functionality is currently disabled by the administrator.")
         else:
-            messages = get_group_messages()
+            messages = get_group_messages(st.session_state.selected_chat_skillset if st.session_state.role == "admin" else st.session_state.skillset)
             for msg in reversed(messages):
-                msg_id, sender, message, ts, mentions = msg
+                msg_id, sender, message, ts, mentions, skillset = msg
                 is_mentioned = st.session_state.username in (mentions.split(',') if mentions else [])
                 st.markdown(f"""
                 <div style="background-color: {'#3b82f6' if is_mentioned else '#1F1F1F'};
@@ -1308,7 +1423,7 @@ else:
                             border-radius: 8px;
                             margin-bottom: 1rem;">
                     <strong>{sender}</strong>: {message}<br>
-                    <small>{ts}</small>
+                    <small>{ts} | {skillset}</small>
                 </div>
                 """, unsafe_allow_html=True)
             
@@ -1317,7 +1432,11 @@ else:
                     message = st.text_input("Type your message...")
                     if st.form_submit_button("Send"):
                         if message:
-                            send_group_message(st.session_state.username, message)
+                            send_group_message(
+                                st.session_state.username, 
+                                message, 
+                                st.session_state.selected_chat_skillset if st.session_state.role == "admin" else st.session_state.skillset
+                            )
                             st.rerun()
 
     elif st.session_state.current_section == "hold":
@@ -1325,12 +1444,12 @@ else:
             with st.expander("📤 Upload Image"):
                 img = st.file_uploader("Choose image", type=["jpg", "png", "jpeg"])
                 if img:
-                    add_hold_image(st.session_state.username, img.read())
+                    add_hold_image(st.session_state.username, img.read(), st.session_state.skillset)
         
-        images = get_hold_images()
+        images = get_hold_images(st.session_state.skillset if st.session_state.role == "agent" else None)
         if images:
             for img in images:
-                iid, uploader, data, ts = img
+                iid, uploader, data, ts, skillset = img
                 st.markdown(f"""
                 <div class="card">
                     <div style="display: flex; justify-content: space-between;">
@@ -1338,6 +1457,7 @@ else:
                         <small>{ts}</small>
                     </div>
                     <p>Uploaded by: {uploader}</p>
+                    <p>Skillset: {skillset}</p>
                 </div>
                 """, unsafe_allow_html=True)
                 st.image(Image.open(io.BytesIO(data)), use_container_width=True)
@@ -1381,49 +1501,55 @@ else:
             st.markdown("---")
         
         st.subheader("🧹 Data Management")
+        skillset_options = get_all_skillsets()
+        selected_skillset = st.selectbox(
+            "Select Skillset to Clear (or leave empty for all):",
+            [""] + skillset_options,
+            key="clear_skillset_selector"
+        )
         
         with st.expander("❌ Clear All Requests"):
             with st.form("clear_requests_form"):
-                st.warning("This will permanently delete ALL requests and their comments!")
+                st.warning(f"This will permanently delete ALL requests{' for selected skillset' if selected_skillset else ''}!")
                 if st.form_submit_button("Clear All Requests"):
-                    if clear_all_requests():
-                        st.success("All requests deleted!")
+                    if clear_all_requests(selected_skillset if selected_skillset else None):
+                        st.success(f"All requests{' for selected skillset' if selected_skillset else ''} deleted!")
                         st.rerun()
 
         with st.expander("❌ Clear All Mistakes"):
             with st.form("clear_mistakes_form"):
-                st.warning("This will permanently delete ALL mistakes!")
+                st.warning(f"This will permanently delete ALL mistakes{' for selected skillset' if selected_skillset else ''}!")
                 if st.form_submit_button("Clear All Mistakes"):
-                    if clear_all_mistakes():
-                        st.success("All mistakes deleted!")
+                    if clear_all_mistakes(selected_skillset if selected_skillset else None):
+                        st.success(f"All mistakes{' for selected skillset' if selected_skillset else ''} deleted!")
                         st.rerun()
 
         with st.expander("❌ Clear All Chat Messages"):
             with st.form("clear_chat_form"):
-                st.warning("This will permanently delete ALL chat messages!")
+                st.warning(f"This will permanently delete ALL chat messages{' for selected skillset' if selected_skillset else ''}!")
                 if st.form_submit_button("Clear All Chat"):
-                    if clear_all_group_messages():
-                        st.success("All chat messages deleted!")
+                    if clear_all_group_messages(selected_skillset if selected_skillset else None):
+                        st.success(f"All chat messages{' for selected skillset' if selected_skillset else ''} deleted!")
                         st.rerun()
 
         with st.expander("❌ Clear All HOLD Images"):
             with st.form("clear_hold_form"):
-                st.warning("This will permanently delete ALL HOLD images!")
+                st.warning(f"This will permanently delete ALL HOLD images{' for selected skillset' if selected_skillset else ''}!")
                 if st.form_submit_button("Clear All HOLD Images"):
-                    if clear_hold_images():
-                        st.success("All HOLD images deleted!")
+                    if clear_hold_images(selected_skillset if selected_skillset else None):
+                        st.success(f"All HOLD images{' for selected skillset' if selected_skillset else ''} deleted!")
                         st.rerun()
 
         with st.expander("💣 Clear ALL Data"):
             with st.form("nuclear_form"):
-                st.error("THIS WILL DELETE EVERYTHING IN THE SYSTEM!")
+                st.error(f"THIS WILL DELETE EVERYTHING{' FOR SELECTED SKILLSET' if selected_skillset else ''} IN THE SYSTEM!")
                 if st.form_submit_button("🚨 Execute Full System Wipe"):
                     try:
-                        clear_all_requests()
-                        clear_all_mistakes()
-                        clear_all_group_messages()
-                        clear_hold_images()
-                        st.success("All system data deleted!")
+                        clear_all_requests(selected_skillset if selected_skillset else None)
+                        clear_all_mistakes(selected_skillset if selected_skillset else None)
+                        clear_all_group_messages(selected_skillset if selected_skillset else None)
+                        clear_hold_images(selected_skillset if selected_skillset else None)
+                        st.success(f"All system data{' for selected skillset' if selected_skillset else ''} deleted!")
                         st.rerun()
                     except Exception as e:
                         st.error(f"Error during deletion: {str(e)}")
@@ -1435,18 +1561,20 @@ else:
                 user = st.text_input("Username")
                 pwd = st.text_input("Password", type="password")
                 role = st.selectbox("Role", ["agent", "admin"])
+                skillset = st.selectbox("Skillset", get_all_skillsets())
                 if st.form_submit_button("Add User"):
                     if user and pwd:
-                        add_user(user, pwd, role)
+                        add_user(user, pwd, role, skillset)
                         st.rerun()
         
         st.subheader("Existing Users")
         users = get_all_users()
-        for uid, uname, urole in users:
-            cols = st.columns([3, 1, 1])
+        for uid, uname, urole, uskillset in users:
+            cols = st.columns([3, 1, 1, 1])
             cols[0].write(uname)
             cols[1].write(urole)
-            if cols[2].button("Delete", key=f"del_{uid}") and not is_killswitch_enabled():
+            cols[2].write(uskillset)
+            if cols[3].button("Delete", key=f"del_{uid}") and not is_killswitch_enabled():
                 delete_user(uid)
                 st.rerun()
 
