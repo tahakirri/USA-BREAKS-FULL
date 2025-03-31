@@ -8,14 +8,14 @@ from PIL import Image
 import io
 import pandas as pd
 import json
-import plotly
 import plotly.express as px
 import plotly.graph_objects as go
 
 # --------------------------
 # Database Functions
 # --------------------------
-
+pip install plotly
+plotly>=5.0.0
 def hash_password(password):
     return hashlib.sha256(password.encode()).hexdigest()
 
