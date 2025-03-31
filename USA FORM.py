@@ -36,20 +36,29 @@ def authenticate(username, password):
         conn.close()
 
 def init_db():
-    os.makedirs("data", exist_ok=True)
-    conn = sqlite3.connect("data/requests.db")
+    """Initialize the database with all required tables and default data."""
     try:
+        # Ensure data directory exists
+        data_dir = os.path.join(os.getcwd(), "data")
+        os.makedirs(data_dir, exist_ok=True)
+        os.chmod(data_dir, 0o777)  # Set permissions
+        
+        db_path = os.path.join(data_dir, "requests.db")
+        conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
         
-        # Create tables if they don't exist
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS users (
+        # Enable foreign keys
+        cursor.execute("PRAGMA foreign_keys = ON")
+        
+        # Create tables with IF NOT EXISTS and proper error handling
+        tables = [
+            """CREATE TABLE IF NOT EXISTS users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 username TEXT UNIQUE,
                 password TEXT,
                 role TEXT CHECK(role IN ('agent', 'admin', 'team_leader')),
                 team TEXT,
-                skillset TEXT)
+                skillset TEXT)""",
         """)
         
         cursor.execute("""
