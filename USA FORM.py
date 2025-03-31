@@ -768,7 +768,24 @@ def create_template(name, lunch_breaks, early_tea_breaks, late_tea_breaks):
         return True
     finally:
         conn.close()
-
+def show_break_analytics():
+    st.subheader("Break Analytics")
+    
+    # Get data from database
+    conn = sqlite3.connect("data/requests.db")
+    df = pd.read_sql("""
+        SELECT strftime('%H:%M', time_slot) as time, 
+               COUNT(*) as bookings,
+               break_type
+        FROM break_bookings
+        GROUP BY time_slot, break_type
+    """, conn)
+    conn.close()
+    
+    # Visualization
+    fig = px.bar(df, x='time', y='bookings', color='break_type',
+                 title="Break Utilization by Time Slot")
+    st.plotly_chart(fig)
 def update_template(name, lunch_breaks, early_tea_breaks, late_tea_breaks):
     conn = sqlite3.connect("data/requests.db")
     try:
