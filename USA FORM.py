@@ -438,7 +438,7 @@ def send_group_message(sender, message):
             INSERT INTO group_messages (sender, message, timestamp, mentions) 
             VALUES (?, ?, ?, ?)
         """, (sender, message, datetime.now().strftime("%Y-%m-%d %H:%M:%S"), 
-             ','.join(mentions))
+             ','.join(mentions)))
         conn.commit()
         return True
     finally:
