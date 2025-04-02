@@ -436,7 +436,7 @@ def send_group_message(sender, message):
         mentions = re.findall(r'@(\w+)', message)
         cursor.execute("""
             INSERT INTO group_messages (sender, message, timestamp, mentions) 
-            VALUES (?, ?, ?, ?))
+            VALUES (?, ?, ?, ?)
         """, (sender, message, datetime.now().strftime("%Y-%m-%d %H:%M:%S"), 
              ','.join(mentions))
         conn.commit()
