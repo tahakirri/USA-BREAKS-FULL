@@ -1550,7 +1550,7 @@ else:
         st.subheader("📊 Request Completion Dashboard")
         all_requests = get_requests()
         total = len(all_requests)
-        completed = sum(1 for r in all_requests if r[6]])
+        completed = sum(1 for r in all_requests if r[6])
         rate = (completed/total*100) if total > 0 else 0
         
         col1, col2, col3 = st.columns(3)
