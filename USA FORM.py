@@ -1,7 +1,7 @@
 import streamlit as st
 import sqlite3
 import hashlib
-from datetime import datetime
+from datetime import datetime, time
 import os
 import re
 from PIL import Image
@@ -12,11 +12,16 @@ import pandas as pd
 # Database Functions
 # --------------------------
 
+def get_db_connection():
+    """Create and return a database connection."""
+    os.makedirs("data", exist_ok=True)
+    return sqlite3.connect("data/requests.db")
+
 def hash_password(password):
     return hashlib.sha256(password.encode()).hexdigest()
 
 def authenticate(username, password):
-    conn = sqlite3.connect("data/requests.db")
+    conn = get_db_connection()
     try:
         cursor = conn.cursor()
         hashed_password = hash_password(password)
@@ -28,8 +33,7 @@ def authenticate(username, password):
         conn.close()
 
 def init_db():
-    os.makedirs("data", exist_ok=True)
-    conn = sqlite3.connect("data/requests.db")
+    conn = get_db_connection()
     try:
         cursor = conn.cursor()
         
@@ -180,6 +184,7 @@ def init_db():
                 INSERT OR IGNORE INTO users (username, password, role) 
                 VALUES (?, ?, ?)
             """, (username, hash_password(password), "admin"))
+        
         # Create agent accounts (agent name as username, workspace ID as password)
         agents = [
             ("Karabila Younes", "30866"),
@@ -240,7 +245,7 @@ def init_db():
         conn.close()
 
 def is_killswitch_enabled():
-    conn = sqlite3.connect("data/requests.db")
+    conn = get_db_connection()
     try:
         cursor = conn.cursor()
         cursor.execute("SELECT killswitch_enabled FROM system_settings WHERE id = 1")
@@ -250,7 +255,7 @@ def is_killswitch_enabled():
         conn.close()
 
 def is_chat_killswitch_enabled():
-    conn = sqlite3.connect("data/requests.db")
+    conn = get_db_connection()
     try:
         cursor = conn.cursor()
         cursor.execute("SELECT chat_killswitch_enabled FROM system_settings WHERE id = 1")
@@ -260,7 +265,7 @@ def is_chat_killswitch_enabled():
         conn.close()
 
 def toggle_killswitch(enable):
-    conn = sqlite3.connect("data/requests.db")
+    conn = get_db_connection()
     try:
         cursor = conn.cursor()
         cursor.execute("UPDATE system_settings SET killswitch_enabled = ? WHERE id = 1",
@@ -271,7 +276,7 @@ def toggle_killswitch(enable):
         conn.close()
 
 def toggle_chat_killswitch(enable):
-    conn = sqlite3.connect("data/requests.db")
+    conn = get_db_connection()
     try:
         cursor = conn.cursor()
         cursor.execute("UPDATE system_settings SET chat_killswitch_enabled = ? WHERE id = 1",
@@ -286,7 +291,7 @@ def add_request(agent_name, request_type, identifier, comment):
         st.error("System is currently locked. Please contact the developer.")
         return False
         
-    conn = sqlite3.connect("data/requests.db")
+    conn = get_db_connection()
     try:
         cursor = conn.cursor()
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -308,7 +313,7 @@ def add_request(agent_name, request_type, identifier, comment):
         conn.close()
 
 def get_requests():
-    conn = sqlite3.connect("data/requests.db")
+    conn = get_db_connection()
     try:
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM requests ORDER BY timestamp DESC")
@@ -317,7 +322,7 @@ def get_requests():
         conn.close()
 
 def search_requests(query):
-    conn = sqlite3.connect("data/requests.db")
+    conn = get_db_connection()
     try:
         cursor = conn.cursor()
         query = f"%{query.lower()}%"
@@ -338,7 +343,7 @@ def update_request_status(request_id, completed):
         st.error("System is currently locked. Please contact the developer.")
         return False
         
-    conn = sqlite3.connect("data/requests.db")
+    conn = get_db_connection()
     try:
         cursor = conn.cursor()
         cursor.execute("UPDATE requests SET completed = ? WHERE id = ?",
@@ -353,7 +358,7 @@ def add_request_comment(request_id, user, comment):
         st.error("System is currently locked. Please contact the developer.")
         return False
         
-    conn = sqlite3.connect("data/requests.db")
+    conn = get_db_connection()
     try:
         cursor = conn.cursor()
         cursor.execute("""
@@ -366,7 +371,7 @@ def add_request_comment(request_id, user, comment):
         conn.close()
 
 def get_request_comments(request_id):
-    conn = sqlite3.connect("data/requests.db")
+    conn = get_db_connection()
     try:
         cursor = conn.cursor()
         cursor.execute("""
@@ -383,7 +388,7 @@ def add_mistake(team_leader, agent_name, ticket_id, error_description):
         st.error("System is currently locked. Please contact the developer.")
         return False
         
-    conn = sqlite3.connect("data/requests.db")
+    conn = get_db_connection()
     try:
         cursor = conn.cursor()
         cursor.execute("""
@@ -397,7 +402,7 @@ def add_mistake(team_leader, agent_name, ticket_id, error_description):
         conn.close()
 
 def get_mistakes():
-    conn = sqlite3.connect("data/requests.db")
+    conn = get_db_connection()
     try:
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM mistakes ORDER BY timestamp DESC")
@@ -406,7 +411,7 @@ def get_mistakes():
         conn.close()
 
 def search_mistakes(query):
-    conn = sqlite3.connect("data/requests.db")
+    conn = get_db_connection()
     try:
         cursor = conn.cursor()
         query = f"%{query.lower()}%"
@@ -426,7 +431,7 @@ def send_group_message(sender, message):
         st.error("Chat is currently locked. Please contact the developer.")
         return False
         
-    conn = sqlite3.connect("data/requests.db")
+    conn = get_db_connection()
     try:
         cursor = conn.cursor()
         mentions = re.findall(r'@(\w+)', message)
@@ -441,7 +446,7 @@ def send_group_message(sender, message):
         conn.close()
 
 def get_group_messages():
-    conn = sqlite3.connect("data/requests.db")
+    conn = get_db_connection()
     try:
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM group_messages ORDER BY timestamp DESC LIMIT 50")
@@ -450,7 +455,7 @@ def get_group_messages():
         conn.close()
 
 def get_all_users():
-    conn = sqlite3.connect("data/requests.db")
+    conn = get_db_connection()
     try:
         cursor = conn.cursor()
         cursor.execute("SELECT id, username, role FROM users")
@@ -463,7 +468,7 @@ def add_user(username, password, role):
         st.error("System is currently locked. Please contact the developer.")
         return False
         
-    conn = sqlite3.connect("data/requests.db")
+    conn = get_db_connection()
     try:
         cursor = conn.cursor()
         cursor.execute("INSERT INTO users (username, password, role) VALUES (?, ?, ?)",
@@ -478,7 +483,7 @@ def delete_user(user_id):
         st.error("System is currently locked. Please contact the developer.")
         return False
         
-    conn = sqlite3.connect("data/requests.db")
+    conn = get_db_connection()
     try:
         cursor = conn.cursor()
         cursor.execute("DELETE FROM users WHERE id = ?", (user_id,))
@@ -492,7 +497,7 @@ def add_hold_image(uploader, image_data):
         st.error("System is currently locked. Please contact the developer.")
         return False
         
-    conn = sqlite3.connect("data/requests.db")
+    conn = get_db_connection()
     try:
         cursor = conn.cursor()
         cursor.execute("""
@@ -505,7 +510,7 @@ def add_hold_image(uploader, image_data):
         conn.close()
 
 def get_hold_images():
-    conn = sqlite3.connect("data/requests.db")
+    conn = get_db_connection()
     try:
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM hold_images ORDER BY timestamp DESC")
@@ -518,7 +523,7 @@ def clear_hold_images():
         st.error("System is currently locked. Please contact the developer.")
         return False
         
-    conn = sqlite3.connect("data/requests.db")
+    conn = get_db_connection()
     try:
         cursor = conn.cursor()
         cursor.execute("DELETE FROM hold_images")
@@ -532,7 +537,7 @@ def clear_all_requests():
         st.error("System is currently locked. Please contact the developer.")
         return False
         
-    conn = sqlite3.connect("data/requests.db")
+    conn = get_db_connection()
     try:
         cursor = conn.cursor()
         cursor.execute("DELETE FROM requests")
@@ -547,7 +552,7 @@ def clear_all_mistakes():
         st.error("System is currently locked. Please contact the developer.")
         return False
         
-    conn = sqlite3.connect("data/requests.db")
+    conn = get_db_connection()
     try:
         cursor = conn.cursor()
         cursor.execute("DELETE FROM mistakes")
@@ -561,7 +566,7 @@ def clear_all_group_messages():
         st.error("System is currently locked. Please contact the developer.")
         return False
         
-    conn = sqlite3.connect("data/requests.db")
+    conn = get_db_connection()
     try:
         cursor = conn.cursor()
         cursor.execute("DELETE FROM group_messages")
@@ -575,7 +580,7 @@ def add_break_slot(break_name, start_time, end_time, max_users, created_by):
         st.error("System is currently locked. Please contact the developer.")
         return False
         
-    conn = sqlite3.connect("data/requests.db")
+    conn = get_db_connection()
     try:
         cursor = conn.cursor()
         cursor.execute("""
@@ -593,7 +598,7 @@ def update_break_slot(break_id, break_name, start_time, end_time, max_users):
         st.error("System is currently locked. Please contact the developer.")
         return False
         
-    conn = sqlite3.connect("data/requests.db")
+    conn = get_db_connection()
     try:
         cursor = conn.cursor()
         cursor.execute("""
@@ -607,7 +612,7 @@ def update_break_slot(break_id, break_name, start_time, end_time, max_users):
         conn.close()
 
 def get_all_break_slots():
-    conn = sqlite3.connect("data/requests.db")
+    conn = get_db_connection()
     try:
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM breaks ORDER BY start_time")
@@ -616,18 +621,19 @@ def get_all_break_slots():
         conn.close()
 
 def get_available_break_slots(date):
-    conn = sqlite3.connect("data/requests.db")
+    conn = get_db_connection()
     try:
         cursor = conn.cursor()
         cursor.execute("""
             SELECT b.* 
             FROM breaks b
-            WHERE b.max_users > (
-                SELECT COUNT(*) 
-                FROM break_bookings bb 
-                WHERE bb.break_id = b.id 
-                AND bb.booking_date = ?
-            )
+            LEFT JOIN (
+                SELECT break_id, COUNT(*) as booking_count
+                FROM break_bookings 
+                WHERE booking_date = ?
+                GROUP BY break_id
+            ) bb ON b.id = bb.break_id
+            WHERE b.max_users > IFNULL(bb.booking_count, 0)
             ORDER BY b.start_time
         """, (date,))
         return cursor.fetchall()
@@ -639,7 +645,7 @@ def book_break_slot(break_id, user_id, username, booking_date):
         st.error("System is currently locked. Please contact the developer.")
         return False
         
-    conn = sqlite3.connect("data/requests.db")
+    conn = get_db_connection()
     try:
         cursor = conn.cursor()
         cursor.execute("""
@@ -653,7 +659,7 @@ def book_break_slot(break_id, user_id, username, booking_date):
         conn.close()
 
 def get_user_bookings(username, date):
-    conn = sqlite3.connect("data/requests.db")
+    conn = get_db_connection()
     try:
         cursor = conn.cursor()
         cursor.execute("""
@@ -667,7 +673,7 @@ def get_user_bookings(username, date):
         conn.close()
 
 def get_all_bookings(date):
-    conn = sqlite3.connect("data/requests.db")
+    conn = get_db_connection()
     try:
         cursor = conn.cursor()
         cursor.execute("""
@@ -687,7 +693,7 @@ def delete_break_slot(break_id):
         st.error("System is currently locked. Please contact the developer.")
         return False
         
-    conn = sqlite3.connect("data/requests.db")
+    conn = get_db_connection()
     try:
         cursor = conn.cursor()
         cursor.execute("DELETE FROM breaks WHERE id = ?", (break_id,))
@@ -702,7 +708,7 @@ def clear_all_break_bookings():
         st.error("System is currently locked. Please contact the developer.")
         return False
         
-    conn = sqlite3.connect("data/requests.db")
+    conn = get_db_connection()
     try:
         cursor = conn.cursor()
         cursor.execute("DELETE FROM break_bookings")
@@ -716,7 +722,7 @@ def add_late_login(agent_name, presence_time, login_time, reason):
         st.error("System is currently locked. Please contact the developer.")
         return False
         
-    conn = sqlite3.connect("data/requests.db")
+    conn = get_db_connection()
     try:
         cursor = conn.cursor()
         cursor.execute("""
@@ -730,7 +736,7 @@ def add_late_login(agent_name, presence_time, login_time, reason):
         conn.close()
 
 def get_late_logins():
-    conn = sqlite3.connect("data/requests.db")
+    conn = get_db_connection()
     try:
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM late_logins ORDER BY timestamp DESC")
@@ -743,7 +749,7 @@ def add_quality_issue(agent_name, issue_type, timing, mobile_number, product):
         st.error("System is currently locked. Please contact the developer.")
         return False
         
-    conn = sqlite3.connect("data/requests.db")
+    conn = get_db_connection()
     try:
         cursor = conn.cursor()
         cursor.execute("""
@@ -757,7 +763,7 @@ def add_quality_issue(agent_name, issue_type, timing, mobile_number, product):
         conn.close()
 
 def get_quality_issues():
-    conn = sqlite3.connect("data/requests.db")
+    conn = get_db_connection()
     try:
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM quality_issues ORDER BY timestamp DESC")
@@ -770,7 +776,7 @@ def add_midshift_issue(agent_name, issue_type, start_time, end_time):
         st.error("System is currently locked. Please contact the developer.")
         return False
         
-    conn = sqlite3.connect("data/requests.db")
+    conn = get_db_connection()
     try:
         cursor = conn.cursor()
         cursor.execute("""
@@ -784,7 +790,7 @@ def add_midshift_issue(agent_name, issue_type, start_time, end_time):
         conn.close()
 
 def get_midshift_issues():
-    conn = sqlite3.connect("data/requests.db")
+    conn = get_db_connection()
     try:
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM midshift_issues ORDER BY timestamp DESC")
@@ -797,7 +803,7 @@ def clear_late_logins():
         st.error("System is currently locked. Please contact the developer.")
         return False
         
-    conn = sqlite3.connect("data/requests.db")
+    conn = get_db_connection()
     try:
         cursor = conn.cursor()
         cursor.execute("DELETE FROM late_logins")
@@ -811,7 +817,7 @@ def clear_quality_issues():
         st.error("System is currently locked. Please contact the developer.")
         return False
         
-    conn = sqlite3.connect("data/requests.db")
+    conn = get_db_connection()
     try:
         cursor = conn.cursor()
         cursor.execute("DELETE FROM quality_issues")
@@ -825,7 +831,7 @@ def clear_midshift_issues():
         st.error("System is currently locked. Please contact the developer.")
         return False
         
-    conn = sqlite3.connect("data/requests.db")
+    conn = get_db_connection()
     try:
         cursor = conn.cursor()
         cursor.execute("DELETE FROM midshift_issues")
@@ -885,6 +891,9 @@ st.markdown("""
         padding: 1rem;
         border-radius: 8px;
         margin-bottom: 1rem;
+    }
+    .stTimeInput > div > div > input {
+        padding: 0.5rem;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -1122,8 +1131,8 @@ else:
                 with st.form("add_break_form"):
                     cols = st.columns(3)
                     break_name = cols[0].text_input("Break Name")
-                    start_time = cols[1].time_input("Start Time")
-                    end_time = cols[2].time_input("End Time")
+                    start_time = cols[1].time_input("Start Time", step=60)
+                    end_time = cols[2].time_input("End Time", step=60)
                     max_users = st.number_input("Max Users", min_value=1, value=1)
                     
                     if st.form_submit_button("Add Break Slot"):
@@ -1170,13 +1179,13 @@ else:
                         )
                     with cols[1]:
                         st.session_state.break_edits[b_id]["start_time"] = st.text_input(
-                            "Start Time", 
+                            "Start Time (HH:MM)", 
                             value=st.session_state.break_edits[b_id]["start_time"],
                             key=f"start_{b_id}"
                         )
                     with cols[2]:
                         st.session_state.break_edits[b_id]["end_time"] = st.text_input(
-                            "End Time", 
+                            "End Time (HH:MM)", 
                             value=st.session_state.break_edits[b_id]["end_time"],
                             key=f"end_{b_id}"
                         )
@@ -1197,13 +1206,20 @@ else:
             # Single save button for all changes
             if st.button("💾 Save All Changes"):
                 for b_id, edits in st.session_state.break_edits.items():
-                    update_break_slot(
-                        b_id,
-                        edits["break_name"],
-                        edits["start_time"],
-                        edits["end_time"],
-                        edits["max_users"]
-                    )
+                    # Validate time format
+                    try:
+                        datetime.strptime(edits["start_time"], "%H:%M")
+                        datetime.strptime(edits["end_time"], "%H:%M")
+                        update_break_slot(
+                            b_id,
+                            edits["break_name"],
+                            edits["start_time"],
+                            edits["end_time"],
+                            edits["max_users"]
+                        )
+                    except ValueError:
+                        st.error(f"Invalid time format for break ID {b_id}. Please use HH:MM format.")
+                        continue
                 st.success("All changes saved successfully!")
                 st.rerun()
             
@@ -1229,7 +1245,7 @@ else:
                 for b in available_breaks:
                     b_id, name, start, end, max_u, curr_u, created_by, ts = b
                     
-                    conn = sqlite3.connect("data/requests.db")
+                    conn = get_db_connection()
                     cursor = conn.cursor()
                     cursor.execute("""
                         SELECT COUNT(*) 
@@ -1247,7 +1263,7 @@ else:
                         cols[1].write(f"Available slots: {remaining}/{max_u}")
                         
                         if cols[2].button("Book", key=f"book_{b_id}"):
-                            conn = sqlite3.connect("data/requests.db")
+                            conn = get_db_connection()
                             cursor = conn.cursor()
                             cursor.execute("SELECT id FROM users WHERE username = ?", 
                                          (st.session_state.username,))
@@ -1355,8 +1371,8 @@ else:
         if not is_killswitch_enabled():
             with st.form("late_login_form"):
                 cols = st.columns(3)
-                presence_time = cols[0].time_input("Time of presence")
-                login_time = cols[1].time_input("Time of log in")
+                presence_time = cols[0].time_input("Time of presence", step=60)
+                login_time = cols[1].time_input("Time of log in", step=60)
                 reason = cols[2].selectbox("Reason", [
                     "Workspace Issue",
                     "Avaya Issue",
@@ -1438,7 +1454,7 @@ else:
                     "Call Drop From Workspace",
                     "Wrong Space Frozen"
                 ])
-                timing = cols[1].time_input("Timing")
+                timing = cols[1].time_input("Timing", step=60)
                 mobile_number = cols[2].text_input("Mobile number")
                 product = cols[3].selectbox("Product", [
                     "LM_CS_LMUSA_EN",
@@ -1523,8 +1539,8 @@ else:
                     "Aaad Tool",
                     "Disconnected Avaya"
                 ])
-                start_time = cols[1].time_input("Start time")
-                end_time = cols[2].time_input("End time")
+                start_time = cols[1].time_input("Start time", step=60)
+                end_time = cols[2].time_input("End time", step=60)
                 
                 if st.form_submit_button("Submit"):
                     add_midshift_issue(
