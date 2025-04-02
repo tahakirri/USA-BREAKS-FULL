@@ -134,7 +134,6 @@ def init_db():
                 FOREIGN KEY(request_id) REFERENCES requests(id))
         """)
         
-        # New tables for the additional sections
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS late_logins (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -895,6 +894,9 @@ st.markdown("""
     .stTimeInput > div > div > input {
         padding: 0.5rem;
     }
+    .time-input {
+        font-family: monospace;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -1131,20 +1133,27 @@ else:
                 with st.form("add_break_form"):
                     cols = st.columns(3)
                     break_name = cols[0].text_input("Break Name")
-                    start_time = cols[1].time_input("Start Time", step=60)
-                    end_time = cols[2].time_input("End Time", step=60)
+                    start_time = cols[1].text_input("Start Time (HH:MM)")
+                    end_time = cols[2].text_input("End Time (HH:MM)")
                     max_users = st.number_input("Max Users", min_value=1, value=1)
                     
                     if st.form_submit_button("Add Break Slot"):
                         if break_name:
-                            add_break_slot(
-                                break_name,
-                                start_time.strftime("%H:%M"),
-                                end_time.strftime("%H:%M"),
-                                max_users,
-                                st.session_state.username
-                            )
-                            st.rerun()
+                            try:
+                                # Validate time formats
+                                datetime.strptime(start_time, "%H:%M")
+                                datetime.strptime(end_time, "%H:%M")
+                                add_break_slot(
+                                    break_name,
+                                    start_time,
+                                    end_time,
+                                    max_users,
+                                    st.session_state.username
+                                )
+                                st.success("Break slot added successfully!")
+                                st.rerun()
+                            except ValueError:
+                                st.error("Invalid time format. Please use HH:MM format (e.g., 08:30)")
             
             st.subheader("Current Break Schedule")
             breaks = get_all_break_slots()
@@ -1205,9 +1214,10 @@ else:
             
             # Single save button for all changes
             if st.button("💾 Save All Changes"):
+                errors = []
                 for b_id, edits in st.session_state.break_edits.items():
-                    # Validate time format
                     try:
+                        # Validate time format
                         datetime.strptime(edits["start_time"], "%H:%M")
                         datetime.strptime(edits["end_time"], "%H:%M")
                         update_break_slot(
@@ -1217,21 +1227,29 @@ else:
                             edits["end_time"],
                             edits["max_users"]
                         )
-                    except ValueError:
-                        st.error(f"Invalid time format for break ID {b_id}. Please use HH:MM format.")
+                    except ValueError as e:
+                        errors.append(f"Break ID {b_id}: Invalid time format. Please use HH:MM format.")
                         continue
-                st.success("All changes saved successfully!")
-                st.rerun()
+                
+                if errors:
+                    for error in errors:
+                        st.error(error)
+                else:
+                    st.success("All changes saved successfully!")
+                    st.rerun()
             
             st.markdown("---")
             st.subheader("All Bookings for Selected Date")
-            bookings = get_all_bookings(formatted_date)
-            if bookings:
-                for b in bookings:
-                    b_id, break_id, user_id, username, date, ts, break_name, start, end, role = b
-                    st.write(f"{username} ({role}) - {break_name} ({start} - {end})")
-            else:
-                st.info("No bookings for selected date")
+            try:
+                bookings = get_all_bookings(formatted_date)
+                if bookings:
+                    for b in bookings:
+                        b_id, break_id, user_id, username, date, ts, break_name, start, end, role = b
+                        st.write(f"{username} ({role}) - {break_name} ({start} - {end})")
+                else:
+                    st.info("No bookings for selected date")
+            except Exception as e:
+                st.error(f"Error loading bookings: {str(e)}")
             
             if st.button("Clear All Bookings", key="clear_all_bookings"):
                 clear_all_break_bookings()
@@ -1239,50 +1257,63 @@ else:
         
         else:
             st.subheader("Available Break Slots")
-            available_breaks = get_available_break_slots(formatted_date)
-            
-            if available_breaks:
-                for b in available_breaks:
-                    b_id, name, start, end, max_u, curr_u, created_by, ts = b
-                    
-                    conn = get_db_connection()
-                    cursor = conn.cursor()
-                    cursor.execute("""
-                        SELECT COUNT(*) 
-                        FROM break_bookings 
-                        WHERE break_id = ? AND booking_date = ?
-                    """, (b_id, formatted_date))
-                    booked_count = cursor.fetchone()[0]
-                    conn.close()
-                    
-                    remaining = max_u - booked_count
-                    
-                    with st.container():
-                        cols = st.columns([3, 2, 1])
-                        cols[0].write(f"*{name}* ({start} - {end})")
-                        cols[1].write(f"Available slots: {remaining}/{max_u}")
+            try:
+                available_breaks = get_available_break_slots(formatted_date)
+                
+                if available_breaks:
+                    for b in available_breaks:
+                        b_id, name, start, end, max_u, curr_u, created_by, ts = b
                         
-                        if cols[2].button("Book", key=f"book_{b_id}"):
+                        try:
                             conn = get_db_connection()
                             cursor = conn.cursor()
-                            cursor.execute("SELECT id FROM users WHERE username = ?", 
-                                         (st.session_state.username,))
-                            user_id = cursor.fetchone()[0]
+                            cursor.execute("""
+                                SELECT COUNT(*) 
+                                FROM break_bookings 
+                                WHERE break_id = ? AND booking_date = ?
+                            """, (b_id, formatted_date))
+                            booked_count = cursor.fetchone()[0]
+                            remaining = max_u - booked_count
+                        except Exception as e:
+                            st.error(f"Error checking availability: {str(e)}")
+                            continue
+                        finally:
                             conn.close()
+                        
+                        with st.container():
+                            cols = st.columns([3, 2, 1])
+                            cols[0].write(f"*{name}* ({start} - {end})")
+                            cols[1].write(f"Available slots: {remaining}/{max_u}")
                             
-                            book_break_slot(b_id, user_id, st.session_state.username, formatted_date)
-                            st.rerun()
+                            if cols[2].button("Book", key=f"book_{b_id}"):
+                                try:
+                                    conn = get_db_connection()
+                                    cursor = conn.cursor()
+                                    cursor.execute("SELECT id FROM users WHERE username = ?", 
+                                                (st.session_state.username,))
+                                    user_id = cursor.fetchone()[0]
+                                    book_break_slot(b_id, user_id, st.session_state.username, formatted_date)
+                                    st.rerun()
+                                except Exception as e:
+                                    st.error(f"Error booking slot: {str(e)}")
+                                finally:
+                                    conn.close()
+            except Exception as e:
+                st.error(f"Error loading break slots: {str(e)}")
             
             st.markdown("---")
             st.subheader("Your Bookings")
-            user_bookings = get_user_bookings(st.session_state.username, formatted_date)
-            
-            if user_bookings:
-                for b in user_bookings:
-                    b_id, break_id, user_id, username, date, ts, break_name, start, end = b
-                    st.write(f"{break_name} ({start} - {end})")
-            else:
-                st.info("You have no bookings for selected date")
+            try:
+                user_bookings = get_user_bookings(st.session_state.username, formatted_date)
+                
+                if user_bookings:
+                    for b in user_bookings:
+                        b_id, break_id, user_id, username, date, ts, break_name, start, end = b
+                        st.write(f"{break_name} ({start} - {end})")
+                else:
+                    st.info("You have no bookings for selected date")
+            except Exception as e:
+                st.error(f"Error loading your bookings: {str(e)}")
 
     elif st.session_state.current_section == "mistakes":
         if not is_killswitch_enabled():
@@ -1371,8 +1402,8 @@ else:
         if not is_killswitch_enabled():
             with st.form("late_login_form"):
                 cols = st.columns(3)
-                presence_time = cols[0].time_input("Time of presence", step=60)
-                login_time = cols[1].time_input("Time of log in", step=60)
+                presence_time = cols[0].text_input("Time of presence (HH:MM)", placeholder="08:30")
+                login_time = cols[1].text_input("Time of log in (HH:MM)", placeholder="09:15")
                 reason = cols[2].selectbox("Reason", [
                     "Workspace Issue",
                     "Avaya Issue",
@@ -1382,13 +1413,19 @@ else:
                 ])
                 
                 if st.form_submit_button("Submit"):
-                    add_late_login(
-                        st.session_state.username,
-                        presence_time.strftime("%H:%M"),
-                        login_time.strftime("%H:%M"),
-                        reason
-                    )
-                    st.success("Late login reported successfully!")
+                    # Validate time formats
+                    try:
+                        datetime.strptime(presence_time, "%H:%M")
+                        datetime.strptime(login_time, "%H:%M")
+                        add_late_login(
+                            st.session_state.username,
+                            presence_time,
+                            login_time,
+                            reason
+                        )
+                        st.success("Late login reported successfully!")
+                    except ValueError:
+                        st.error("Invalid time format. Please use HH:MM format (e.g., 08:30)")
         
         st.subheader("Late Login Records")
         late_logins = get_late_logins()
@@ -1454,7 +1491,7 @@ else:
                     "Call Drop From Workspace",
                     "Wrong Space Frozen"
                 ])
-                timing = cols[1].time_input("Timing", step=60)
+                timing = cols[1].text_input("Timing (HH:MM)", placeholder="14:30")
                 mobile_number = cols[2].text_input("Mobile number")
                 product = cols[3].selectbox("Product", [
                     "LM_CS_LMUSA_EN",
@@ -1462,14 +1499,18 @@ else:
                 ])
                 
                 if st.form_submit_button("Submit"):
-                    add_quality_issue(
-                        st.session_state.username,
-                        issue_type,
-                        timing.strftime("%H:%M"),
-                        mobile_number,
-                        product
-                    )
-                    st.success("Quality issue reported successfully!")
+                    try:
+                        datetime.strptime(timing, "%H:%M")
+                        add_quality_issue(
+                            st.session_state.username,
+                            issue_type,
+                            timing,
+                            mobile_number,
+                            product
+                        )
+                        st.success("Quality issue reported successfully!")
+                    except ValueError:
+                        st.error("Invalid time format. Please use HH:MM format (e.g., 14:30)")
         
         st.subheader("Quality Issue Records")
         quality_issues = get_quality_issues()
@@ -1539,17 +1580,22 @@ else:
                     "Aaad Tool",
                     "Disconnected Avaya"
                 ])
-                start_time = cols[1].time_input("Start time", step=60)
-                end_time = cols[2].time_input("End time", step=60)
+                start_time = cols[1].text_input("Start time (HH:MM)", placeholder="10:00")
+                end_time = cols[2].text_input("End time (HH:MM)", placeholder="10:30")
                 
                 if st.form_submit_button("Submit"):
-                    add_midshift_issue(
-                        st.session_state.username,
-                        issue_type,
-                        start_time.strftime("%H:%M"),
-                        end_time.strftime("%H:%M")
-                    )
-                    st.success("Mid-shift issue reported successfully!")
+                    try:
+                        datetime.strptime(start_time, "%H:%M")
+                        datetime.strptime(end_time, "%H:%M")
+                        add_midshift_issue(
+                            st.session_state.username,
+                            issue_type,
+                            start_time,
+                            end_time
+                        )
+                        st.success("Mid-shift issue reported successfully!")
+                    except ValueError:
+                        st.error("Invalid time format. Please use HH:MM format (e.g., 10:00)")
         
         st.subheader("Mid-shift Issue Records")
         midshift_issues = get_midshift_issues()
