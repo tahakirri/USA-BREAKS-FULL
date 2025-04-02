@@ -593,7 +593,7 @@ def clear_all_group_messages():
         conn.close()
 
 # --------------------------
-# Break Scheduling Functions
+# Break Scheduling Functions (from your provided code)
 # --------------------------
 
 def get_break_templates():
@@ -1365,7 +1365,8 @@ if "authenticated" not in st.session_state:
         "last_request_count": 0,
         "last_mistake_count": 0,
         "last_message_ids": [],
-        "timezone_offset": 0
+        "timezone_offset": 0,
+        "selected_date": datetime.now().strftime("%Y-%m-%d")
     })
 
 init_db()
