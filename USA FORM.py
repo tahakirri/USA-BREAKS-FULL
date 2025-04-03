@@ -885,7 +885,13 @@ def is_fancy_number(phone_number):
     # All same digits (666666)
     if len(set(last_six)) == 1:
         patterns.append("6 identical digits")
-        
+
+    if (len(last_six) >= 6 and 
+    last_six[0] == 3 and last_six[1] == 2 and 
+    last_six[2] == 4 and last_six[3] == 2 and 
+    last_six[4] == 5 and last_six[5] == 2):
+    patterns.append("32 42 52 pattern")
+    
     # Consecutive ascending (123456)
     if is_sequential(last_six, 1):
         patterns.append("6-digit ascending sequence")
