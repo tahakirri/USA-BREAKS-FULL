@@ -1769,7 +1769,7 @@ else:
             clear_all_break_bookings()
             st.rerun()
     
-    else:
+    else:  # This should be aligned with the if statement above it
         # Agent view
         st.subheader("Available Break Slots")
         try:
