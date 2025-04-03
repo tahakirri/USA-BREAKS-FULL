@@ -7,6 +7,7 @@ import re
 from PIL import Image
 import io
 import pandas as pd
+import json
 
 # --------------------------
 # Database Functions
@@ -101,6 +102,7 @@ def init_db():
                 cursor.execute("ALTER TABLE system_settings ADD COLUMN chat_killswitch_enabled INTEGER DEFAULT 0")
                 cursor.execute("UPDATE system_settings SET chat_killswitch_enabled = 0 WHERE id = 1")
         
+        # Create breaks tables
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS breaks (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -123,6 +125,65 @@ def init_db():
                 timestamp TEXT,
                 FOREIGN KEY(break_id) REFERENCES breaks(id))
         """)
+        
+        # Create break templates tables
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS break_templates (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT UNIQUE,
+                lunch_breaks TEXT,
+                early_tea_breaks TEXT,
+                late_tea_breaks TEXT)
+        """)
+        
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS break_limits (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                template_name TEXT,
+                break_type TEXT,
+                break_time TEXT,
+                max_users INTEGER,
+                FOREIGN KEY(template_name) REFERENCES break_templates(name))
+        """)
+        
+        # Create default template if none exists
+        cursor.execute("SELECT COUNT(*) FROM break_templates")
+        if cursor.fetchone()[0] == 0:
+            cursor.execute("""
+                INSERT INTO break_templates (name, lunch_breaks, early_tea_breaks, late_tea_breaks)
+                VALUES (?, ?, ?, ?)
+            """, (
+                "Default Schedule",
+                json.dumps(["19:30", "20:00", "20:30", "21:00", "21:30"]),
+                json.dumps(["16:00", "16:15", "16:30", "16:45", "17:00", "17:15", "17:30"]),
+                json.dumps(["21:45", "22:00", "22:15", "22:30"])
+            ))
+            
+            # Create default limits
+            default_limits = [
+                ("Default Schedule", "lunch", "19:30", 2),
+                ("Default Schedule", "lunch", "20:00", 2),
+                ("Default Schedule", "lunch", "20:30", 2),
+                ("Default Schedule", "lunch", "21:00", 2),
+                ("Default Schedule", "lunch", "21:30", 1),
+                ("Default Schedule", "early_tea", "16:00", 2),
+                ("Default Schedule", "early_tea", "16:15", 2),
+                ("Default Schedule", "early_tea", "16:30", 2),
+                ("Default Schedule", "early_tea", "16:45", 2),
+                ("Default Schedule", "early_tea", "17:00", 2),
+                ("Default Schedule", "early_tea", "17:15", 2),
+                ("Default Schedule", "early_tea", "17:30", 1),
+                ("Default Schedule", "late_tea", "21:45", 3),
+                ("Default Schedule", "late_tea", "22:00", 3),
+                ("Default Schedule", "late_tea", "22:15", 2),
+                ("Default Schedule", "late_tea", "22:30", 2)
+            ]
+            
+            for limit in default_limits:
+                cursor.execute("""
+                    INSERT INTO break_limits (template_name, break_type, break_time, max_users)
+                    VALUES (?, ?, ?, ?)
+                """, limit)
         
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS request_comments (
@@ -582,11 +643,12 @@ def add_break_slot(break_name, start_time, end_time, max_users, created_by):
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         cursor.execute("""
             INSERT INTO breaks (break_name, start_time, end_time, max_users, created_by, timestamp) 
             VALUES (?, ?, ?, ?, ?, ?)
         """, (break_name, start_time, end_time, max_users, created_by,
-             datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+             timestamp))
         conn.commit()
         return True
     finally:
@@ -711,6 +773,165 @@ def clear_all_break_bookings():
     try:
         cursor = conn.cursor()
         cursor.execute("DELETE FROM break_bookings")
+        conn.commit()
+        return True
+    finally:
+        conn.close()
+
+def get_break_templates():
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM break_templates")
+        return cursor.fetchall()
+    finally:
+        conn.close()
+
+def get_break_limits(template_name):
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT * FROM break_limits 
+            WHERE template_name = ?
+            ORDER BY break_type, break_time
+        """, (template_name,))
+        return cursor.fetchall()
+    finally:
+        conn.close()
+
+def add_break_template(name, lunch_breaks, early_tea_breaks, late_tea_breaks):
+    if is_killswitch_enabled():
+        st.error("System is currently locked. Please contact the developer.")
+        return False
+        
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO break_templates (name, lunch_breaks, early_tea_breaks, late_tea_breaks)
+            VALUES (?, ?, ?, ?)
+        """, (name, json.dumps(lunch_breaks), json.dumps(early_tea_breaks), json.dumps(late_tea_breaks)))
+        conn.commit()
+        return True
+    finally:
+        conn.close()
+
+def add_break_limit(template_name, break_type, break_time, max_users):
+    if is_killswitch_enabled():
+        st.error("System is currently locked. Please contact the developer.")
+        return False
+        
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO break_limits (template_name, break_type, break_time, max_users)
+            VALUES (?, ?, ?, ?)
+        """, (template_name, break_type, break_time, max_users))
+        conn.commit()
+        return True
+    finally:
+        conn.close()
+
+def delete_break_template(template_name):
+    if is_killswitch_enabled():
+        st.error("System is currently locked. Please contact the developer.")
+        return False
+        
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM break_templates WHERE name = ?", (template_name,))
+        cursor.execute("DELETE FROM break_limits WHERE template_name = ?", (template_name,))
+        conn.commit()
+        return True
+    finally:
+        conn.close()
+
+def apply_break_template(template_name):
+    if is_killswitch_enabled():
+        st.error("System is currently locked. Please contact the developer.")
+        return False
+        
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        
+        # Clear existing breaks
+        cursor.execute("DELETE FROM breaks")
+        cursor.execute("DELETE FROM break_bookings")
+        
+        # Get template data
+        cursor.execute("SELECT * FROM break_templates WHERE name = ?", (template_name,))
+        template = cursor.fetchone()
+        if not template:
+            return False
+            
+        _, name, lunch_breaks, early_tea_breaks, late_tea_breaks = template
+        lunch_breaks = json.loads(lunch_breaks)
+        early_tea_breaks = json.loads(early_tea_breaks)
+        late_tea_breaks = json.loads(late_tea_breaks)
+        
+        # Get limits
+        limits = get_break_limits(template_name)
+        
+        # Create breaks from template
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        
+        # Lunch breaks (30 minutes)
+        for time_str in lunch_breaks:
+            # Find max users for this break
+            max_users = 1
+            for limit in limits:
+                if limit[2] == "lunch" and limit[3] == time_str:
+                    max_users = limit[4]
+                    break
+            
+            # Calculate end time (30 minutes later)
+            start_time = datetime.strptime(time_str, "%H:%M")
+            end_time = (start_time + timedelta(minutes=30)).strftime("%H:%M")
+            
+            cursor.execute("""
+                INSERT INTO breaks (break_name, start_time, end_time, max_users, created_by, timestamp)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, ("Lunch Break", time_str, end_time, max_users, "System", timestamp))
+        
+        # Tea breaks (15 minutes)
+        for time_str in early_tea_breaks:
+            # Find max users for this break
+            max_users = 1
+            for limit in limits:
+                if limit[2] == "early_tea" and limit[3] == time_str:
+                    max_users = limit[4]
+                    break
+            
+            # Calculate end time (15 minutes later)
+            start_time = datetime.strptime(time_str, "%H:%M")
+            end_time = (start_time + timedelta(minutes=15)).strftime("%H:%M")
+            
+            cursor.execute("""
+                INSERT INTO breaks (break_name, start_time, end_time, max_users, created_by, timestamp)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, ("Early Tea Break", time_str, end_time, max_users, "System", timestamp))
+        
+        for time_str in late_tea_breaks:
+            # Find max users for this break
+            max_users = 1
+            for limit in limits:
+                if limit[2] == "late_tea" and limit[3] == time_str:
+                    max_users = limit[4]
+                    break
+            
+            # Calculate end time (15 minutes later)
+            start_time = datetime.strptime(time_str, "%H:%M")
+            end_time = (start_time + timedelta(minutes=15)).strftime("%H:%M")
+            
+            cursor.execute("""
+                INSERT INTO breaks (break_name, start_time, end_time, max_users, created_by, timestamp)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, ("Late Tea Break", time_str, end_time, max_users, "System", timestamp))
+        
         conn.commit()
         return True
     finally:
@@ -1272,6 +1493,79 @@ else:
         
         if st.session_state.role == "admin":
             st.subheader("Admin: Break Schedule Management")
+            
+            with st.expander("📋 Break Templates"):
+                templates = get_break_templates()
+                
+                if templates:
+                    selected_template = st.selectbox("Select Template", [t[1] for t in templates])
+                    
+                    if st.button("Apply Template"):
+                        if apply_break_template(selected_template):
+                            st.success(f"Applied {selected_template} template!")
+                            st.rerun()
+                    
+                    if st.button("Delete Template"):
+                        if delete_break_template(selected_template):
+                            st.success(f"Deleted {selected_template} template!")
+                            st.rerun()
+                    
+                    st.markdown("---")
+                    st.subheader("Template Details")
+                    for template in templates:
+                        if template[1] == selected_template:
+                            t_id, name, lunch_breaks, early_tea_breaks, late_tea_breaks = template
+                            
+                            st.write(f"### {name}")
+                            
+                            col1, col2, col3 = st.columns(3)
+                            with col1:
+                                st.write("**Lunch Breaks**")
+                                for time_str in json.loads(lunch_breaks):
+                                    st.write(f"- {time_str}")
+                            with col2:
+                                st.write("**Early Tea Breaks**")
+                                for time_str in json.loads(early_tea_breaks):
+                                    st.write(f"- {time_str}")
+                            with col3:
+                                st.write("**Late Tea Breaks**")
+                                for time_str in json.loads(late_tea_breaks):
+                                    st.write(f"- {time_str}")
+                            
+                            st.markdown("---")
+                            st.write("**Break Limits**")
+                            limits = get_break_limits(selected_template)
+                            for limit in limits:
+                                _, template_name, break_type, break_time, max_users = limit
+                                st.write(f"{break_type} at {break_time}: {max_users} users")
+                            break
+                else:
+                    st.info("No break templates available")
+                
+                with st.expander("➕ Create New Template"):
+                    with st.form("new_template_form"):
+                        name = st.text_input("Template Name")
+                        
+                        col1, col2, col3 = st.columns(3)
+                        with col1:
+                            lunch_breaks = st.text_area("Lunch Breaks (HH:MM, one per line)", 
+                                                      "19:30\n20:00\n20:30\n21:00\n21:30")
+                        with col2:
+                            early_tea_breaks = st.text_area("Early Tea Breaks (HH:MM, one per line)", 
+                                                           "16:00\n16:15\n16:30\n16:45\n17:00\n17:15\n17:30")
+                        with col3:
+                            late_tea_breaks = st.text_area("Late Tea Breaks (HH:MM, one per line)", 
+                                                          "21:45\n22:00\n22:15\n22:30")
+                        
+                        if st.form_submit_button("Create Template"):
+                            if name:
+                                lunch_list = [t.strip() for t in lunch_breaks.split('\n') if t.strip()]
+                                early_tea_list = [t.strip() for t in early_tea_breaks.split('\n') if t.strip()]
+                                late_tea_list = [t.strip() for t in late_tea_breaks.split('\n') if t.strip()]
+                                
+                                if add_break_template(name, lunch_list, early_tea_list, late_tea_list):
+                                    st.success("Template created successfully!")
+                                    st.rerun()
             
             with st.expander("➕ Add New Break Slot"):
                 with st.form("add_break_form"):
