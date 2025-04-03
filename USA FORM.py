@@ -1487,9 +1487,9 @@ else:
         st.bar_chart(type_counts.set_index('Type'))
 
     elif st.session_state.current_section == "breaks":
-    today = datetime.now().strftime("%Y-%m-%d")
-    selected_date = st.date_input("Select date", datetime.now())
-    formatted_date = selected_date.strftime("%Y-%m-%d")
+        today = datetime.now().strftime("%Y-%m-%d")
+        selected_date = st.date_input("Select date", datetime.now())
+        formatted_date = selected_date.strftime("%Y-%m-%d")
     
     if st.session_state.role == "admin":
         st.subheader("Admin: Break Schedule Management")
