@@ -7,7 +7,6 @@ import re
 from PIL import Image
 import io
 import pandas as pd
-import json
 
 # --------------------------
 # Database Functions
@@ -102,7 +101,6 @@ def init_db():
                 cursor.execute("ALTER TABLE system_settings ADD COLUMN chat_killswitch_enabled INTEGER DEFAULT 0")
                 cursor.execute("UPDATE system_settings SET chat_killswitch_enabled = 0 WHERE id = 1")
         
-        # Create breaks tables
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS breaks (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -125,65 +123,6 @@ def init_db():
                 timestamp TEXT,
                 FOREIGN KEY(break_id) REFERENCES breaks(id))
         """)
-        
-        # Create break templates tables
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS break_templates (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT UNIQUE,
-                lunch_breaks TEXT,
-                early_tea_breaks TEXT,
-                late_tea_breaks TEXT)
-        """)
-        
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS break_limits (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                template_name TEXT,
-                break_type TEXT,
-                break_time TEXT,
-                max_users INTEGER,
-                FOREIGN KEY(template_name) REFERENCES break_templates(name))
-        """)
-        
-        # Create default template if none exists
-        cursor.execute("SELECT COUNT(*) FROM break_templates")
-        if cursor.fetchone()[0] == 0:
-            cursor.execute("""
-                INSERT INTO break_templates (name, lunch_breaks, early_tea_breaks, late_tea_breaks)
-                VALUES (?, ?, ?, ?)
-            """, (
-                "Default Schedule",
-                json.dumps(["19:30", "20:00", "20:30", "21:00", "21:30"]),
-                json.dumps(["16:00", "16:15", "16:30", "16:45", "17:00", "17:15", "17:30"]),
-                json.dumps(["21:45", "22:00", "22:15", "22:30"])
-            ))
-            
-            # Create default limits
-            default_limits = [
-                ("Default Schedule", "lunch", "19:30", 2),
-                ("Default Schedule", "lunch", "20:00", 2),
-                ("Default Schedule", "lunch", "20:30", 2),
-                ("Default Schedule", "lunch", "21:00", 2),
-                ("Default Schedule", "lunch", "21:30", 1),
-                ("Default Schedule", "early_tea", "16:00", 2),
-                ("Default Schedule", "early_tea", "16:15", 2),
-                ("Default Schedule", "early_tea", "16:30", 2),
-                ("Default Schedule", "early_tea", "16:45", 2),
-                ("Default Schedule", "early_tea", "17:00", 2),
-                ("Default Schedule", "early_tea", "17:15", 2),
-                ("Default Schedule", "early_tea", "17:30", 1),
-                ("Default Schedule", "late_tea", "21:45", 3),
-                ("Default Schedule", "late_tea", "22:00", 3),
-                ("Default Schedule", "late_tea", "22:15", 2),
-                ("Default Schedule", "late_tea", "22:30", 2)
-            ]
-            
-            for limit in default_limits:
-                cursor.execute("""
-                    INSERT INTO break_limits (template_name, break_type, break_time, max_users)
-                    VALUES (?, ?, ?, ?)
-                """, limit)
         
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS request_comments (
@@ -643,12 +582,11 @@ def add_break_slot(break_name, start_time, end_time, max_users, created_by):
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         cursor.execute("""
             INSERT INTO breaks (break_name, start_time, end_time, max_users, created_by, timestamp) 
             VALUES (?, ?, ?, ?, ?, ?)
         """, (break_name, start_time, end_time, max_users, created_by,
-             timestamp))
+             datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
         conn.commit()
         return True
     finally:
@@ -773,165 +711,6 @@ def clear_all_break_bookings():
     try:
         cursor = conn.cursor()
         cursor.execute("DELETE FROM break_bookings")
-        conn.commit()
-        return True
-    finally:
-        conn.close()
-
-def get_break_templates():
-    conn = get_db_connection()
-    try:
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM break_templates")
-        return cursor.fetchall()
-    finally:
-        conn.close()
-
-def get_break_limits(template_name):
-    conn = get_db_connection()
-    try:
-        cursor = conn.cursor()
-        cursor.execute("""
-            SELECT * FROM break_limits 
-            WHERE template_name = ?
-            ORDER BY break_type, break_time
-        """, (template_name,))
-        return cursor.fetchall()
-    finally:
-        conn.close()
-
-def add_break_template(name, lunch_breaks, early_tea_breaks, late_tea_breaks):
-    if is_killswitch_enabled():
-        st.error("System is currently locked. Please contact the developer.")
-        return False
-        
-    conn = get_db_connection()
-    try:
-        cursor = conn.cursor()
-        cursor.execute("""
-            INSERT INTO break_templates (name, lunch_breaks, early_tea_breaks, late_tea_breaks)
-            VALUES (?, ?, ?, ?)
-        """, (name, json.dumps(lunch_breaks), json.dumps(early_tea_breaks), json.dumps(late_tea_breaks)))
-        conn.commit()
-        return True
-    finally:
-        conn.close()
-
-def add_break_limit(template_name, break_type, break_time, max_users):
-    if is_killswitch_enabled():
-        st.error("System is currently locked. Please contact the developer.")
-        return False
-        
-    conn = get_db_connection()
-    try:
-        cursor = conn.cursor()
-        cursor.execute("""
-            INSERT INTO break_limits (template_name, break_type, break_time, max_users)
-            VALUES (?, ?, ?, ?)
-        """, (template_name, break_type, break_time, max_users))
-        conn.commit()
-        return True
-    finally:
-        conn.close()
-
-def delete_break_template(template_name):
-    if is_killswitch_enabled():
-        st.error("System is currently locked. Please contact the developer.")
-        return False
-        
-    conn = get_db_connection()
-    try:
-        cursor = conn.cursor()
-        cursor.execute("DELETE FROM break_templates WHERE name = ?", (template_name,))
-        cursor.execute("DELETE FROM break_limits WHERE template_name = ?", (template_name,))
-        conn.commit()
-        return True
-    finally:
-        conn.close()
-
-def apply_break_template(template_name):
-    if is_killswitch_enabled():
-        st.error("System is currently locked. Please contact the developer.")
-        return False
-        
-    conn = get_db_connection()
-    try:
-        cursor = conn.cursor()
-        
-        # Clear existing breaks
-        cursor.execute("DELETE FROM breaks")
-        cursor.execute("DELETE FROM break_bookings")
-        
-        # Get template data
-        cursor.execute("SELECT * FROM break_templates WHERE name = ?", (template_name,))
-        template = cursor.fetchone()
-        if not template:
-            return False
-            
-        _, name, lunch_breaks, early_tea_breaks, late_tea_breaks = template
-        lunch_breaks = json.loads(lunch_breaks)
-        early_tea_breaks = json.loads(early_tea_breaks)
-        late_tea_breaks = json.loads(late_tea_breaks)
-        
-        # Get limits
-        limits = get_break_limits(template_name)
-        
-        # Create breaks from template
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        
-        # Lunch breaks (30 minutes)
-        for time_str in lunch_breaks:
-            # Find max users for this break
-            max_users = 1
-            for limit in limits:
-                if limit[2] == "lunch" and limit[3] == time_str:
-                    max_users = limit[4]
-                    break
-            
-            # Calculate end time (30 minutes later)
-            start_time = datetime.strptime(time_str, "%H:%M")
-            end_time = (start_time + timedelta(minutes=30)).strftime("%H:%M")
-            
-            cursor.execute("""
-                INSERT INTO breaks (break_name, start_time, end_time, max_users, created_by, timestamp)
-                VALUES (?, ?, ?, ?, ?, ?)
-            """, ("Lunch Break", time_str, end_time, max_users, "System", timestamp))
-        
-        # Tea breaks (15 minutes)
-        for time_str in early_tea_breaks:
-            # Find max users for this break
-            max_users = 1
-            for limit in limits:
-                if limit[2] == "early_tea" and limit[3] == time_str:
-                    max_users = limit[4]
-                    break
-            
-            # Calculate end time (15 minutes later)
-            start_time = datetime.strptime(time_str, "%H:%M")
-            end_time = (start_time + timedelta(minutes=15)).strftime("%H:%M")
-            
-            cursor.execute("""
-                INSERT INTO breaks (break_name, start_time, end_time, max_users, created_by, timestamp)
-                VALUES (?, ?, ?, ?, ?, ?)
-            """, ("Early Tea Break", time_str, end_time, max_users, "System", timestamp))
-        
-        for time_str in late_tea_breaks:
-            # Find max users for this break
-            max_users = 1
-            for limit in limits:
-                if limit[2] == "late_tea" and limit[3] == time_str:
-                    max_users = limit[4]
-                    break
-            
-            # Calculate end time (15 minutes later)
-            start_time = datetime.strptime(time_str, "%H:%M")
-            end_time = (start_time + timedelta(minutes=15)).strftime("%H:%M")
-            
-            cursor.execute("""
-                INSERT INTO breaks (break_name, start_time, end_time, max_users, created_by, timestamp)
-                VALUES (?, ?, ?, ?, ?, ?)
-            """, ("Late Tea Break", time_str, end_time, max_users, "System", timestamp))
-        
         conn.commit()
         return True
     finally:
@@ -1490,347 +1269,131 @@ else:
         today = datetime.now().strftime("%Y-%m-%d")
         selected_date = st.date_input("Select date", datetime.now())
         formatted_date = selected_date.strftime("%Y-%m-%d")
-    
-    if st.session_state.role == "admin":
-        st.subheader("Admin: Break Schedule Management")
         
-        # Template management section
-        st.write("### 📋 Break Templates")
-        templates = get_break_templates()
-        
-        if templates:
-            selected_template = st.selectbox("Select Template", [t[1] for t in templates])
+        if st.session_state.role == "admin":
+            st.subheader("Admin: Break Schedule Management")
             
-            col1, col2 = st.columns(2)
-            if col1.button("Apply Template"):
-                if apply_break_template(selected_template):
-                    st.success(f"Applied {selected_template} template!")
-                    st.rerun()
-            
-            if col2.button("Delete Template"):
-                if delete_break_template(selected_template):
-                    st.success(f"Deleted {selected_template} template!")
-                    st.rerun()
-            
-            st.write("---")
-            st.write("#### Template Details")
-            for template in templates:
-                if template[1] == selected_template:
-                    t_id, name, lunch_breaks, early_tea_breaks, late_tea_breaks = template
+            with st.expander("➕ Add New Break Slot"):
+                with st.form("add_break_form"):
+                    cols = st.columns(3)
+                    break_name = cols[0].text_input("Break Name")
+                    start_time = cols[1].text_input("Start Time (HH:MM)")
+                    end_time = cols[2].text_input("End Time (HH:MM)")
+                    max_users = st.number_input("Max Users", min_value=1, value=1)
                     
-                    st.write(f"**{name}**")
-                    
-                    col1, col2, col3 = st.columns(3)
-                    with col1:
-                        st.write("**Lunch Breaks**")
-                        for time_str in json.loads(lunch_breaks):
-                            st.write(f"- {time_str}")
-                    with col2:
-                        st.write("**Early Tea Breaks**")
-                        for time_str in json.loads(early_tea_breaks):
-                            st.write(f"- {time_str}")
-                    with col3:
-                        st.write("**Late Tea Breaks**")
-                        for time_str in json.loads(late_tea_breaks):
-                            st.write(f"- {time_str}")
-                    
-                    st.write("---")
-                    st.write("**Break Limits**")
-                    limits = get_break_limits(selected_template)
-                    for limit in limits:
-                        _, template_name, break_type, break_time, max_users = limit
-                        st.write(f"{break_type} at {break_time}: {max_users} users")
-                    break
-        else:
-            st.info("No break templates available")
-        
-        # New template creation form
-        st.write("---")
-        st.write("### ➕ Create New Template")
-        with st.form("new_template_form"):
-            name = st.text_input("Template Name")
+                    if st.form_submit_button("Add Break Slot"):
+                        if break_name:
+                            try:
+                                # Validate time formats
+                                datetime.strptime(start_time, "%H:%M")
+                                datetime.strptime(end_time, "%H:%M")
+                                add_break_slot(
+                                    break_name,
+                                    start_time,
+                                    end_time,
+                                    max_users,
+                                    st.session_state.username
+                                )
+                                st.success("Break slot added successfully!")
+                                st.rerun()
+                            except ValueError:
+                                st.error("Invalid time format. Please use HH:MM format (e.g., 08:30)")
             
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                lunch_breaks = st.text_area("Lunch Breaks (HH:MM, one per line)", 
-                                          "19:30\n20:00\n20:30\n21:00\n21:30")
-            with col2:
-                early_tea_breaks = st.text_area("Early Tea Breaks (HH:MM, one per line)", 
-                                               "16:00\n16:15\n16:30\n16:45\n17:00\n17:15\n17:30")
-            with col3:
-                late_tea_breaks = st.text_area("Late Tea Breaks (HH:MM, one per line)", 
-                                              "21:45\n22:00\n22:15\n22:30")
+            st.subheader("Current Break Schedule")
+            breaks = get_all_break_slots()
             
-            if st.form_submit_button("Create Template"):
-                if name:
-                    lunch_list = [t.strip() for t in lunch_breaks.split('\n') if t.strip()]
-                    early_tea_list = [t.strip() for t in early_tea_breaks.split('\n') if t.strip()]
-                    late_tea_list = [t.strip() for t in late_tea_breaks.split('\n') if t.strip()]
+            # Initialize break_edits if not exists
+            if "break_edits" not in st.session_state:
+                st.session_state.break_edits = {}
+            
+            # Store current edits
+            for b in breaks:
+                b_id, name, start, end, max_u, curr_u, created_by, ts = b
+                if b_id not in st.session_state.break_edits:
+                    st.session_state.break_edits[b_id] = {
+                        "break_name": name,
+                        "start_time": start,
+                        "end_time": end,
+                        "max_users": max_u
+                    }
+            
+            # Display editable breaks
+            for b in breaks:
+                b_id, name, start, end, max_u, curr_u, created_by, ts = b
+                with st.container():
+                    st.markdown(f"<div class='editable-break'>", unsafe_allow_html=True)
                     
-                    if add_break_template(name, lunch_list, early_tea_list, late_tea_list):
-                        st.success("Template created successfully!")
-                        st.rerun()
-        
-        # Manual break slot addition
-        st.write("---")
-        st.write("### ➕ Add New Break Slot")
-        with st.form("add_break_form"):
-            cols = st.columns(3)
-            break_name = cols[0].text_input("Break Name")
-            start_time = cols[1].text_input("Start Time (HH:MM)")
-            end_time = cols[2].text_input("End Time (HH:MM)")
-            max_users = st.number_input("Max Users", min_value=1, value=1)
-            
-            if st.form_submit_button("Add Break Slot"):
-                if break_name:
-                    try:
-                        # Validate time formats
-                        datetime.strptime(start_time, "%H:%M")
-                        datetime.strptime(end_time, "%H:%M")
-                        add_break_slot(
-                            break_name,
-                            start_time,
-                            end_time,
-                            max_users,
-                            st.session_state.username
+                    cols = st.columns([3, 2, 2, 1, 1])
+                    with cols[0]:
+                        st.session_state.break_edits[b_id]["break_name"] = st.text_input(
+                            "Break Name", 
+                            value=st.session_state.break_edits[b_id]["break_name"],
+                            key=f"name_{b_id}"
                         )
-                        st.success("Break slot added successfully!")
-                        st.rerun()
-                    except ValueError:
-                        st.error("Invalid time format. Please use HH:MM format (e.g., 08:30)")
-        
-        # Current break schedule
-        st.write("---")
-        st.write("### Current Break Schedule")
-        breaks = get_all_break_slots()
-        
-        # Initialize break_edits if not exists
-        if "break_edits" not in st.session_state:
-            st.session_state.break_edits = {}
-        
-        # Store current edits
-        for b in breaks:
-            b_id, name, start, end, max_u, curr_u, created_by, ts = b
-            if b_id not in st.session_state.break_edits:
-                st.session_state.break_edits[b_id] = {
-                    "break_name": name,
-                    "start_time": start,
-                    "end_time": end,
-                    "max_users": max_u
-                }
-        
-        # Display editable breaks
-        for b in breaks:
-            b_id, name, start, end, max_u, curr_u, created_by, ts = b
-            with st.container():
-                st.markdown(f"<div class='editable-break'>", unsafe_allow_html=True)
-                
-                cols = st.columns([3, 2, 2, 1, 1])
-                with cols[0]:
-                    st.session_state.break_edits[b_id]["break_name"] = st.text_input(
-                        "Break Name", 
-                        value=st.session_state.break_edits[b_id]["break_name"],
-                        key=f"name_{b_id}"
-                    )
-                with cols[1]:
-                    st.session_state.break_edits[b_id]["start_time"] = st.text_input(
-                        "Start Time (HH:MM)", 
-                        value=st.session_state.break_edits[b_id]["start_time"],
-                        key=f"start_{b_id}"
-                    )
-                with cols[2]:
-                    st.session_state.break_edits[b_id]["end_time"] = st.text_input(
-                        "End Time (HH:MM)", 
-                        value=st.session_state.break_edits[b_id]["end_time"],
-                        key=f"end_{b_id}"
-                    )
-                with cols[3]:
-                    st.session_state.break_edits[b_id]["max_users"] = st.number_input(
-                        "Max Users", 
-                        min_value=1,
-                        value=st.session_state.break_edits[b_id]["max_users"],
-                        key=f"max_{b_id}"
-                    )
-                with cols[4]:
-                    if st.button("❌", key=f"del_{b_id}"):
-                        delete_break_slot(b_id)
-                        st.rerun()
-                
-                st.markdown("</div>", unsafe_allow_html=True)
-        
-        # Single save button for all changes
-        if st.button("💾 Save All Changes"):
-            errors = []
-            for b_id, edits in st.session_state.break_edits.items():
-                try:
-                    # Validate time format
-                    datetime.strptime(edits["start_time"], "%H:%M")
-                    datetime.strptime(edits["end_time"], "%H:%M")
-                    update_break_slot(
-                        b_id,
-                        edits["break_name"],
-                        edits["start_time"],
-                        edits["end_time"],
-                        edits["max_users"]
-                    )
-                except ValueError as e:
-                    errors.append(f"Break ID {b_id}: Invalid time format. Please use HH:MM format.")
-                    continue
-            
-            if errors:
-                for error in errors:
-                    st.error(error)
-            else:
-                st.success("All changes saved successfully!")
-                st.rerun()
-        
-        # All bookings view
-        st.write("---")
-        st.write("### All Bookings for Selected Date")
-        try:
-            bookings = get_all_bookings(formatted_date)
-            if bookings:
-                for b in bookings:
-                    b_id, break_id, user_id, username, date, ts, break_name, start, end, role = b
-                    st.write(f"{username} ({role}) - {break_name} ({start} - {end})")
-            else:
-                st.info("No bookings for selected date")
-        except Exception as e:
-            st.error(f"Error loading bookings: {str(e)}")
-        
-        if st.button("Clear All Bookings", key="clear_all_bookings"):
-            clear_all_break_bookings()
-            st.rerun()
-    
-    else:
-        # Agent view
-        st.subheader("Available Break Slots")
-        try:
-            available_breaks = get_available_break_slots(formatted_date)
-            
-            if available_breaks:
-                for b in available_breaks:
-                    b_id, name, start, end, max_u, curr_u, created_by, ts = b
+                    with cols[1]:
+                        st.session_state.break_edits[b_id]["start_time"] = st.text_input(
+                            "Start Time (HH:MM)", 
+                            value=st.session_state.break_edits[b_id]["start_time"],
+                            key=f"start_{b_id}"
+                        )
+                    with cols[2]:
+                        st.session_state.break_edits[b_id]["end_time"] = st.text_input(
+                            "End Time (HH:MM)", 
+                            value=st.session_state.break_edits[b_id]["end_time"],
+                            key=f"end_{b_id}"
+                        )
+                    with cols[3]:
+                        st.session_state.break_edits[b_id]["max_users"] = st.number_input(
+                            "Max Users", 
+                            min_value=1,
+                            value=st.session_state.break_edits[b_id]["max_users"],
+                            key=f"max_{b_id}"
+                        )
+                    with cols[4]:
+                        if st.button("❌", key=f"del_{b_id}"):
+                            delete_break_slot(b_id)
+                            st.rerun()
                     
+                    st.markdown("</div>", unsafe_allow_html=True)
+            
+            # Single save button for all changes
+            if st.button("💾 Save All Changes"):
+                errors = []
+                for b_id, edits in st.session_state.break_edits.items():
                     try:
-                        conn = get_db_connection()
-                        cursor = conn.cursor()
-                        cursor.execute("""
-                            SELECT COUNT(*) 
-                            FROM break_bookings 
-                            WHERE break_id = ? AND booking_date = ?
-                        """, (b_id, formatted_date))
-                        booked_count = cursor.fetchone()[0]
-                        remaining = max_u - booked_count
-                    except Exception as e:
-                        st.error(f"Error checking availability: {str(e)}")
+                        # Validate time format
+                        datetime.strptime(edits["start_time"], "%H:%M")
+                        datetime.strptime(edits["end_time"], "%H:%M")
+                        update_break_slot(
+                            b_id,
+                            edits["break_name"],
+                            edits["start_time"],
+                            edits["end_time"],
+                            edits["max_users"]
+                        )
+                    except ValueError as e:
+                        errors.append(f"Break ID {b_id}: Invalid time format. Please use HH:MM format.")
                         continue
-                    finally:
-                        conn.close()
-                    
-                    with st.container():
-                        cols = st.columns([3, 2, 1])
-                        cols[0].write(f"*{name}* ({start} - {end})")
-                        cols[1].write(f"Available slots: {remaining}/{max_u}")
-                        
-                        if cols[2].button("Book", key=f"book_{b_id}"):
-                            try:
-                                conn = get_db_connection()
-                                cursor = conn.cursor()
-                                cursor.execute("SELECT id FROM users WHERE username = ?", 
-                                            (st.session_state.username,))
-                                user_id = cursor.fetchone()[0]
-                                book_break_slot(b_id, user_id, st.session_state.username, formatted_date)
-                                st.rerun()
-                            except Exception as e:
-                                st.error(f"Error booking slot: {str(e)}")
-                            finally:
-                                conn.close()
-            else:
-                st.info("No break slots available for selected date")
-        except Exception as e:
-            st.error(f"Error loading break slots: {str(e)}")
-        
-        st.write("---")
-        st.subheader("Your Bookings")
-        try:
-            user_bookings = get_user_bookings(st.session_state.username, formatted_date)
+                
+                if errors:
+                    for error in errors:
+                        st.error(error)
+                else:
+                    st.success("All changes saved successfully!")
+                    st.rerun()
             
-            if user_bookings:
-                for b in user_bookings:
-                    b_id, break_id, user_id, username, date, ts, break_name, start, end = b
-                    st.write(f"{break_name} ({start} - {end})")
-            else:
-                st.info("You have no bookings for selected date")
-        except Exception as e:
-            st.error(f"Error loading your bookings: {str(e)}")
-        
-        if st.button("Clear All Bookings", key="clear_all_bookings"):
-            clear_all_break_bookings()
-            st.rerun()
-    
-    else:  # This should be aligned with the if statement above it
-        # Agent view
-        st.subheader("Available Break Slots")
-        try:
-            available_breaks = get_available_break_slots(formatted_date)
-            
-            if available_breaks:
-                for b in available_breaks:
-                    b_id, name, start, end, max_u, curr_u, created_by, ts = b
-                    
-                    try:
-                        conn = get_db_connection()
-                        cursor = conn.cursor()
-                        cursor.execute("""
-                            SELECT COUNT(*) 
-                            FROM break_bookings 
-                            WHERE break_id = ? AND booking_date = ?
-                        """, (b_id, formatted_date))
-                        booked_count = cursor.fetchone()[0]
-                        remaining = max_u - booked_count
-                    except Exception as e:
-                        st.error(f"Error checking availability: {str(e)}")
-                        continue
-                    finally:
-                        conn.close()
-                    
-                    with st.container():
-                        cols = st.columns([3, 2, 1])
-                        cols[0].write(f"*{name}* ({start} - {end})")
-                        cols[1].write(f"Available slots: {remaining}/{max_u}")
-                        
-                        if cols[2].button("Book", key=f"book_{b_id}"):
-                            try:
-                                conn = get_db_connection()
-                                cursor = conn.cursor()
-                                cursor.execute("SELECT id FROM users WHERE username = ?", 
-                                            (st.session_state.username,))
-                                user_id = cursor.fetchone()[0]
-                                book_break_slot(b_id, user_id, st.session_state.username, formatted_date)
-                                st.rerun()
-                            except Exception as e:
-                                st.error(f"Error booking slot: {str(e)}")
-                            finally:
-                                conn.close()
-            else:
-                st.info("No break slots available for selected date")
-        except Exception as e:
-            st.error(f"Error loading break slots: {str(e)}")
-        
-        st.write("---")
-        st.subheader("Your Bookings")
-        try:
-            user_bookings = get_user_bookings(st.session_state.username, formatted_date)
-            
-            if user_bookings:
-                for b in user_bookings:
-                    b_id, break_id, user_id, username, date, ts, break_name, start, end = b
-                    st.write(f"{break_name} ({start} - {end})")
-            else:
-                st.info("You have no bookings for selected date")
-        except Exception as e:
-            st.error(f"Error loading your bookings: {str(e)}")
+            st.markdown("---")
+            st.subheader("All Bookings for Selected Date")
+            try:
+                bookings = get_all_bookings(formatted_date)
+                if bookings:
+                    for b in bookings:
+                        b_id, break_id, user_id, username, date, ts, break_name, start, end, role = b
+                        st.write(f"{username} ({role}) - {break_name} ({start} - {end})")
+                else:
+                    st.info("No bookings for selected date")
+            except Exception as e:
+                st.error(f"Error loading bookings: {str(e)}")
             
             if st.button("Clear All Bookings", key="clear_all_bookings"):
                 clear_all_break_bookings()
