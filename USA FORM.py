@@ -164,7 +164,16 @@ def init_db():
                 end_time TEXT,
                 timestamp TEXT)
         """)
-        
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS break_limits (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                template_name TEXT,
+                break_type TEXT,
+                break_time TEXT,
+                max_users INTEGER,
+                FOREIGN KEY(template_name) REFERENCES break_templates(name)
+
+                
         # Create default admin account
         cursor.execute("""
             INSERT OR IGNORE INTO users (username, password, role) 
@@ -273,7 +282,49 @@ def toggle_killswitch(enable):
         return True
     finally:
         conn.close()
-
+ cursor.execute("SELECT COUNT(*) FROM break_templates")
+        if cursor.fetchone()[0] == 0:
+            import json  # Add this at the top of your file if not already present
+            
+            # Insert default template
+            cursor.execute("""
+                INSERT INTO break_templates (name, lunch_breaks, early_tea_breaks, late_tea_breaks)
+                VALUES (?, ?, ?, ?)
+            """, (
+                "Default Schedule",
+                json.dumps(["19:30", "20:00", "20:30", "21:00", "21:30"]),
+                json.dumps(["16:00", "16:15", "16:30", "16:45", "17:00", "17:15", "17:30"]),
+                json.dumps(["21:45", "22:00", "22:15", "22:30"])
+            ))
+            
+            # Create default limits
+            default_limits = [
+                ("Default Schedule", "lunch", "19:30", 2),
+                ("Default Schedule", "lunch", "20:00", 2),
+                ("Default Schedule", "lunch", "20:30", 2),
+                ("Default Schedule", "lunch", "21:00", 2),
+                ("Default Schedule", "lunch", "21:30", 1),
+                ("Default Schedule", "early_tea", "16:00", 2),
+                ("Default Schedule", "early_tea", "16:15", 2),
+                ("Default Schedule", "early_tea", "16:30", 2),
+                ("Default Schedule", "early_tea", "16:45", 2),
+                ("Default Schedule", "early_tea", "17:00", 2),
+                ("Default Schedule", "early_tea", "17:15", 2),
+                ("Default Schedule", "early_tea", "17:30", 1),
+                ("Default Schedule", "late_tea", "21:45", 3),
+                ("Default Schedule", "late_tea", "22:00", 3),
+                ("Default Schedule", "late_tea", "22:15", 2),
+                ("Default Schedule", "late_tea", "22:30", 2)
+            ]
+            
+            cursor.executemany("""
+                INSERT INTO break_limits (template_name, break_type, break_time, max_users)
+                VALUES (?, ?, ?, ?)
+            """, default_limits)
+        
+        conn.commit()
+    finally:
+        conn.close()
 def toggle_chat_killswitch(enable):
     conn = get_db_connection()
     try:
@@ -609,7 +660,37 @@ def update_break_slot(break_id, break_name, start_time, end_time, max_users):
         return True
     finally:
         conn.close()
+def get_all_break_templates():
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM break_templates ORDER BY name")
+        return cursor.fetchall()
+    finally:
+        conn.close()
 
+def get_break_template_by_name(name):
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM break_templates WHERE name = ?", (name,))
+        return cursor.fetchone()
+    finally:
+        conn.close()
+
+def get_break_limits(template_name):
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT break_type, break_time, max_users 
+            FROM break_limits 
+            WHERE template_name = ?
+            ORDER BY break_type, break_time
+        """, (template_name,))
+        return cursor.fetchall()
+    finally:
+        conn.close()
 def get_all_break_slots():
     conn = get_db_connection()
     try:
