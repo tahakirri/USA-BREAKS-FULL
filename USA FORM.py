@@ -1486,7 +1486,7 @@ else:
         type_counts.columns = ['Type', 'Count']
         st.bar_chart(type_counts.set_index('Type'))
 
-    elif st.session_state.current_section == "breaks":
+elif st.session_state.current_section == "breaks":
     today = datetime.now().strftime("%Y-%m-%d")
     selected_date = st.date_input("Select date", datetime.now())
     formatted_date = selected_date.strftime("%Y-%m-%d")
@@ -1697,6 +1697,73 @@ else:
                 st.info("No bookings for selected date")
         except Exception as e:
             st.error(f"Error loading bookings: {str(e)}")
+        
+        if st.button("Clear All Bookings", key="clear_all_bookings"):
+            clear_all_break_bookings()
+            st.rerun()
+    
+    else:
+        # Agent view
+        st.subheader("Available Break Slots")
+        try:
+            available_breaks = get_available_break_slots(formatted_date)
+            
+            if available_breaks:
+                for b in available_breaks:
+                    b_id, name, start, end, max_u, curr_u, created_by, ts = b
+                    
+                    try:
+                        conn = get_db_connection()
+                        cursor = conn.cursor()
+                        cursor.execute("""
+                            SELECT COUNT(*) 
+                            FROM break_bookings 
+                            WHERE break_id = ? AND booking_date = ?
+                        """, (b_id, formatted_date))
+                        booked_count = cursor.fetchone()[0]
+                        remaining = max_u - booked_count
+                    except Exception as e:
+                        st.error(f"Error checking availability: {str(e)}")
+                        continue
+                    finally:
+                        conn.close()
+                    
+                    with st.container():
+                        cols = st.columns([3, 2, 1])
+                        cols[0].write(f"*{name}* ({start} - {end})")
+                        cols[1].write(f"Available slots: {remaining}/{max_u}")
+                        
+                        if cols[2].button("Book", key=f"book_{b_id}"):
+                            try:
+                                conn = get_db_connection()
+                                cursor = conn.cursor()
+                                cursor.execute("SELECT id FROM users WHERE username = ?", 
+                                            (st.session_state.username,))
+                                user_id = cursor.fetchone()[0]
+                                book_break_slot(b_id, user_id, st.session_state.username, formatted_date)
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"Error booking slot: {str(e)}")
+                            finally:
+                                conn.close()
+            else:
+                st.info("No break slots available for selected date")
+        except Exception as e:
+            st.error(f"Error loading break slots: {str(e)}")
+        
+        st.write("---")
+        st.subheader("Your Bookings")
+        try:
+            user_bookings = get_user_bookings(st.session_state.username, formatted_date)
+            
+            if user_bookings:
+                for b in user_bookings:
+                    b_id, break_id, user_id, username, date, ts, break_name, start, end = b
+                    st.write(f"{break_name} ({start} - {end})")
+            else:
+                st.info("You have no bookings for selected date")
+        except Exception as e:
+            st.error(f"Error loading your bookings: {str(e)}")
         
         if st.button("Clear All Bookings", key="clear_all_bookings"):
             clear_all_break_bookings()
