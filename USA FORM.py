@@ -890,7 +890,7 @@ def is_fancy_number(phone_number):
     last_six[0] == 3 and last_six[1] == 2 and 
     last_six[2] == 4 and last_six[3] == 2 and 
     last_six[4] == 5 and last_six[5] == 2):
-    patterns.append("32 42 52 pattern")
+    patterns.append("324252 pattern")
     
     # Consecutive ascending (123456)
     if is_sequential(last_six, 1):
