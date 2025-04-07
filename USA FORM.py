@@ -6,6 +6,7 @@ import os
 
 # Constants
 DATA_FILE = "break_data.json"
+TEMPLATES_FILE = "break_templates.json"
 SHIFT_1_START = time(15, 0)  # 3:00 PM
 SHIFT_2_START = time(18, 0)  # 6:00 PM
 
@@ -99,6 +100,21 @@ def init_data():
         "admin_password": "admin123"  # Change this in production!
     }
 
+# Initialize templates
+def init_templates():
+    return {
+        "default_template": {
+            "first_break": ["16:00", "16:15", "16:30", "16:45", "17:00", "17:15", "17:30"],
+            "lunch": ["19:00", "19:30", "20:00", "20:30", "21:00", "21:30"],
+            "second_break": ["21:30", "21:45", "22:00", "22:15", "22:30"]
+        },
+        "late_shift_template": {
+            "first_break": ["19:00", "19:15", "19:30", "19:45", "20:00", "20:15", "20:30", "20:45"],
+            "lunch": ["21:00", "21:30", "22:00", "22:30"],
+            "second_break": ["00:00", "00:15", "00:30", "00:45", "01:00", "01:15", "01:30"]
+        }
+    }
+
 # Load or initialize data
 def load_data():
     if os.path.exists(DATA_FILE):
@@ -113,6 +129,20 @@ def save_data(data):
     with open(DATA_FILE, "w") as f:
         json.dump(data, f)
 
+# Load or initialize templates
+def load_templates():
+    if os.path.exists(TEMPLATES_FILE):
+        with open(TEMPLATES_FILE, "r") as f:
+            return json.load(f)
+    else:
+        templates = init_templates()
+        save_templates(templates)
+        return templates
+
+def save_templates(templates):
+    with open(TEMPLATES_FILE, "w") as f:
+        json.dump(templates, f)
+
 # Helper functions
 def get_current_shift():
     now = datetime.now().time()
@@ -124,9 +154,13 @@ def get_current_shift():
 def is_admin():
     return st.session_state.get("is_admin", False)
 
+def create_breaks_from_template(template, slots=5):
+    return {time: {"slots": slots, "booked": []} for time in template}
+
 # Admin functions
 def admin_panel(data):
     st.title("Admin Panel")
+    templates = load_templates()
     
     # Password protection
     if not is_admin():
@@ -155,6 +189,48 @@ def admin_panel(data):
     # Shift selection
     shift = st.selectbox("Select Shift", list(data["shifts"].keys()), 
                         format_func=lambda x: data["shifts"][x]["name"])
+    
+    # Template management
+    with st.expander("Template Management"):
+        # Create new template
+        st.subheader("Create New Template")
+        new_template_name = st.text_input("Template Name")
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            first_breaks = st.text_area("First Break Times (one per line)", 
+                                      value="\n".join(["16:00", "16:15", "16:30"]))
+        with col2:
+            lunch_breaks = st.text_area("Lunch Break Times (one per line)", 
+                                      value="\n".join(["19:00", "19:30", "20:00"]))
+        
+        second_breaks = st.text_area("Second Break Times (one per line)", 
+                                   value="\n".join(["21:30", "21:45", "22:00"]))
+        slots = st.number_input("Default Slots", min_value=1, value=5)
+        
+        if st.button("Save Template") and new_template_name:
+            templates[new_template_name] = {
+                "first_break": [t.strip() for t in first_breaks.split("\n") if t.strip()],
+                "lunch": [t.strip() for t in lunch_breaks.split("\n") if t.strip()],
+                "second_break": [t.strip() for t in second_breaks.split("\n") if t.strip()]
+            }
+            save_templates(templates)
+            st.success("Template saved successfully")
+        
+        # Apply template to shift
+        st.subheader("Apply Template to Shift")
+        selected_template = st.selectbox("Select Template", list(templates.keys()))
+        
+        if st.button("Apply Template"):
+            data["shifts"][shift]["break_types"]["first_break"]["breaks"] = create_breaks_from_template(
+                templates[selected_template]["first_break"], slots)
+            data["shifts"][shift]["break_types"]["lunch"]["breaks"] = create_breaks_from_template(
+                templates[selected_template]["lunch"], slots)
+            data["shifts"][shift]["break_types"]["second_break"]["breaks"] = create_breaks_from_template(
+                templates[selected_template]["second_break"], slots)
+            save_data(data)
+            st.success("Template applied successfully")
+            st.rerun()
     
     # Break type selection
     break_type = st.selectbox("Select Break Type", 
