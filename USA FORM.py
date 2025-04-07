@@ -4,12 +4,12 @@ import pandas as pd
 import json
 import os
 
-# Default break templates with slot-based limits
+# Default break templates
 DEFAULT_TEMPLATES = {
     "2:00 PM Shift": {
         "lunch": {
             "slots": {
-                "18:30": {"max_users": None},  # None means unlimited
+                "18:30": {"max_users": None},
                 "19:00": {"max_users": None},
                 "19:30": {"max_users": None},
                 "20:00": {"max_users": None},
@@ -106,18 +106,15 @@ def migrate_template(templates):
     """Migrate old templates to new format if needed"""
     for shift, config in templates.items():
         for break_type in ["lunch", "tea_break_early", "tea_break_late"]:
-            # Convert list-based slots to dictionary format
             if isinstance(config[break_type].get("slots"), list):
                 new_slots = {}
                 for slot in config[break_type]["slots"]:
                     new_slots[slot] = {"max_users": None if break_type == "lunch" else 1}
                 config[break_type]["slots"] = new_slots
-            # Ensure max_per_agent exists
             if "max_per_agent" not in config[break_type]:
                 config[break_type]["max_per_agent"] = 1
     return templates
 
-# Initialize data files
 def init_files():
     if not os.path.exists(TEMPLATES_FILE):
         with open(TEMPLATES_FILE, 'w') as f:
@@ -126,7 +123,6 @@ def init_files():
         with open(BOOKINGS_FILE, 'w') as f:
             json.dump({}, f)
 
-# Load data with migration
 def load_templates():
     with open(TEMPLATES_FILE, 'r') as f:
         templates = json.load(f)
@@ -138,7 +134,6 @@ def load_bookings():
     with open(BOOKINGS_FILE, 'r') as f:
         return json.load(f)
 
-# Save data
 def save_templates(templates):
     with open(TEMPLATES_FILE, 'w') as f:
         json.dump(templates, f)
@@ -147,7 +142,6 @@ def save_bookings(bookings):
     with open(BOOKINGS_FILE, 'w') as f:
         json.dump(bookings, f)
 
-# Initialize session state
 def init_session_state():
     if 'bookings' not in st.session_state:
         st.session_state.bookings = load_bookings()
@@ -160,7 +154,6 @@ def init_session_state():
     if 'initialized' not in st.session_state:
         st.session_state.initialized = True
 
-# Admin functions
 def admin_login(username, password):
     return username in ADMIN_CREDENTIALS and ADMIN_CREDENTIALS[username] == password
 
@@ -259,10 +252,11 @@ def admin_interface():
         with col1:
             st.subheader("Lunch Break Slots")
             for slot, data in template["lunch"]["slots"].items():
+                current_value = data["max_users"] if data["max_users"] is not None else 0
                 max_users = st.number_input(
                     f"Max users for {slot}:",
-                    min_value=1,
-                    value=data["max_users"] if data["max_users"] is not None else 0,
+                    min_value=0,
+                    value=current_value,
                     key=f"lunch_{slot}_max"
                 )
                 template["lunch"]["slots"][slot]["max_users"] = max_users if max_users > 0 else None
@@ -270,24 +264,26 @@ def admin_interface():
         with col2:
             st.subheader("Early Tea Break Slots")
             for slot, data in template["tea_break_early"]["slots"].items():
+                current_value = data["max_users"] if data["max_users"] is not None else 0
                 max_users = st.number_input(
                     f"Max users for {slot}:",
-                    min_value=1,
-                    value=data["max_users"] if data["max_users"] is not None else 1,
+                    min_value=0,
+                    value=current_value,
                     key=f"tea_early_{slot}_max"
                 )
-                template["tea_break_early"]["slots"][slot]["max_users"] = max_users
+                template["tea_break_early"]["slots"][slot]["max_users"] = max_users if max_users > 0 else None
         
         with col3:
             st.subheader("Late Tea Break Slots")
             for slot, data in template["tea_break_late"]["slots"].items():
+                current_value = data["max_users"] if data["max_users"] is not None else 0
                 max_users = st.number_input(
                     f"Max users for {slot}:",
-                    min_value=1,
-                    value=data["max_users"] if data["max_users"] is not None else 1,
+                    min_value=0,
+                    value=current_value,
                     key=f"tea_late_{slot}_max"
                 )
-                template["tea_break_late"]["slots"][slot]["max_users"] = max_users
+                template["tea_break_late"]["slots"][slot]["max_users"] = max_users if max_users > 0 else None
         
         if st.button("Save Slot Limits"):
             save_templates(st.session_state.templates)
@@ -348,17 +344,35 @@ def admin_interface():
             save_templates(st.session_state.templates)
             st.success(f"Template '{template_to_delete}' deleted!")
     
-    # View all bookings
+    # Enhanced bookings view
     st.header("View All Bookings")
-    for shift_name, shift_data in st.session_state.bookings.items():
-        st.subheader(f"{shift_name} Bookings")
-        df = pd.DataFrame([(b['agent'], bt, b['slot'], b['timestamp']) 
-                          for bt, bookings in shift_data.items() 
-                          for b in bookings],
-                         columns=["Agent", "Break Type", "Time Slot", "Timestamp"])
-        st.dataframe(df)
+    if not st.session_state.bookings:
+        st.write("No bookings yet")
+    else:
+        for shift_name in ["2:00 PM Shift", "6:00 PM Shift"]:
+            if shift_name in st.session_state.bookings:
+                with st.expander(f"{shift_name} Bookings", expanded=True):
+                    shift_bookings = st.session_state.bookings[shift_name]
+                    df = pd.DataFrame([(b['agent'], bt.replace('_', ' ').title(), b['slot'], b['timestamp']) 
+                                     for bt, bookings in shift_bookings.items() 
+                                     for b in bookings],
+                                    columns=["Agent", "Break Type", "Time Slot", "Booking Time"])
+                    
+                    if not df.empty:
+                        # Show breakdown by agent
+                        st.subheader("Bookings by Agent")
+                        agent_df = df.groupby("Agent").agg({
+                            'Break Type': lambda x: ', '.join(x),
+                            'Time Slot': lambda x: ', '.join(x)
+                        }).reset_index()
+                        st.dataframe(agent_df)
+                        
+                        # Show detailed view
+                        st.subheader("Detailed View")
+                        st.dataframe(df.sort_values('Booking Time'))
+                    else:
+                        st.write("No bookings for this shift")
 
-# Agent functions
 def book_break(shift, break_type, slot):
     if shift not in st.session_state.bookings:
         st.session_state.bookings[shift] = {"lunch": [], "tea_break_early": [], "tea_break_late": []}
