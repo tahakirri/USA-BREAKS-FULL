@@ -178,7 +178,7 @@ def agent_interface():
                 if st.button("Cancel Early Tea Booking (2PM)"):
                     for slot in agent_bookings["2pm"]["early_tea"]:
                         remove_booking(agent_id, "2pm", "early_tea", slot, date_str)
-                    st.experimental_rerun()
+                    st.rerun()
             else:
                 early_tea_options = []
                 for slot in settings["shifts"]["2pm"]["early_tea"]["slots"]:
@@ -193,7 +193,7 @@ def agent_interface():
                         success = add_booking(agent_id, "2pm", "early_tea", slot, date_str)
                         if success:
                             st.success(f"Booked Early Tea Break at {slot}")
-                            st.experimental_rerun()
+                            st.rerun()
                         else:
                             st.error("Booking failed. Please try again.")
                 else:
@@ -209,7 +209,7 @@ def agent_interface():
                 if st.button("Cancel Lunch Booking (2PM)"):
                     for slot in agent_bookings["2pm"]["lunch"]:
                         remove_booking(agent_id, "2pm", "lunch", slot, date_str)
-                    st.experimental_rerun()
+                    st.rerun()
             else:
                 lunch_options = []
                 for slot in settings["shifts"]["2pm"]["lunch"]["slots"]:
@@ -224,7 +224,7 @@ def agent_interface():
                         success = add_booking(agent_id, "2pm", "lunch", slot, date_str)
                         if success:
                             st.success(f"Booked Lunch Break at {slot}")
-                            st.experimental_rerun()
+                            st.rerun()
                         else:
                             st.error("Booking failed. Please try again.")
                 else:
@@ -240,7 +240,7 @@ def agent_interface():
                 if st.button("Cancel Late Tea Booking (2PM)"):
                     for slot in agent_bookings["2pm"]["late_tea"]:
                         remove_booking(agent_id, "2pm", "late_tea", slot, date_str)
-                    st.experimental_rerun()
+                    st.rerun()
             else:
                 late_tea_options = []
                 for slot in settings["shifts"]["2pm"]["late_tea"]["slots"]:
@@ -255,7 +255,7 @@ def agent_interface():
                         success = add_booking(agent_id, "2pm", "late_tea", slot, date_str)
                         if success:
                             st.success(f"Booked Late Tea Break at {slot}")
-                            st.experimental_rerun()
+                            st.rerun()
                         else:
                             st.error("Booking failed. Please try again.")
                 else:
@@ -276,7 +276,7 @@ def agent_interface():
                 if st.button("Cancel Early Tea Booking (6PM)"):
                     for slot in agent_bookings["6pm"]["early_tea"]:
                         remove_booking(agent_id, "6pm", "early_tea", slot, date_str)
-                    st.experimental_rerun()
+                    st.rerun()
             else:
                 early_tea_options = []
                 for slot in settings["shifts"]["6pm"]["early_tea"]["slots"]:
@@ -291,7 +291,7 @@ def agent_interface():
                         success = add_booking(agent_id, "6pm", "early_tea", slot, date_str)
                         if success:
                             st.success(f"Booked Early Tea Break at {slot}")
-                            st.experimental_rerun()
+                            st.rerun()
                         else:
                             st.error("Booking failed. Please try again.")
                 else:
@@ -307,7 +307,7 @@ def agent_interface():
                 if st.button("Cancel Lunch Booking (6PM)"):
                     for slot in agent_bookings["6pm"]["lunch"]:
                         remove_booking(agent_id, "6pm", "lunch", slot, date_str)
-                    st.experimental_rerun()
+                    st.rerun()
             else:
                 lunch_options = []
                 for slot in settings["shifts"]["6pm"]["lunch"]["slots"]:
@@ -322,7 +322,7 @@ def agent_interface():
                         success = add_booking(agent_id, "6pm", "lunch", slot, date_str)
                         if success:
                             st.success(f"Booked Lunch Break at {slot}")
-                            st.experimental_rerun()
+                            st.rerun()
                         else:
                             st.error("Booking failed. Please try again.")
                 else:
@@ -338,7 +338,7 @@ def agent_interface():
                 if st.button("Cancel Late Tea Booking (6PM)"):
                     for slot in agent_bookings["6pm"]["late_tea"]:
                         remove_booking(agent_id, "6pm", "late_tea", slot, date_str)
-                    st.experimental_rerun()
+                    st.rerun()
             else:
                 late_tea_options = []
                 for slot in settings["shifts"]["6pm"]["late_tea"]["slots"]:
@@ -353,7 +353,7 @@ def agent_interface():
                         success = add_booking(agent_id, "6pm", "late_tea", slot, date_str)
                         if success:
                             st.success(f"Booked Late Tea Break at {slot}")
-                            st.experimental_rerun()
+                            st.rerun()
                         else:
                             st.error("Booking failed. Please try again.")
                 else:
@@ -534,7 +534,7 @@ def admin_interface():
                 settings["shifts"][shift_option][break_type_option]["slots"] = slots_list
                 save_settings(settings)
                 st.success(f"Slots updated for {shift_option} shift {break_type_option}!")
-                st.experimental_rerun()
+                st.rerun()
             except Exception as e:
                 st.error(f"Error updating slots: {str(e)}")
     
@@ -552,7 +552,7 @@ def admin_interface():
             settings["max_per_slot"] = int(max_per_slot)
             save_settings(settings)
             st.success(f"Maximum bookings per slot updated to {max_per_slot}!")
-            st.experimental_rerun()
+            st.rerun()
         
         # Bulk delete bookings
         st.markdown("### Delete All Bookings for a Date")
