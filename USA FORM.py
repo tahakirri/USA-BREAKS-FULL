@@ -84,22 +84,15 @@ def init_db():
                 timestamp TEXT)
         """)
         
-        # Handle system_settings table schema migration
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='system_settings'")
-        if not cursor.fetchone():
-            cursor.execute("""
-                CREATE TABLE system_settings (
-                    id INTEGER PRIMARY KEY DEFAULT 1,
-                    killswitch_enabled INTEGER DEFAULT 0,
-                    chat_killswitch_enabled INTEGER DEFAULT 0)
-            """)
-            cursor.execute("INSERT INTO system_settings (id, killswitch_enabled, chat_killswitch_enabled) VALUES (1, 0, 0)")
-        else:
-            cursor.execute("PRAGMA table_info(system_settings)")
-            columns = [column[1] for column in cursor.fetchall()]
-            if 'chat_killswitch_enabled' not in columns:
-                cursor.execute("ALTER TABLE system_settings ADD COLUMN chat_killswitch_enabled INTEGER DEFAULT 0")
-                cursor.execute("UPDATE system_settings SET chat_killswitch_enabled = 0 WHERE id = 1")
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS break_templates (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                template_name TEXT UNIQUE,
+                break_name TEXT,
+                start_time TEXT,
+                end_time TEXT,
+                max_users INTEGER)
+        """)
         
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS breaks (
@@ -164,6 +157,23 @@ def init_db():
                 end_time TEXT,
                 timestamp TEXT)
         """)
+        
+        # Handle system_settings table schema migration
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='system_settings'")
+        if not cursor.fetchone():
+            cursor.execute("""
+                CREATE TABLE system_settings (
+                    id INTEGER PRIMARY KEY DEFAULT 1,
+                    killswitch_enabled INTEGER DEFAULT 0,
+                    chat_killswitch_enabled INTEGER DEFAULT 0)
+            """)
+            cursor.execute("INSERT INTO system_settings (id, killswitch_enabled, chat_killswitch_enabled) VALUES (1, 0, 0)")
+        else:
+            cursor.execute("PRAGMA table_info(system_settings)")
+            columns = [column[1] for column in cursor.fetchall()]
+            if 'chat_killswitch_enabled' not in columns:
+                cursor.execute("ALTER TABLE system_settings ADD COLUMN chat_killswitch_enabled INTEGER DEFAULT 0")
+                cursor.execute("UPDATE system_settings SET chat_killswitch_enabled = 0 WHERE id = 1")
         
         # Create default admin account
         cursor.execute("""
@@ -767,7 +777,7 @@ def get_quality_issues():
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM quality_issues ORDER BY timestamp DESC")
         return cursor.fetchall()
-    finally:
+    finally
         conn.close()
 
 def add_midshift_issue(agent_name, issue_type, start_time, end_time):
