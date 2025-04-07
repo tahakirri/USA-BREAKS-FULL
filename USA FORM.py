@@ -15,41 +15,81 @@ def init_data():
         "shifts": {
             "3pm_shift": {
                 "name": "LM US ENG SUNDAY 3:00 PM shift",
-                "tea_breaks": {
-                    "16:00": {"slots": 5, "booked": []},
-                    "16:15": {"slots": 5, "booked": []},
-                    "16:30": {"slots": 5, "booked": []},
-                    "16:45": {"slots": 5, "booked": []},
-                    "17:00": {"slots": 5, "booked": []},
-                    "17:15": {"slots": 5, "booked": []},
-                    "17:30": {"slots": 5, "booked": []},
-                    "21:30": {"slots": 5, "booked": []},
-                    "21:45": {"slots": 5, "booked": []},
-                    "22:00": {"slots": 5, "booked": []},
-                    "22:15": {"slots": 5, "booked": []},
-                    "22:30": {"slots": 5, "booked": []},
+                "break_types": {
+                    "first_break": {
+                        "name": "First Break",
+                        "breaks": {
+                            "16:00": {"slots": 5, "booked": []},
+                            "16:15": {"slots": 5, "booked": []},
+                            "16:30": {"slots": 5, "booked": []},
+                            "16:45": {"slots": 5, "booked": []},
+                            "17:00": {"slots": 5, "booked": []},
+                            "17:15": {"slots": 5, "booked": []},
+                            "17:30": {"slots": 5, "booked": []},
+                        }
+                    },
+                    "lunch": {
+                        "name": "Lunch Break",
+                        "breaks": {
+                            "19:00": {"slots": 5, "booked": []},
+                            "19:30": {"slots": 5, "booked": []},
+                            "20:00": {"slots": 5, "booked": []},
+                            "20:30": {"slots": 5, "booked": []},
+                            "21:00": {"slots": 5, "booked": []},
+                            "21:30": {"slots": 5, "booked": []},
+                        }
+                    },
+                    "second_break": {
+                        "name": "Second Break",
+                        "breaks": {
+                            "21:30": {"slots": 5, "booked": []},
+                            "21:45": {"slots": 5, "booked": []},
+                            "22:00": {"slots": 5, "booked": []},
+                            "22:15": {"slots": 5, "booked": []},
+                            "22:30": {"slots": 5, "booked": []},
+                        }
+                    }
                 },
                 "last_hour": "22:00-22:30",
                 "bio_only": True
             },
             "6pm_shift": {
                 "name": "LM US ENG 6:00 PM shift",
-                "tea_breaks": {
-                    "19:00": {"slots": 5, "booked": []},
-                    "19:15": {"slots": 5, "booked": []},
-                    "19:30": {"slots": 5, "booked": []},
-                    "19:45": {"slots": 5, "booked": []},
-                    "20:00": {"slots": 5, "booked": []},
-                    "20:15": {"slots": 5, "booked": []},
-                    "20:30": {"slots": 5, "booked": []},
-                    "20:45": {"slots": 5, "booked": []},
-                    "00:00": {"slots": 5, "booked": []},
-                    "00:15": {"slots": 5, "booked": []},
-                    "00:30": {"slots": 5, "booked": []},
-                    "00:45": {"slots": 5, "booked": []},
-                    "01:00": {"slots": 5, "booked": []},
-                    "01:15": {"slots": 5, "booked": []},
-                    "01:30": {"slots": 5, "booked": []},
+                "break_types": {
+                    "first_break": {
+                        "name": "First Break",
+                        "breaks": {
+                            "19:00": {"slots": 5, "booked": []},
+                            "19:15": {"slots": 5, "booked": []},
+                            "19:30": {"slots": 5, "booked": []},
+                            "19:45": {"slots": 5, "booked": []},
+                            "20:00": {"slots": 5, "booked": []},
+                            "20:15": {"slots": 5, "booked": []},
+                            "20:30": {"slots": 5, "booked": []},
+                            "20:45": {"slots": 5, "booked": []},
+                        }
+                    },
+                    "lunch": {
+                        "name": "Lunch Break",
+                        "breaks": {
+                            "21:00": {"slots": 5, "booked": []},
+                            "21:30": {"slots": 5, "booked": []},
+                            "22:00": {"slots": 5, "booked": []},
+                            "22:30": {"slots": 5, "booked": []},
+                        }
+                    },
+                    "second_break": {
+                        "name": "Second Break",
+                        "breaks": {
+                            "00:00": {"slots": 5, "booked": []},
+                            "00:15": {"slots": 5, "booked": []},
+                            "00:30": {"slots": 5, "booked": []},
+                            "00:45": {"slots": 5, "booked": []},
+                            "01:00": {"slots": 5, "booked": []},
+                            "01:15": {"slots": 5, "booked": []},
+                            "01:30": {"slots": 5, "booked": []},
+                        }
+                    }
                 },
                 "last_hour": "02:00-02:30",
                 "bio_only": True
@@ -116,40 +156,68 @@ def admin_panel(data):
     shift = st.selectbox("Select Shift", list(data["shifts"].keys()), 
                         format_func=lambda x: data["shifts"][x]["name"])
     
-    # Bulk edit breaks
-    with st.expander("Bulk Edit Breaks"):
-        st.write("Current Breaks:")
+    # Break type selection
+    break_type = st.selectbox("Select Break Type", 
+                             list(data["shifts"][shift]["break_types"].keys()),
+                             format_func=lambda x: data["shifts"][shift]["break_types"][x]["name"])
+    
+    # Edit break times and slots
+    with st.expander("Edit Breaks"):
+        st.write(f"Editing {data['shifts'][shift]['break_types'][break_type]['name']}")
+        
+        # Display current breaks
         breaks_df = pd.DataFrame([
             {"Time": time, "Slots": details["slots"], "Booked": len(details["booked"])}
-            for time, details in data["shifts"][shift]["tea_breaks"].items()
+            for time, details in data["shifts"][shift]["break_types"][break_type]["breaks"].items()
         ])
         st.dataframe(breaks_df)
         
-        # Add new breaks
-        new_break_time = st.text_input("Add New Break Time (HH:MM format)")
+        # Edit existing break
+        selected_break = st.selectbox("Select Break to Edit", 
+                                    list(data["shifts"][shift]["break_types"][break_type]["breaks"].keys()))
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            new_time = st.text_input("New Time (HH:MM)", value=selected_break)
+        with col2:
+            new_slots = st.number_input("Slots", 
+                                      min_value=1, 
+                                      value=data["shifts"][shift]["break_types"][break_type]["breaks"][selected_break]["slots"])
+        
+        if st.button("Update Break"):
+            if new_time != selected_break and new_time in data["shifts"][shift]["break_types"][break_type]["breaks"]:
+                st.error("This time already exists for this break type")
+            else:
+                # Save booked agents
+                booked_agents = data["shifts"][shift]["break_types"][break_type]["breaks"][selected_break]["booked"]
+                
+                # Remove old entry if time changed
+                if new_time != selected_break:
+                    del data["shifts"][shift]["break_types"][break_type]["breaks"][selected_break]
+                
+                # Add/update entry
+                data["shifts"][shift]["break_types"][break_type]["breaks"][new_time] = {
+                    "slots": new_slots,
+                    "booked": booked_agents
+                }
+                save_data(data)
+                st.success("Break updated")
+                st.rerun()
+        
+        # Add new break
+        st.subheader("Add New Break")
+        new_break_time = st.text_input("New Break Time (HH:MM format)")
         new_break_slots = st.number_input("Slots", min_value=1, value=5)
-        if st.button("Add Break") and new_break_time:
-            if new_break_time in data["shifts"][shift]["tea_breaks"]:
+        if st.button("Add New Break") and new_break_time:
+            if new_break_time in data["shifts"][shift]["break_types"][break_type]["breaks"]:
                 st.error("Break time already exists")
             else:
-                data["shifts"][shift]["tea_breaks"][new_break_time] = {
+                data["shifts"][shift]["break_types"][break_type]["breaks"][new_break_time] = {
                     "slots": new_break_slots,
                     "booked": []
                 }
                 save_data(data)
                 st.success("Break added")
-                st.rerun()
-        
-        # Remove breaks
-        break_to_remove = st.selectbox("Select Break to Remove", 
-                                      list(data["shifts"][shift]["tea_breaks"].keys()))
-        if st.button("Remove Break"):
-            if len(data["shifts"][shift]["tea_breaks"][break_to_remove]["booked"]) > 0:
-                st.error("Cannot remove break with booked agents")
-            else:
-                del data["shifts"][shift]["tea_breaks"][break_to_remove]
-                save_data(data)
-                st.success("Break removed")
                 st.rerun()
     
     # Edit last hour rules
@@ -183,60 +251,60 @@ def agent_booking(data, shift_key):
     if not agent_id:
         return
     
-    # Check if agent already booked a break
-    existing_booking = None
-    for time_slot, details in shift["tea_breaks"].items():
-        if agent_id in details["booked"]:
-            existing_booking = time_slot
-            break
+    # Initialize agent in data if not exists
+    if agent_id not in data["agents"]:
+        data["agents"][agent_id] = {"bookings": {}}
     
-    if existing_booking:
-        st.success(f"You have already booked a break at {existing_booking}")
-        if st.button("Cancel Booking"):
-            for time_slot, details in shift["tea_breaks"].items():
-                if agent_id in details["booked"]:
-                    details["booked"].remove(agent_id)
+    # Check existing bookings
+    existing_bookings = data["agents"][agent_id]["bookings"].get(shift_key, {})
+    
+    # Display booking status
+    if existing_bookings:
+        st.subheader("Your Current Bookings")
+        for break_type, time_slot in existing_bookings.items():
+            st.info(f"{shift['break_types'][break_type]['name']}: {time_slot}")
+        
+        if st.button("Cancel All Bookings"):
+            # Remove agent from all booked slots
+            for break_type, time_slot in existing_bookings.items():
+                if time_slot in shift["break_types"][break_type]["breaks"]:
+                    shift["break_types"][break_type]["breaks"][time_slot]["booked"].remove(agent_id)
+            # Clear agent's bookings
+            data["agents"][agent_id]["bookings"].pop(shift_key, None)
+            save_data(data)
+            st.success("All bookings canceled")
+            st.rerun()
+    
+    # Booking interface for each break type
+    for break_type, break_data in shift["break_types"].items():
+        st.subheader(f"Book {break_data['name']}")
+        
+        # Skip if already booked this break type
+        if break_type in existing_bookings:
+            st.write(f"You have already booked a {break_data['name']} at {existing_bookings[break_type]}")
+            continue
+        
+        # Display available slots
+        col1, col2 = st.columns(2)
+        breaks_list = sorted(break_data["breaks"].items())
+        
+        # Split breaks between columns
+        for i, (time_slot, details) in enumerate(breaks_list):
+            col = col1 if i % 2 == 0 else col2
+            slots_available = details["slots"] - len(details["booked"])
+            if slots_available > 0:
+                if col.button(f"{time_slot} ({slots_available} slots available)", key=f"{break_type}_{time_slot}"):
+                    # Book the slot
+                    details["booked"].append(agent_id)
+                    # Record booking for agent
+                    if shift_key not in data["agents"][agent_id]["bookings"]:
+                        data["agents"][agent_id]["bookings"][shift_key] = {}
+                    data["agents"][agent_id]["bookings"][shift_key][break_type] = time_slot
                     save_data(data)
-                    st.success("Booking canceled")
+                    st.success(f"{break_data['name']} booked at {time_slot}")
                     st.rerun()
-        return
-    
-    # Display available breaks
-    st.subheader("Available Tea Breaks")
-    
-    # Split breaks into two columns like in the images
-    col1, col2 = st.columns(2)
-    
-    # First set of breaks (earlier)
-    with col1:
-        st.write("**Early Breaks**")
-        for time_slot, details in sorted(shift["tea_breaks"].items()):
-            # Simple way to split breaks between columns
-            if int(time_slot.split(':')[0]) < 20:  # Before 8 PM
-                slots_available = details["slots"] - len(details["booked"])
-                if slots_available > 0:
-                    if st.button(f"{time_slot} ({slots_available} slots available)"):
-                        details["booked"].append(agent_id)
-                        save_data(data)
-                        st.success(f"Break booked at {time_slot}")
-                        st.rerun()
-                else:
-                    st.write(f"{time_slot} - FULL")
-    
-    # Second set of breaks (later)
-    with col2:
-        st.write("**Late Breaks**")
-        for time_slot, details in sorted(shift["tea_breaks"].items()):
-            if int(time_slot.split(':')[0]) >= 20:  # 8 PM and after
-                slots_available = details["slots"] - len(details["booked"])
-                if slots_available > 0:
-                    if st.button(f"{time_slot} ({slots_available} slots available)"):
-                        details["booked"].append(agent_id)
-                        save_data(data)
-                        st.success(f"Break booked at {time_slot}")
-                        st.rerun()
-                else:
-                    st.write(f"{time_slot} - FULL")
+            else:
+                col.write(f"{time_slot} - FULL")
 
 # Main app
 def main():
