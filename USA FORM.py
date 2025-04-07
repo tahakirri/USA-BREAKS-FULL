@@ -8,17 +8,36 @@ import os
 DEFAULT_TEMPLATES = {
     "2:00 PM Shift": {
         "lunch": {
-            "slots": ["18:30", "19:00", "19:30", "20:00", "20:30"],
+            "slots": {
+                "18:30": {"max_users": None},
+                "19:00": {"max_users": None},
+                "19:30": {"max_users": None},
+                "20:00": {"max_users": None},
+                "20:30": {"max_users": None}
+            },
             "duration": 30,
             "max_bookings": None
         },
         "tea_break_early": {
-            "slots": ["15:00", "15:15", "15:30", "15:45", "16:00", "16:15", "16:30"],
+            "slots": {
+                "15:00": {"max_users": 1},
+                "15:15": {"max_users": 1},
+                "15:30": {"max_users": 1},
+                "15:45": {"max_users": 1},
+                "16:00": {"max_users": 1},
+                "16:15": {"max_users": 1},
+                "16:30": {"max_users": 1}
+            },
             "duration": 15,
             "max_bookings": 1
         },
         "tea_break_late": {
-            "slots": ["20:45", "21:00", "21:15", "21:30"],
+            "slots": {
+                "20:45": {"max_users": 1},
+                "21:00": {"max_users": 1},
+                "21:15": {"max_users": 1},
+                "21:30": {"max_users": 1}
+            },
             "duration": 15,
             "max_bookings": 1
         },
@@ -30,17 +49,39 @@ DEFAULT_TEMPLATES = {
     },
     "6:00 PM Shift": {
         "lunch": {
-            "slots": ["21:00", "21:30", "22:00", "22:30"],
+            "slots": {
+                "21:00": {"max_users": None},
+                "21:30": {"max_users": None},
+                "22:00": {"max_users": None},
+                "22:30": {"max_users": None}
+            },
             "duration": 30,
             "max_bookings": None
         },
         "tea_break_early": {
-            "slots": ["19:00", "19:15", "19:30", "19:45", "20:00", "20:15", "20:30", "20:45"],
+            "slots": {
+                "19:00": {"max_users": 1},
+                "19:15": {"max_users": 1},
+                "19:30": {"max_users": 1},
+                "19:45": {"max_users": 1},
+                "20:00": {"max_users": 1},
+                "20:15": {"max_users": 1},
+                "20:30": {"max_users": 1},
+                "20:45": {"max_users": 1}
+            },
             "duration": 15,
             "max_bookings": 1
         },
         "tea_break_late": {
-            "slots": ["00:00", "00:15", "00:30", "00:45", "01:00", "01:15", "01:30"],
+            "slots": {
+                "00:00": {"max_users": 1},
+                "00:15": {"max_users": 1},
+                "00:30": {"max_users": 1},
+                "00:45": {"max_users": 1},
+                "01:00": {"max_users": 1},
+                "01:15": {"max_users": 1},
+                "01:30": {"max_users": 1}
+            },
             "duration": 15,
             "max_bookings": 1
         },
@@ -125,14 +166,16 @@ def admin_interface():
             # Lunch settings
             st.subheader("Lunch Break Settings")
             lunch_slots = st.text_area("Lunch Slots (comma separated):", 
-                                      value=", ".join(template["lunch"]["slots"]))
+                                     value=", ".join(template["lunch"]["slots"].keys()))
             lunch_duration = st.number_input("Lunch Duration (minutes):", 
                                            value=template["lunch"]["duration"], min_value=1)
+            lunch_max = st.number_input("Max Lunch Bookings per Agent:", 
+                                      value=template["lunch"]["max_bookings"] or 0)
             
             # Early Tea settings
             st.subheader("Early Tea Break Settings")
             tea_early_slots = st.text_area("Early Tea Slots (comma separated):", 
-                                         value=", ".join(template["tea_break_early"]["slots"]))
+                                         value=", ".join(template["tea_break_early"]["slots"].keys()))
             tea_early_duration = st.number_input("Early Tea Duration (minutes):", 
                                                value=template["tea_break_early"]["duration"], min_value=1)
             tea_early_max = st.number_input("Max Early Tea Bookings per Agent:", 
@@ -141,7 +184,7 @@ def admin_interface():
             # Late Tea settings
             st.subheader("Late Tea Break Settings")
             tea_late_slots = st.text_area("Late Tea Slots (comma separated):", 
-                                        value=", ".join(template["tea_break_late"]["slots"]))
+                                        value=", ".join(template["tea_break_late"]["slots"].keys()))
             tea_late_duration = st.number_input("Late Tea Duration (minutes):", 
                                               value=template["tea_break_late"]["duration"], min_value=1)
             tea_late_max = st.number_input("Max Late Tea Bookings per Agent:", 
@@ -156,14 +199,28 @@ def admin_interface():
             
             if st.button("Update Template"):
                 # Process slots
-                template["lunch"]["slots"] = [s.strip() for s in lunch_slots.split(",")]
+                new_lunch_slots = {s.strip(): {"max_users": None} for s in lunch_slots.split(",")}
+                # Preserve existing max_users if slot already exists
+                for slot in new_lunch_slots:
+                    if slot in template["lunch"]["slots"]:
+                        new_lunch_slots[slot]["max_users"] = template["lunch"]["slots"][slot]["max_users"]
+                template["lunch"]["slots"] = new_lunch_slots
                 template["lunch"]["duration"] = lunch_duration
+                template["lunch"]["max_bookings"] = lunch_max if lunch_max > 0 else None
                 
-                template["tea_break_early"]["slots"] = [s.strip() for s in tea_early_slots.split(",")]
+                new_tea_early_slots = {s.strip(): {"max_users": 1} for s in tea_early_slots.split(",")}
+                for slot in new_tea_early_slots:
+                    if slot in template["tea_break_early"]["slots"]:
+                        new_tea_early_slots[slot]["max_users"] = template["tea_break_early"]["slots"][slot]["max_users"]
+                template["tea_break_early"]["slots"] = new_tea_early_slots
                 template["tea_break_early"]["duration"] = tea_early_duration
                 template["tea_break_early"]["max_bookings"] = tea_early_max if tea_early_max > 0 else None
                 
-                template["tea_break_late"]["slots"] = [s.strip() for s in tea_late_slots.split(",")]
+                new_tea_late_slots = {s.strip(): {"max_users": 1} for s in tea_late_slots.split(",")}
+                for slot in new_tea_late_slots:
+                    if slot in template["tea_break_late"]["slots"]:
+                        new_tea_late_slots[slot]["max_users"] = template["tea_break_late"]["slots"][slot]["max_users"]
+                template["tea_break_late"]["slots"] = new_tea_late_slots
                 template["tea_break_late"]["duration"] = tea_late_duration
                 template["tea_break_late"]["max_bookings"] = tea_late_max if tea_late_max > 0 else None
                 
@@ -177,6 +234,57 @@ def admin_interface():
                 
                 save_templates(st.session_state.templates)
                 st.success("Template updated successfully!")
+        
+        # Edit slot-specific max users
+        st.header("Edit Slot-Specific Maximum Users")
+        
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            st.subheader("Lunch Break Slots")
+            for slot, data in template["lunch"]["slots"].items():
+                max_users = st.number_input(
+                    f"Max users for {slot}:",
+                    min_value=1,
+                    value=data["max_users"] if data["max_users"] is not None else 0,
+                    key=f"lunch_{slot}_max"
+                )
+                if max_users == 0:
+                    template["lunch"]["slots"][slot]["max_users"] = None
+                else:
+                    template["lunch"]["slots"][slot]["max_users"] = max_users
+        
+        with col2:
+            st.subheader("Early Tea Break Slots")
+            for slot, data in template["tea_break_early"]["slots"].items():
+                max_users = st.number_input(
+                    f"Max users for {slot}:",
+                    min_value=1,
+                    value=data["max_users"] if data["max_users"] is not None else 1,
+                    key=f"tea_early_{slot}_max"
+                )
+                if max_users == 0:
+                    template["tea_break_early"]["slots"][slot]["max_users"] = None
+                else:
+                    template["tea_break_early"]["slots"][slot]["max_users"] = max_users
+        
+        with col3:
+            st.subheader("Late Tea Break Slots")
+            for slot, data in template["tea_break_late"]["slots"].items():
+                max_users = st.number_input(
+                    f"Max users for {slot}:",
+                    min_value=1,
+                    value=data["max_users"] if data["max_users"] is not None else 1,
+                    key=f"tea_late_{slot}_max"
+                )
+                if max_users == 0:
+                    template["tea_break_late"]["slots"][slot]["max_users"] = None
+                else:
+                    template["tea_break_late"]["slots"][slot]["max_users"] = max_users
+        
+        if st.button("Save Slot Limits"):
+            save_templates(st.session_state.templates)
+            st.success("Slot limits updated successfully!")
     
     # Create new template
     st.header("Create New Template")
@@ -187,17 +295,29 @@ def admin_interface():
         else:
             st.session_state.templates[new_template_name] = {
                 "lunch": {
-                    "slots": ["12:00", "12:30", "13:00"],
+                    "slots": {
+                        "12:00": {"max_users": None},
+                        "12:30": {"max_users": None},
+                        "13:00": {"max_users": None}
+                    },
                     "duration": 30,
                     "max_bookings": None
                 },
                 "tea_break_early": {
-                    "slots": ["10:00", "10:15", "10:30"],
+                    "slots": {
+                        "10:00": {"max_users": 1},
+                        "10:15": {"max_users": 1},
+                        "10:30": {"max_users": 1}
+                    },
                     "duration": 15,
                     "max_bookings": 1
                 },
                 "tea_break_late": {
-                    "slots": ["15:00", "15:15", "15:30"],
+                    "slots": {
+                        "15:00": {"max_users": 1},
+                        "15:15": {"max_users": 1},
+                        "15:30": {"max_users": 1}
+                    },
                     "duration": 15,
                     "max_bookings": 1
                 },
@@ -244,6 +364,14 @@ def book_break(shift, break_type, slot):
         st.warning(f"You can only book {max_bookings} {break_type.replace('_', ' ')} per shift!")
         return
     
+    # Check slot max users
+    slot_max = st.session_state.templates[shift][break_type]["slots"][slot]["max_users"]
+    if slot_max is not None:
+        slot_bookings = [b for b in st.session_state.bookings[shift][break_type] if b["slot"] == slot]
+        if len(slot_bookings) >= slot_max:
+            st.warning(f"This time slot ({slot}) is already full (max {slot_max} users)!")
+            return
+    
     # Add the booking
     booking = {
         "agent": st.session_state.agent_id,
@@ -267,7 +395,14 @@ def display_shift_bookings(shift):
         lunch_bookings = st.session_state.bookings[shift]["lunch"]
         if lunch_bookings:
             df = pd.DataFrame(lunch_bookings)
-            st.dataframe(df[["agent", "slot"]], hide_index=True)
+            # Add slot limits information
+            df["Max Users"] = df["slot"].apply(
+                lambda x: st.session_state.templates[shift]["lunch"]["slots"][x]["max_users"] or "Unlimited"
+            )
+            df["Current Users"] = df["slot"].apply(
+                lambda x: len([b for b in lunch_bookings if b["slot"] == x])
+            )
+            st.dataframe(df[["agent", "slot", "Current Users", "Max Users"]], hide_index=True)
         else:
             st.write("No lunch bookings yet")
     
@@ -276,7 +411,13 @@ def display_shift_bookings(shift):
         tea_early_bookings = st.session_state.bookings[shift]["tea_break_early"]
         if tea_early_bookings:
             df = pd.DataFrame(tea_early_bookings)
-            st.dataframe(df[["agent", "slot"]], hide_index=True)
+            df["Max Users"] = df["slot"].apply(
+                lambda x: st.session_state.templates[shift]["tea_break_early"]["slots"][x]["max_users"] or "Unlimited"
+            )
+            df["Current Users"] = df["slot"].apply(
+                lambda x: len([b for b in tea_early_bookings if b["slot"] == x])
+            )
+            st.dataframe(df[["agent", "slot", "Current Users", "Max Users"]], hide_index=True)
         else:
             st.write("No early tea break bookings yet")
     
@@ -285,7 +426,13 @@ def display_shift_bookings(shift):
         tea_late_bookings = st.session_state.bookings[shift]["tea_break_late"]
         if tea_late_bookings:
             df = pd.DataFrame(tea_late_bookings)
-            st.dataframe(df[["agent", "slot"]], hide_index=True)
+            df["Max Users"] = df["slot"].apply(
+                lambda x: st.session_state.templates[shift]["tea_break_late"]["slots"][x]["max_users"] or "Unlimited"
+            )
+            df["Current Users"] = df["slot"].apply(
+                lambda x: len([b for b in tea_late_bookings if b["slot"] == x])
+            )
+            st.dataframe(df[["agent", "slot", "Current Users", "Max Users"]], hide_index=True)
         else:
             st.write("No late tea break bookings yet")
 
@@ -304,27 +451,66 @@ def agent_interface():
         
         with col1:
             st.subheader("Lunch Break")
-            lunch_slot = st.selectbox("Select lunch time:", 
-                                    st.session_state.templates[shift]["lunch"]["slots"],
-                                    key="lunch_select")
-            if st.button("Book Lunch Break", key="lunch_btn"):
-                book_break(shift, "lunch", lunch_slot)
+            available_lunch_slots = []
+            for slot in st.session_state.templates[shift]["lunch"]["slots"]:
+                max_users = st.session_state.templates[shift]["lunch"]["slots"][slot]["max_users"]
+                if max_users is None:
+                    available_lunch_slots.append(slot)
+                else:
+                    current_users = len([b for b in st.session_state.bookings.get(shift, {}).get("lunch", []) if b["slot"] == slot])
+                    if current_users < max_users:
+                        available_lunch_slots.append(slot)
+            
+            if available_lunch_slots:
+                lunch_slot = st.selectbox("Select lunch time:", 
+                                         available_lunch_slots,
+                                         key="lunch_select")
+                if st.button("Book Lunch Break", key="lunch_btn"):
+                    book_break(shift, "lunch", lunch_slot)
+            else:
+                st.warning("No available lunch slots!")
         
         with col2:
             st.subheader("Early Tea Break")
-            tea_early_slot = st.selectbox("Select early tea time:", 
-                                         st.session_state.templates[shift]["tea_break_early"]["slots"],
-                                         key="tea_early_select")
-            if st.button("Book Early Tea Break", key="tea_early_btn"):
-                book_break(shift, "tea_break_early", tea_early_slot)
+            available_tea_early_slots = []
+            for slot in st.session_state.templates[shift]["tea_break_early"]["slots"]:
+                max_users = st.session_state.templates[shift]["tea_break_early"]["slots"][slot]["max_users"]
+                if max_users is None:
+                    available_tea_early_slots.append(slot)
+                else:
+                    current_users = len([b for b in st.session_state.bookings.get(shift, {}).get("tea_break_early", []) if b["slot"] == slot])
+                    if current_users < max_users:
+                        available_tea_early_slots.append(slot)
+            
+            if available_tea_early_slots:
+                tea_early_slot = st.selectbox("Select early tea time:", 
+                                            available_tea_early_slots,
+                                            key="tea_early_select")
+                if st.button("Book Early Tea Break", key="tea_early_btn"):
+                    book_break(shift, "tea_break_early", tea_early_slot)
+            else:
+                st.warning("No available early tea slots!")
         
         with col3:
             st.subheader("Late Tea Break")
-            tea_late_slot = st.selectbox("Select late tea time:", 
-                                        st.session_state.templates[shift]["tea_break_late"]["slots"],
-                                        key="tea_late_select")
-            if st.button("Book Late Tea Break", key="tea_late_btn"):
-                book_break(shift, "tea_break_late", tea_late_slot)
+            available_tea_late_slots = []
+            for slot in st.session_state.templates[shift]["tea_break_late"]["slots"]:
+                max_users = st.session_state.templates[shift]["tea_break_late"]["slots"][slot]["max_users"]
+                if max_users is None:
+                    available_tea_late_slots.append(slot)
+                else:
+                    current_users = len([b for b in st.session_state.bookings.get(shift, {}).get("tea_break_late", []) if b["slot"] == slot])
+                    if current_users < max_users:
+                        available_tea_late_slots.append(slot)
+            
+            if available_tea_late_slots:
+                tea_late_slot = st.selectbox("Select late tea time:", 
+                                           available_tea_late_slots,
+                                           key="tea_late_select")
+                if st.button("Book Late Tea Break", key="tea_late_btn"):
+                    book_break(shift, "tea_break_late", tea_late_slot)
+            else:
+                st.warning("No available late tea slots!")
     
     # Display rules
     st.markdown("---")
