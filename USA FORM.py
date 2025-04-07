@@ -7,7 +7,6 @@ import re
 from PIL import Image
 import io
 import pandas as pd
-import json
 
 # --------------------------
 # Database Functions
@@ -126,23 +125,6 @@ def init_db():
                 timestamp TEXT)
         """)
         
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS break_bookings (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                agent_name TEXT,
-                shift TEXT,
-                break_type TEXT,
-                slot TEXT,
-                timestamp TEXT)
-        """)
-        
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS break_templates (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                template_name TEXT UNIQUE,
-                template_data TEXT)
-        """)
-        
         # Handle system_settings table schema migration
         cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='system_settings'")
         if not cursor.fetchone():
@@ -150,19 +132,15 @@ def init_db():
                 CREATE TABLE system_settings (
                     id INTEGER PRIMARY KEY DEFAULT 1,
                     killswitch_enabled INTEGER DEFAULT 0,
-                    chat_killswitch_enabled INTEGER DEFAULT 0,
-                    breaks_killswitch_enabled INTEGER DEFAULT 0)
+                    chat_killswitch_enabled INTEGER DEFAULT 0)
             """)
-            cursor.execute("INSERT INTO system_settings (id, killswitch_enabled, chat_killswitch_enabled, breaks_killswitch_enabled) VALUES (1, 0, 0, 0)")
+            cursor.execute("INSERT INTO system_settings (id, killswitch_enabled, chat_killswitch_enabled) VALUES (1, 0, 0)")
         else:
             cursor.execute("PRAGMA table_info(system_settings)")
             columns = [column[1] for column in cursor.fetchall()]
             if 'chat_killswitch_enabled' not in columns:
                 cursor.execute("ALTER TABLE system_settings ADD COLUMN chat_killswitch_enabled INTEGER DEFAULT 0")
                 cursor.execute("UPDATE system_settings SET chat_killswitch_enabled = 0 WHERE id = 1")
-            if 'breaks_killswitch_enabled' not in columns:
-                cursor.execute("ALTER TABLE system_settings ADD COLUMN breaks_killswitch_enabled INTEGER DEFAULT 0")
-                cursor.execute("UPDATE system_settings SET breaks_killswitch_enabled = 0 WHERE id = 1")
         
         # Create default admin account
         cursor.execute("""
@@ -238,103 +216,6 @@ def init_db():
                 VALUES (?, ?, ?)
             """, (agent_name, hash_password(workspace_id), "agent"))
         
-        # Initialize break templates if they don't exist
-        cursor.execute("SELECT COUNT(*) FROM break_templates")
-        if cursor.fetchone()[0] == 0:
-            default_templates = {
-                "2:00 PM Shift": {
-                    "lunch": {
-                        "slots": {
-                            "18:30": {"max_users": None},
-                            "19:00": {"max_users": None},
-                            "19:30": {"max_users": None},
-                            "20:00": {"max_users": None},
-                            "20:30": {"max_users": None}
-                        },
-                        "duration": 30,
-                        "max_per_agent": 1
-                    },
-                    "tea_break_early": {
-                        "slots": {
-                            "15:00": {"max_users": 1},
-                            "15:15": {"max_users": 1},
-                            "15:30": {"max_users": 1},
-                            "15:45": {"max_users": 1},
-                            "16:00": {"max_users": 1},
-                            "16:15": {"max_users": 1},
-                            "16:30": {"max_users": 1}
-                        },
-                        "duration": 15,
-                        "max_per_agent": 1
-                    },
-                    "tea_break_late": {
-                        "slots": {
-                            "20:45": {"max_users": 1},
-                            "21:00": {"max_users": 1},
-                            "21:15": {"max_users": 1},
-                            "21:30": {"max_users": 1}
-                        },
-                        "duration": 15,
-                        "max_per_agent": 1
-                    },
-                    "last_hour": {
-                        "start": "22:00",
-                        "end": "22:30",
-                        "bio_break_duration": 5
-                    }
-                },
-                "6:00 PM Shift": {
-                    "lunch": {
-                        "slots": {
-                            "21:00": {"max_users": None},
-                            "21:30": {"max_users": None},
-                            "22:00": {"max_users": None},
-                            "22:30": {"max_users": None}
-                        },
-                        "duration": 30,
-                        "max_per_agent": 1
-                    },
-                    "tea_break_early": {
-                        "slots": {
-                            "19:00": {"max_users": 1},
-                            "19:15": {"max_users": 1},
-                            "19:30": {"max_users": 1},
-                            "19:45": {"max_users": 1},
-                            "20:00": {"max_users": 1},
-                            "20:15": {"max_users": 1},
-                            "20:30": {"max_users": 1},
-                            "20:45": {"max_users": 1}
-                        },
-                        "duration": 15,
-                        "max_per_agent": 1
-                    },
-                    "tea_break_late": {
-                        "slots": {
-                            "00:00": {"max_users": 1},
-                            "00:15": {"max_users": 1},
-                            "00:30": {"max_users": 1},
-                            "00:45": {"max_users": 1},
-                            "01:00": {"max_users": 1},
-                            "01:15": {"max_users": 1},
-                            "01:30": {"max_users": 1}
-                        },
-                        "duration": 15,
-                        "max_per_agent": 1
-                    },
-                    "last_hour": {
-                        "start": "02:00",
-                        "end": "02:30",
-                        "bio_break_duration": 5
-                    }
-                }
-            }
-            
-            for template_name, template_data in default_templates.items():
-                cursor.execute("""
-                    INSERT INTO break_templates (template_name, template_data)
-                    VALUES (?, ?)
-                """, (template_name, json.dumps(template_data)))
-        
         conn.commit()
     finally:
         conn.close()
@@ -359,16 +240,6 @@ def is_chat_killswitch_enabled():
     finally:
         conn.close()
 
-def is_breaks_killswitch_enabled():
-    conn = get_db_connection()
-    try:
-        cursor = conn.cursor()
-        cursor.execute("SELECT breaks_killswitch_enabled FROM system_settings WHERE id = 1")
-        result = cursor.fetchone()
-        return bool(result[0]) if result else False
-    finally:
-        conn.close()
-
 def toggle_killswitch(enable):
     conn = get_db_connection()
     try:
@@ -385,17 +256,6 @@ def toggle_chat_killswitch(enable):
     try:
         cursor = conn.cursor()
         cursor.execute("UPDATE system_settings SET chat_killswitch_enabled = ? WHERE id = 1",
-                      (1 if enable else 0,))
-        conn.commit()
-        return True
-    finally:
-        conn.close()
-
-def toggle_breaks_killswitch(enable):
-    conn = get_db_connection()
-    try:
-        cursor = conn.cursor()
-        cursor.execute("UPDATE system_settings SET breaks_killswitch_enabled = ? WHERE id = 1",
                       (1 if enable else 0,))
         conn.commit()
         return True
@@ -827,147 +687,6 @@ def clear_midshift_issues():
         conn.close()
 
 # --------------------------
-# Break Management Functions
-# --------------------------
-
-def get_break_templates():
-    conn = get_db_connection()
-    try:
-        cursor = conn.cursor()
-        cursor.execute("SELECT template_name, template_data FROM break_templates")
-        templates = {}
-        for name, data in cursor.fetchall():
-            templates[name] = json.loads(data)
-        return templates
-    finally:
-        conn.close()
-
-def save_break_template(template_name, template_data):
-    conn = get_db_connection()
-    try:
-        cursor = conn.cursor()
-        cursor.execute("""
-            INSERT OR REPLACE INTO break_templates (template_name, template_data)
-            VALUES (?, ?)
-        """, (template_name, json.dumps(template_data)))
-        conn.commit()
-        return True
-    finally:
-        conn.close()
-
-def delete_break_template(template_name):
-    conn = get_db_connection()
-    try:
-        cursor = conn.cursor()
-        cursor.execute("DELETE FROM break_templates WHERE template_name = ?", (template_name,))
-        conn.commit()
-        return True
-    finally:
-        conn.close()
-
-def book_break_slot(agent_name, shift, break_type, slot):
-    if is_killswitch_enabled() or is_breaks_killswitch_enabled():
-        st.error("Break booking is currently locked. Please contact the developer.")
-        return False
-        
-    conn = get_db_connection()
-    try:
-        cursor = conn.cursor()
-        
-        # Check if agent already has this type of break booked
-        cursor.execute("""
-            SELECT COUNT(*) FROM break_bookings 
-            WHERE agent_name = ? AND shift = ? AND break_type = ?
-        """, (agent_name, shift, break_type))
-        count = cursor.fetchone()[0]
-        
-        templates = get_break_templates()
-        max_per_agent = templates[shift][break_type]["max_per_agent"]
-        
-        if count >= max_per_agent:
-            st.warning(f"You can only book {max_per_agent} {break_type.replace('_', ' ')} per shift!")
-            return False
-        
-        # Check slot capacity
-        slot_max = templates[shift][break_type]["slots"][slot]["max_users"]
-        if slot_max is not None:
-            cursor.execute("""
-                SELECT COUNT(*) FROM break_bookings 
-                WHERE shift = ? AND break_type = ? AND slot = ?
-            """, (shift, break_type, slot))
-            slot_count = cursor.fetchone()[0]
-            
-            if slot_count >= slot_max:
-                st.warning(f"This time slot ({slot}) is already full (max {slot_max} users)!")
-                return False
-        
-        # Add booking
-        cursor.execute("""
-            INSERT INTO break_bookings (agent_name, shift, break_type, slot, timestamp)
-            VALUES (?, ?, ?, ?, ?)
-        """, (agent_name, shift, break_type, slot, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
-        
-        conn.commit()
-        return True
-    finally:
-        conn.close()
-
-def get_break_bookings(shift=None):
-    conn = get_db_connection()
-    try:
-        cursor = conn.cursor()
-        if shift:
-            cursor.execute("""
-                SELECT * FROM break_bookings 
-                WHERE shift = ?
-                ORDER BY timestamp DESC
-            """, (shift,))
-        else:
-            cursor.execute("SELECT * FROM break_bookings ORDER BY timestamp DESC")
-        
-        return cursor.fetchall()
-    finally:
-        conn.close()
-
-def get_agent_break_bookings(agent_name, shift=None):
-    conn = get_db_connection()
-    try:
-        cursor = conn.cursor()
-        if shift:
-            cursor.execute("""
-                SELECT * FROM break_bookings 
-                WHERE agent_name = ? AND shift = ?
-                ORDER BY timestamp DESC
-            """, (agent_name, shift))
-        else:
-            cursor.execute("""
-                SELECT * FROM break_bookings 
-                WHERE agent_name = ?
-                ORDER BY timestamp DESC
-            """, (agent_name,))
-        
-        return cursor.fetchall()
-    finally:
-        conn.close()
-
-def clear_break_bookings(shift=None):
-    if is_killswitch_enabled():
-        st.error("System is currently locked. Please contact the developer.")
-        return False
-        
-    conn = get_db_connection()
-    try:
-        cursor = conn.cursor()
-        if shift:
-            cursor.execute("DELETE FROM break_bookings WHERE shift = ?", (shift,))
-        else:
-            cursor.execute("DELETE FROM break_bookings")
-        conn.commit()
-        return True
-    finally:
-        conn.close()
-
-# --------------------------
 # Fancy Number Checker Functions
 # --------------------------
 
@@ -1068,8 +787,8 @@ def is_fancy_number(phone_number):
             patterns.append("Alternating pairs (010101)")
     
         # Stepping pairs (324252) - Fixed this check
-        if (all(int(pairs[i][0]) == int(pairs[i-1][0]) + 1 for i in range(1, len(pairs))) and \
-           (all(int(pairs[i][1]) == int(pairs[i-1][1]) + 2 for i in range(1, len(pairs))):
+        if (all(int(pairs[i][0]) == int(pairs[i-1][0]) + 1 for i in range(1, len(pairs))) and
+            all(int(pairs[i][1]) == int(pairs[i-1][1]) + 2 for i in range(1, len(pairs)))):
             patterns.append("Stepping pairs (324252)")
     except:
         pass
@@ -1136,13 +855,6 @@ st.markdown("""
         margin-bottom: 1rem;
         color: #B3E5FC;
     }
-    .breaks-killswitch-active {
-        background-color: #3A1E4A;
-        border-left: 5px solid #9C27B0;
-        padding: 1rem;
-        margin-bottom: 1rem;
-        color: #E1BEE7;
-    }
     .comment-box {
         margin: 0.5rem 0;
         padding: 0.5rem;
@@ -1175,22 +887,6 @@ st.markdown("""
     .result-box { padding: 15px; border-radius: 5px; margin: 10px 0; }
     .fancy-result { background-color: #1e3d1e; border: 1px solid #00ff00; }
     .normal-result { background-color: #3d1e1e; border: 1px solid #ff0000; }
-    /* Break booking styles */
-    .break-slot { 
-        padding: 10px; 
-        margin: 5px 0; 
-        border-radius: 5px; 
-        background-color: #2D3748;
-    }
-    .available-slot { border-left: 5px solid #4CAF50; }
-    .full-slot { border-left: 5px solid #F44336; }
-    .booked-slot { border-left: 5px solid #2196F3; }
-    .break-type-header { 
-        background-color: #1F2937; 
-        padding: 10px; 
-        border-radius: 5px;
-        margin-top: 15px;
-    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -1245,13 +941,6 @@ else:
             <p>The chat functionality is currently disabled.</p>
         </div>
         """, unsafe_allow_html=True)
-    elif is_breaks_killswitch_enabled():
-        st.markdown("""
-        <div class="breaks-killswitch-active">
-            <h3>⚠️ BREAK BOOKING LOCKED ⚠️</h3>
-            <p>The break booking functionality is currently disabled.</p>
-        </div>
-        """, unsafe_allow_html=True)
 
     def show_notifications():
         current_requests = get_requests()
@@ -1290,7 +979,6 @@ else:
             ("🖼️ HOLD", "hold"),
             ("❌ Mistakes", "mistakes"),
             ("💬 Chat", "chat"),
-            ("⏸️ Breaks", "breaks"),
             ("📱 Fancy Number", "fancy_number"),
             ("⏰ Late Login", "late_login"),
             ("📞 Quality Issues", "quality_issues"),
@@ -1472,134 +1160,6 @@ else:
                 st.image(Image.open(io.BytesIO(data)), use_container_width=True)
         else:
             st.info("No images in HOLD")
-
-    elif st.session_state.current_section == "breaks":
-        if is_breaks_killswitch_enabled():
-            st.warning("Break booking functionality is currently disabled by the administrator.")
-        else:
-            templates = get_break_templates()
-            shift_names = list(templates.keys())
-            
-            if not shift_names:
-                st.warning("No break templates available. Please contact admin.")
-            else:
-                shift = st.radio("Select your shift:", shift_names, horizontal=True)
-                
-                if shift in templates:
-                    template = templates[shift]
-                    
-                    st.header(f"Book Breaks for {shift}")
-                    
-                    # Display agent's current bookings
-                    agent_bookings = get_agent_break_bookings(st.session_state.username, shift)
-                    if agent_bookings:
-                        st.subheader("Your Current Bookings")
-                        bookings_df = pd.DataFrame([{
-                            "Break Type": b[3].replace("_", " ").title(),
-                            "Time Slot": b[4],
-                            "Booked At": b[5]
-                        } for b in agent_bookings])
-                        st.dataframe(bookings_df, hide_index=True)
-                    else:
-                        st.info("You have no break bookings for this shift yet")
-                    
-                    # Break booking interface
-                    with st.expander("Book Your Breaks", expanded=True):
-                        col1, col2, col3 = st.columns(3)
-                        
-                        with col1:
-                            st.subheader("Lunch Break")
-                            st.write(f"Duration: {template['lunch']['duration']} minutes")
-                            st.write(f"Max per agent: {template['lunch']['max_per_agent']}")
-                            
-                            available_lunch_slots = []
-                            for slot in template["lunch"]["slots"]:
-                                max_users = template["lunch"]["slots"][slot]["max_users"]
-                                bookings = get_break_bookings(shift)
-                                slot_bookings = [b for b in bookings if b[3] == "lunch" and b[4] == slot]
-                                
-                                if max_users is None or len(slot_bookings) < max_users:
-                                    available_lunch_slots.append(slot)
-                            
-                            if available_lunch_slots:
-                                lunch_slot = st.selectbox("Select lunch time:", available_lunch_slots, key="lunch_select")
-                                if st.button("Book Lunch Break", key="lunch_btn"):
-                                    if book_break_slot(st.session_state.username, shift, "lunch", lunch_slot):
-                                        st.rerun()
-                            else:
-                                st.warning("No available lunch slots!")
-                        
-                        with col2:
-                            st.subheader("Early Tea Break")
-                            st.write(f"Duration: {template['tea_break_early']['duration']} minutes")
-                            st.write(f"Max per agent: {template['tea_break_early']['max_per_agent']}")
-                            
-                            available_tea_early_slots = []
-                            for slot in template["tea_break_early"]["slots"]:
-                                max_users = template["tea_break_early"]["slots"][slot]["max_users"]
-                                bookings = get_break_bookings(shift)
-                                slot_bookings = [b for b in bookings if b[3] == "tea_break_early" and b[4] == slot]
-                                
-                                if max_users is None or len(slot_bookings) < max_users:
-                                    available_tea_early_slots.append(slot)
-                            
-                            if available_tea_early_slots:
-                                tea_early_slot = st.selectbox("Select early tea time:", available_tea_early_slots, key="tea_early_select")
-                                if st.button("Book Early Tea Break", key="tea_early_btn"):
-                                    if book_break_slot(st.session_state.username, shift, "tea_break_early", tea_early_slot):
-                                        st.rerun()
-                            else:
-                                st.warning("No available early tea slots!")
-                        
-                        with col3:
-                            st.subheader("Late Tea Break")
-                            st.write(f"Duration: {template['tea_break_late']['duration']} minutes")
-                            st.write(f"Max per agent: {template['tea_break_late']['max_per_agent']}")
-                            
-                            available_tea_late_slots = []
-                            for slot in template["tea_break_late"]["slots"]:
-                                max_users = template["tea_break_late"]["slots"][slot]["max_users"]
-                                bookings = get_break_bookings(shift)
-                                slot_bookings = [b for b in bookings if b[3] == "tea_break_late" and b[4] == slot]
-                                
-                                if max_users is None or len(slot_bookings) < max_users:
-                                    available_tea_late_slots.append(slot)
-                            
-                            if available_tea_late_slots:
-                                tea_late_slot = st.selectbox("Select late tea time:", available_tea_late_slots, key="tea_late_select")
-                                if st.button("Book Late Tea Break", key="tea_late_btn"):
-                                    if book_break_slot(st.session_state.username, shift, "tea_break_late", tea_late_slot):
-                                        st.rerun()
-                            else:
-                                st.warning("No available late tea slots!")
-                    
-                    st.markdown("---")
-                    st.subheader("Break Rules")
-                    st.write(f"**{shift} Rules:**")
-                    st.write(f"- Lunch duration: {template['lunch']['duration']} minutes")
-                    st.write(f"- Tea break duration: {template['tea_break_early']['duration']} minutes")
-                    st.write(f"- Only {template['last_hour']['bio_break_duration']} minutes bio break is authorized in the last hour between {template['last_hour']['start']} till {template['last_hour']['end']}")
-                    st.write("- NO BREAK AFTER THE LAST HOUR END TIME!")
-                    st.write("- Breaks must be confirmed by RTA or Team Leaders")
-                    
-                    if st.session_state.role == "admin":
-                        st.markdown("---")
-                        st.subheader("All Bookings for This Shift")
-                        shift_bookings = get_break_bookings(shift)
-                        if shift_bookings:
-                            bookings_df = pd.DataFrame([{
-                                "Agent": b[1],
-                                "Break Type": b[3].replace("_", " ").title(),
-                                "Time Slot": b[4],
-                                "Booked At": b[5]
-                            } for b in shift_bookings])
-                            st.dataframe(bookings_df, hide_index=True)
-                            
-                            if st.button("Clear All Bookings for This Shift"):
-                                if clear_break_bookings(shift):
-                                    st.rerun()
-                        else:
-                            st.info("No bookings for this shift yet")
 
     elif st.session_state.current_section == "fancy_number":
         st.header("📱 Lycamobile Fancy Number Checker")
@@ -1978,23 +1538,6 @@ else:
                     st.rerun()
             
             st.markdown("---")
-            
-            st.subheader("⏸️ Breaks Killswitch")
-            current_breaks = is_breaks_killswitch_enabled()
-            breaks_status = "🔴 ACTIVE" if current_breaks else "🟢 INACTIVE"
-            st.write(f"Current Status: {breaks_status}")
-            
-            col1, col2 = st.columns(2)
-            if current_breaks:
-                if col1.button("Deactivate Breaks Killswitch"):
-                    toggle_breaks_killswitch(False)
-                    st.rerun()
-            else:
-                if col1.button("Activate Breaks Killswitch"):
-                    toggle_breaks_killswitch(True)
-                    st.rerun()
-            
-            st.markdown("---")
         
         st.subheader("🧹 Data Management")
         
@@ -2054,14 +1597,6 @@ else:
                         st.success("All mid-shift issue records deleted!")
                         st.rerun()
 
-        with st.expander("❌ Clear All Break Bookings"):
-            with st.form("clear_break_bookings_form"):
-                st.warning("This will permanently delete ALL break bookings!")
-                if st.form_submit_button("Clear All Break Bookings"):
-                    if clear_break_bookings():
-                        st.success("All break bookings deleted!")
-                        st.rerun()
-
         with st.expander("💣 Clear ALL Data"):
             with st.form("nuclear_form"):
                 st.error("THIS WILL DELETE EVERYTHING IN THE SYSTEM!")
@@ -2074,204 +1609,10 @@ else:
                         clear_late_logins()
                         clear_quality_issues()
                         clear_midshift_issues()
-                        clear_break_bookings()
                         st.success("All system data deleted!")
                         st.rerun()
                     except Exception as e:
                         st.error(f"Error during deletion: {str(e)}")
-        
-        st.markdown("---")
-        st.subheader("Break Templates Management")
-        
-        templates = get_break_templates()
-        template_names = list(templates.keys())
-        
-        if not template_names:
-            st.warning("No break templates available")
-        else:
-            selected_template = st.selectbox("Select template to edit:", template_names)
-            
-            if selected_template:
-                template = templates[selected_template]
-                
-                with st.expander("Edit Template Details", expanded=True):
-                    new_name = st.text_input("Template Name:", value=selected_template)
-                    
-                    # Lunch settings
-                    st.subheader("Lunch Break Settings")
-                    lunch_slots = st.text_area("Lunch Slots (comma separated):", 
-                                             value=", ".join(template["lunch"]["slots"].keys()))
-                    lunch_duration = st.number_input("Lunch Duration (minutes):", 
-                                                   value=template["lunch"]["duration"], min_value=1)
-                    lunch_max = st.number_input("Max Lunch Bookings per Agent:", 
-                                              value=template["lunch"]["max_per_agent"], min_value=1)
-                    
-                    # Early Tea settings
-                    st.subheader("Early Tea Break Settings")
-                    tea_early_slots = st.text_area("Early Tea Slots (comma separated):", 
-                                                 value=", ".join(template["tea_break_early"]["slots"].keys()))
-                    tea_early_duration = st.number_input("Early Tea Duration (minutes):", 
-                                                       value=template["tea_break_early"]["duration"], min_value=1)
-                    tea_early_max = st.number_input("Max Early Tea Bookings per Agent:", 
-                                                  value=template["tea_break_early"]["max_per_agent"], min_value=1)
-                    
-                    # Late Tea settings
-                    st.subheader("Late Tea Break Settings")
-                    tea_late_slots = st.text_area("Late Tea Slots (comma separated):", 
-                                                value=", ".join(template["tea_break_late"]["slots"].keys()))
-                    tea_late_duration = st.number_input("Late Tea Duration (minutes):", 
-                                                      value=template["tea_break_late"]["duration"], min_value=1)
-                    tea_late_max = st.number_input("Max Late Tea Bookings per Agent:", 
-                                                 value=template["tea_break_late"]["max_per_agent"], min_value=1)
-                    
-                    # Last hour settings
-                    st.subheader("Last Hour Settings")
-                    last_hour_start = st.text_input("Last Hour Start Time:", value=template["last_hour"]["start"])
-                    last_hour_end = st.text_input("Last Hour End Time:", value=template["last_hour"]["end"])
-                    bio_duration = st.number_input("Bio Break Duration in Last Hour (minutes):", 
-                                                value=template["last_hour"]["bio_break_duration"], min_value=1)
-                    
-                    if st.button("Update Template"):
-                        # Process slots
-                        new_lunch_slots = {s.strip(): {"max_users": None} for s in lunch_slots.split(",")}
-                        for slot in new_lunch_slots:
-                            if slot in template["lunch"]["slots"]:
-                                new_lunch_slots[slot]["max_users"] = template["lunch"]["slots"][slot]["max_users"]
-                        template["lunch"]["slots"] = new_lunch_slots
-                        template["lunch"]["duration"] = lunch_duration
-                        template["lunch"]["max_per_agent"] = lunch_max
-                        
-                        new_tea_early_slots = {s.strip(): {"max_users": 1} for s in tea_early_slots.split(",")}
-                        for slot in new_tea_early_slots:
-                            if slot in template["tea_break_early"]["slots"]:
-                                new_tea_early_slots[slot]["max_users"] = template["tea_break_early"]["slots"][slot]["max_users"]
-                        template["tea_break_early"]["slots"] = new_tea_early_slots
-                        template["tea_break_early"]["duration"] = tea_early_duration
-                        template["tea_break_early"]["max_per_agent"] = tea_early_max
-                        
-                        new_tea_late_slots = {s.strip(): {"max_users": 1} for s in tea_late_slots.split(",")}
-                        for slot in new_tea_late_slots:
-                            if slot in template["tea_break_late"]["slots"]:
-                                new_tea_late_slots[slot]["max_users"] = template["tea_break_late"]["slots"][slot]["max_users"]
-                        template["tea_break_late"]["slots"] = new_tea_late_slots
-                        template["tea_break_late"]["duration"] = tea_late_duration
-                        template["tea_break_late"]["max_per_agent"] = tea_late_max
-                        
-                        template["last_hour"]["start"] = last_hour_start
-                        template["last_hour"]["end"] = last_hour_end
-                        template["last_hour"]["bio_break_duration"] = bio_duration
-                        
-                        if new_name != selected_template:
-                            del templates[selected_template]
-                            templates[new_name] = template
-                        else:
-                            templates[selected_template] = template
-                        
-                        save_break_template(new_name, template)
-                        st.success("Template updated successfully!")
-                        st.rerun()
-                
-                # Edit slot-specific max users
-                st.header("Edit Slot-Specific Maximum Users")
-                
-                col1, col2, col3 = st.columns(3)
-                
-                with col1:
-                    st.subheader("Lunch Break Slots")
-                    for slot, data in template["lunch"]["slots"].items():
-                        current_value = data["max_users"] if data["max_users"] is not None else 0
-                        max_users = st.number_input(
-                            f"Max users for {slot}:",
-                            min_value=0,
-                            value=current_value,
-                            key=f"lunch_{slot}_max"
-                        )
-                        template["lunch"]["slots"][slot]["max_users"] = max_users if max_users > 0 else None
-                
-                with col2:
-                    st.subheader("Early Tea Break Slots")
-                    for slot, data in template["tea_break_early"]["slots"].items():
-                        current_value = data["max_users"] if data["max_users"] is not None else 0
-                        max_users = st.number_input(
-                            f"Max users for {slot}:",
-                            min_value=0,
-                            value=current_value,
-                            key=f"tea_early_{slot}_max"
-                        )
-                        template["tea_break_early"]["slots"][slot]["max_users"] = max_users if max_users > 0 else None
-                
-                with col3:
-                    st.subheader("Late Tea Break Slots")
-                    for slot, data in template["tea_break_late"]["slots"].items():
-                        current_value = data["max_users"] if data["max_users"] is not None else 0
-                        max_users = st.number_input(
-                            f"Max users for {slot}:",
-                            min_value=0,
-                            value=current_value,
-                            key=f"tea_late_{slot}_max"
-                        )
-                        template["tea_break_late"]["slots"][slot]["max_users"] = max_users if max_users > 0 else None
-                
-                if st.button("Save Slot Limits"):
-                    save_break_template(selected_template, template)
-                    st.success("Slot limits updated successfully!")
-                    st.rerun()
-        
-        # Create new template
-        st.header("Create New Template")
-        new_template_name = st.text_input("New Template Name:")
-        if st.button("Create New Template") and new_template_name:
-            if new_template_name in templates:
-                st.warning("Template with this name already exists!")
-            else:
-                new_template = {
-                    "lunch": {
-                        "slots": {
-                            "12:00": {"max_users": None},
-                            "12:30": {"max_users": None},
-                            "13:00": {"max_users": None}
-                        },
-                        "duration": 30,
-                        "max_per_agent": 1
-                    },
-                    "tea_break_early": {
-                        "slots": {
-                            "10:00": {"max_users": 1},
-                            "10:15": {"max_users": 1},
-                            "10:30": {"max_users": 1}
-                        },
-                        "duration": 15,
-                        "max_per_agent": 1
-                    },
-                    "tea_break_late": {
-                        "slots": {
-                            "15:00": {"max_users": 1},
-                            "15:15": {"max_users": 1},
-                            "15:30": {"max_users": 1}
-                        },
-                        "duration": 15,
-                        "max_per_agent": 1
-                    },
-                    "last_hour": {
-                        "start": "17:00",
-                        "end": "17:30",
-                        "bio_break_duration": 5
-                    }
-                }
-                save_break_template(new_template_name, new_template)
-                st.success(f"New template '{new_template_name}' created! You can now edit it.")
-                st.rerun()
-        
-        # Delete template
-        st.header("Delete Template")
-        template_to_delete = st.selectbox("Select template to delete:", template_names)
-        if st.button("Delete Template") and template_to_delete:
-            if len(template_names) <= 1:
-                st.warning("Cannot delete the last remaining template!")
-            else:
-                delete_break_template(template_to_delete)
-                st.success(f"Template '{template_to_delete}' deleted!")
-                st.rerun()
         
         st.markdown("---")
         st.subheader("User Management")
