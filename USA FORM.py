@@ -85,39 +85,6 @@ def init_db():
         """)
         
         cursor.execute("""
-            CREATE TABLE IF NOT EXISTS break_templates (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                template_name TEXT UNIQUE,
-                break_name TEXT,
-                start_time TEXT,
-                end_time TEXT,
-                max_users INTEGER)
-        """)
-        
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS breaks (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                break_name TEXT,
-                start_time TEXT,
-                end_time TEXT,
-                max_users INTEGER,
-                current_users INTEGER DEFAULT 0,
-                created_by TEXT,
-                timestamp TEXT)
-        """)
-        
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS break_bookings (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                break_id INTEGER,
-                user_id INTEGER,
-                username TEXT,
-                booking_date TEXT,
-                timestamp TEXT,
-                FOREIGN KEY(break_id) REFERENCES breaks(id))
-        """)
-        
-        cursor.execute("""
             CREATE TABLE IF NOT EXISTS request_comments (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 request_id INTEGER,
@@ -584,148 +551,6 @@ def clear_all_group_messages():
     finally:
         conn.close()
 
-def add_break_slot(break_name, start_time, end_time, max_users, created_by):
-    if is_killswitch_enabled():
-        st.error("System is currently locked. Please contact the developer.")
-        return False
-        
-    conn = get_db_connection()
-    try:
-        cursor = conn.cursor()
-        cursor.execute("""
-            INSERT INTO breaks (break_name, start_time, end_time, max_users, created_by, timestamp) 
-            VALUES (?, ?, ?, ?, ?, ?)
-        """, (break_name, start_time, end_time, max_users, created_by,
-             datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
-        conn.commit()
-        return True
-    finally:
-        conn.close()
-
-def update_break_slot(break_id, break_name, start_time, end_time, max_users):
-    if is_killswitch_enabled():
-        st.error("System is currently locked. Please contact the developer.")
-        return False
-        
-    conn = get_db_connection()
-    try:
-        cursor = conn.cursor()
-        cursor.execute("""
-            UPDATE breaks 
-            SET break_name = ?, start_time = ?, end_time = ?, max_users = ?
-            WHERE id = ?
-        """, (break_name, start_time, end_time, max_users, break_id))
-        conn.commit()
-        return True
-    finally:
-        conn.close()
-
-def get_all_break_slots():
-    conn = get_db_connection()
-    try:
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM breaks ORDER BY start_time")
-        return cursor.fetchall()
-    finally:
-        conn.close()
-
-def get_available_break_slots(date):
-    conn = get_db_connection()
-    try:
-        cursor = conn.cursor()
-        cursor.execute("""
-            SELECT b.* 
-            FROM breaks b
-            LEFT JOIN (
-                SELECT break_id, COUNT(*) as booking_count
-                FROM break_bookings 
-                WHERE booking_date = ?
-                GROUP BY break_id
-            ) bb ON b.id = bb.break_id
-            WHERE b.max_users > IFNULL(bb.booking_count, 0)
-            ORDER BY b.start_time
-        """, (date,))
-        return cursor.fetchall()
-    finally:
-        conn.close()
-
-def book_break_slot(break_id, user_id, username, booking_date):
-    if is_killswitch_enabled():
-        st.error("System is currently locked. Please contact the developer.")
-        return False
-        
-    conn = get_db_connection()
-    try:
-        cursor = conn.cursor()
-        cursor.execute("""
-            INSERT INTO break_bookings (break_id, user_id, username, booking_date, timestamp) 
-            VALUES (?, ?, ?, ?, ?)
-        """, (break_id, user_id, username, booking_date,
-             datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
-        conn.commit()
-        return True
-    finally:
-        conn.close()
-
-def get_user_bookings(username, date):
-    conn = get_db_connection()
-    try:
-        cursor = conn.cursor()
-        cursor.execute("""
-            SELECT bb.*, b.break_name, b.start_time, b.end_time
-            FROM break_bookings bb
-            JOIN breaks b ON bb.break_id = b.id
-            WHERE bb.username = ? AND bb.booking_date = ?
-        """, (username, date))
-        return cursor.fetchall()
-    finally:
-        conn.close()
-
-def get_all_bookings(date):
-    conn = get_db_connection()
-    try:
-        cursor = conn.cursor()
-        cursor.execute("""
-            SELECT bb.*, b.break_name, b.start_time, b.end_time, u.role
-            FROM break_bookings bb
-            JOIN breaks b ON bb.break_id = b.id
-            JOIN users u ON bb.user_id = u.id
-            WHERE bb.booking_date = ?
-            ORDER BY b.start_time, bb.username
-        """, (date,))
-        return cursor.fetchall()
-    finally:
-        conn.close()
-
-def delete_break_slot(break_id):
-    if is_killswitch_enabled():
-        st.error("System is currently locked. Please contact the developer.")
-        return False
-        
-    conn = get_db_connection()
-    try:
-        cursor = conn.cursor()
-        cursor.execute("DELETE FROM breaks WHERE id = ?", (break_id,))
-        cursor.execute("DELETE FROM break_bookings WHERE break_id = ?", (break_id,))
-        conn.commit()
-        return True
-    finally:
-        conn.close()
-
-def clear_all_break_bookings():
-    if is_killswitch_enabled():
-        st.error("System is currently locked. Please contact the developer.")
-        return False
-        
-    conn = get_db_connection()
-    try:
-        cursor = conn.cursor()
-        cursor.execute("DELETE FROM break_bookings")
-        conn.commit()
-        return True
-    finally:
-        conn.close()
-
 def add_late_login(agent_name, presence_time, login_time, reason):
     if is_killswitch_enabled():
         st.error("System is currently locked. Please contact the developer.")
@@ -1073,8 +898,7 @@ if "authenticated" not in st.session_state:
         "current_section": "requests",
         "last_request_count": 0,
         "last_mistake_count": 0,
-        "last_message_ids": [],
-        "break_edits": {}
+        "last_message_ids": []
     })
 
 init_db()
@@ -1152,8 +976,6 @@ else:
         
         nav_options = [
             ("📋 Requests", "requests"),
-            ("📊 Dashboard", "dashboard"),
-            ("☕ Breaks", "breaks"),
             ("🖼️ HOLD", "hold"),
             ("❌ Mistakes", "mistakes"),
             ("💬 Chat", "chat"),
@@ -1257,229 +1079,6 @@ else:
                                 if new_comment:
                                     add_request_comment(req_id, st.session_state.username, new_comment)
                                     st.rerun()
-
-    elif st.session_state.current_section == "dashboard":
-        st.subheader("📊 Request Completion Dashboard")
-        all_requests = get_requests()
-        total = len(all_requests)
-        completed = sum(1 for r in all_requests if r[6])
-        rate = (completed/total*100) if total > 0 else 0
-        
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            st.metric("Total Requests", total)
-        with col2:
-            st.metric("Completed", completed)
-        with col3:
-            st.metric("Completion Rate", f"{rate:.1f}%")
-        
-        df = pd.DataFrame({
-            'Date': [datetime.strptime(r[5], "%Y-%m-%d %H:%M:%S").date() for r in all_requests],
-            'Status': ['Completed' if r[6] else 'Pending' for r in all_requests],
-            'Type': [r[2] for r in all_requests]
-        })
-        
-        st.subheader("Request Trends")
-        st.bar_chart(df['Date'].value_counts())
-        
-        st.subheader("Request Type Distribution")
-        type_counts = df['Type'].value_counts().reset_index()
-        type_counts.columns = ['Type', 'Count']
-        st.bar_chart(type_counts.set_index('Type'))
-
-    elif st.session_state.current_section == "breaks":
-        today = datetime.now().strftime("%Y-%m-%d")
-        selected_date = st.date_input("Select date", datetime.now())
-        formatted_date = selected_date.strftime("%Y-%m-%d")
-        
-        if st.session_state.role == "admin":
-            st.subheader("Admin: Break Schedule Management")
-            
-            with st.expander("➕ Add New Break Slot"):
-                with st.form("add_break_form"):
-                    cols = st.columns(3)
-                    break_name = cols[0].text_input("Break Name")
-                    start_time = cols[1].text_input("Start Time (HH:MM)")
-                    end_time = cols[2].text_input("End Time (HH:MM)")
-                    max_users = st.number_input("Max Users", min_value=1, value=1)
-                    
-                    if st.form_submit_button("Add Break Slot"):
-                        if break_name:
-                            try:
-                                # Validate time formats
-                                datetime.strptime(start_time, "%H:%M")
-                                datetime.strptime(end_time, "%H:%M")
-                                add_break_slot(
-                                    break_name,
-                                    start_time,
-                                    end_time,
-                                    max_users,
-                                    st.session_state.username
-                                )
-                                st.success("Break slot added successfully!")
-                                st.rerun()
-                            except ValueError:
-                                st.error("Invalid time format. Please use HH:MM format (e.g., 08:30)")
-            
-            st.subheader("Current Break Schedule")
-            breaks = get_all_break_slots()
-            
-            # Initialize break_edits if not exists
-            if "break_edits" not in st.session_state:
-                st.session_state.break_edits = {}
-            
-            # Store current edits
-            for b in breaks:
-                b_id, name, start, end, max_u, curr_u, created_by, ts = b
-                if b_id not in st.session_state.break_edits:
-                    st.session_state.break_edits[b_id] = {
-                        "break_name": name,
-                        "start_time": start,
-                        "end_time": end,
-                        "max_users": max_u
-                    }
-            
-            # Display editable breaks
-            for b in breaks:
-                b_id, name, start, end, max_u, curr_u, created_by, ts = b
-                with st.container():
-                    st.markdown(f"<div class='editable-break'>", unsafe_allow_html=True)
-                    
-                    cols = st.columns([3, 2, 2, 1, 1])
-                    with cols[0]:
-                        st.session_state.break_edits[b_id]["break_name"] = st.text_input(
-                            "Break Name", 
-                            value=st.session_state.break_edits[b_id]["break_name"],
-                            key=f"name_{b_id}"
-                        )
-                    with cols[1]:
-                        st.session_state.break_edits[b_id]["start_time"] = st.text_input(
-                            "Start Time (HH:MM)", 
-                            value=st.session_state.break_edits[b_id]["start_time"],
-                            key=f"start_{b_id}"
-                        )
-                    with cols[2]:
-                        st.session_state.break_edits[b_id]["end_time"] = st.text_input(
-                            "End Time (HH:MM)", 
-                            value=st.session_state.break_edits[b_id]["end_time"],
-                            key=f"end_{b_id}"
-                        )
-                    with cols[3]:
-                        st.session_state.break_edits[b_id]["max_users"] = st.number_input(
-                            "Max Users", 
-                            min_value=1,
-                            value=st.session_state.break_edits[b_id]["max_users"],
-                            key=f"max_{b_id}"
-                        )
-                    with cols[4]:
-                        if st.button("❌", key=f"del_{b_id}"):
-                            delete_break_slot(b_id)
-                            st.rerun()
-                    
-                    st.markdown("</div>", unsafe_allow_html=True)
-            
-            # Single save button for all changes
-            if st.button("💾 Save All Changes"):
-                errors = []
-                for b_id, edits in st.session_state.break_edits.items():
-                    try:
-                        # Validate time format
-                        datetime.strptime(edits["start_time"], "%H:%M")
-                        datetime.strptime(edits["end_time"], "%H:%M")
-                        update_break_slot(
-                            b_id,
-                            edits["break_name"],
-                            edits["start_time"],
-                            edits["end_time"],
-                            edits["max_users"]
-                        )
-                    except ValueError as e:
-                        errors.append(f"Break ID {b_id}: Invalid time format. Please use HH:MM format.")
-                        continue
-                
-                if errors:
-                    for error in errors:
-                        st.error(error)
-                else:
-                    st.success("All changes saved successfully!")
-                    st.rerun()
-            
-            st.markdown("---")
-            st.subheader("All Bookings for Selected Date")
-            try:
-                bookings = get_all_bookings(formatted_date)
-                if bookings:
-                    for b in bookings:
-                        b_id, break_id, user_id, username, date, ts, break_name, start, end, role = b
-                        st.write(f"{username} ({role}) - {break_name} ({start} - {end})")
-                else:
-                    st.info("No bookings for selected date")
-            except Exception as e:
-                st.error(f"Error loading bookings: {str(e)}")
-            
-            if st.button("Clear All Bookings", key="clear_all_bookings"):
-                clear_all_break_bookings()
-                st.rerun()
-        
-        else:
-            st.subheader("Available Break Slots")
-            try:
-                available_breaks = get_available_break_slots(formatted_date)
-                
-                if available_breaks:
-                    for b in available_breaks:
-                        b_id, name, start, end, max_u, curr_u, created_by, ts = b
-                        
-                        try:
-                            conn = get_db_connection()
-                            cursor = conn.cursor()
-                            cursor.execute("""
-                                SELECT COUNT(*) 
-                                FROM break_bookings 
-                                WHERE break_id = ? AND booking_date = ?
-                            """, (b_id, formatted_date))
-                            booked_count = cursor.fetchone()[0]
-                            remaining = max_u - booked_count
-                        except Exception as e:
-                            st.error(f"Error checking availability: {str(e)}")
-                            continue
-                        finally:
-                            conn.close()
-                        
-                        with st.container():
-                            cols = st.columns([3, 2, 1])
-                            cols[0].write(f"*{name}* ({start} - {end})")
-                            cols[1].write(f"Available slots: {remaining}/{max_u}")
-                            
-                            if cols[2].button("Book", key=f"book_{b_id}"):
-                                try:
-                                    conn = get_db_connection()
-                                    cursor = conn.cursor()
-                                    cursor.execute("SELECT id FROM users WHERE username = ?", 
-                                                (st.session_state.username,))
-                                    user_id = cursor.fetchone()[0]
-                                    book_break_slot(b_id, user_id, st.session_state.username, formatted_date)
-                                    st.rerun()
-                                except Exception as e:
-                                    st.error(f"Error booking slot: {str(e)}")
-                                finally:
-                                    conn.close()
-            except Exception as e:
-                st.error(f"Error loading break slots: {str(e)}")
-            
-            st.markdown("---")
-            st.subheader("Your Bookings")
-            try:
-                user_bookings = get_user_bookings(st.session_state.username, formatted_date)
-                
-                if user_bookings:
-                    for b in user_bookings:
-                        b_id, break_id, user_id, username, date, ts, break_name, start, end = b
-                        st.write(f"{break_name} ({start} - {end})")
-                else:
-                    st.info("You have no bookings for selected date")
-            except Exception as e:
-                st.error(f"Error loading your bookings: {str(e)}")
 
     elif st.session_state.current_section == "mistakes":
         if not is_killswitch_enabled():
@@ -1974,14 +1573,6 @@ else:
                         st.success("All HOLD images deleted!")
                         st.rerun()
 
-        with st.expander("❌ Clear All Break Bookings"):
-            with st.form("clear_breaks_form"):
-                st.warning("This will permanently delete ALL break bookings!")
-                if st.form_submit_button("Clear All Break Bookings"):
-                    if clear_all_break_bookings():
-                        st.success("All break bookings deleted!")
-                        st.rerun()
-
         with st.expander("❌ Clear All Late Logins"):
             with st.form("clear_late_logins_form"):
                 st.warning("This will permanently delete ALL late login records!")
@@ -2015,7 +1606,6 @@ else:
                         clear_all_mistakes()
                         clear_all_group_messages()
                         clear_hold_images()
-                        clear_all_break_bookings()
                         clear_late_logins()
                         clear_quality_issues()
                         clear_midshift_issues()
