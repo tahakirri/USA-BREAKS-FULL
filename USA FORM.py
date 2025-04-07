@@ -1,5 +1,5 @@
 import streamlit as st
-from datetime import datetime, time
+from datetime import datetime
 import pandas as pd
 
 # Break rules for each shift
@@ -50,12 +50,15 @@ shift_rules = {
     }
 }
 
-# Initialize session state for bookings
+# Initialize session state
 if 'bookings' not in st.session_state:
     st.session_state.bookings = {
         "2:00 PM Shift": {"lunch": [], "tea_break_early": [], "tea_break_late": []},
         "6:00 PM Shift": {"lunch": [], "tea_break_early": [], "tea_break_late": []}
     }
+
+if 'agent_id' not in st.session_state:
+    st.session_state.agent_id = None
 
 def book_break(shift, break_type, slot):
     # Check if user already booked this type of break
@@ -74,6 +77,7 @@ def book_break(shift, break_type, slot):
     }
     st.session_state.bookings[shift][break_type].append(booking)
     st.success(f"Booked {break_type.replace('_', ' ')} at {slot}!")
+    st.experimental_rerun()
 
 def display_shift_bookings(shift):
     st.subheader(f"{shift} Bookings")
@@ -110,40 +114,49 @@ def display_shift_bookings(shift):
 def main():
     st.title("Agent Break Booking System")
     
-    # Agent ID input
-    if 'agent_id' not in st.session_state:
-        st.session_state.agent_id = st.text_input("Enter your Agent ID:")
-        if st.session_state.agent_id:
-            st.success(f"Logged in as Agent {st.session_state.agent_id}")
-    else:
-        st.write(f"Logged in as Agent {st.session_state.agent_id}")
-    
-    if not st.session_state.get('agent_id'):
+    # Agent ID input at the top
+    if not st.session_state.agent_id:
+        agent_id = st.text_input("Enter your Agent ID:")
+        if agent_id:
+            st.session_state.agent_id = agent_id
+            st.experimental_rerun()
         st.warning("Please enter your Agent ID to continue")
         return
     
+    st.success(f"Logged in as Agent {st.session_state.agent_id}")
+    
     # Shift selection
-    shift = st.radio("Select your shift:", list(shift_rules.keys()))
+    shift = st.radio("Select your shift:", list(shift_rules.keys()), horizontal=True)
     
     st.header(f"Book Breaks for {shift}")
     
-    # Lunch break booking
-    st.subheader("Lunch Break")
-    lunch_slot = st.selectbox("Select lunch time:", shift_rules[shift]["lunch"]["slots"])
-    if st.button("Book Lunch Break"):
-        book_break(shift, "lunch", lunch_slot)
-    
-    # Early tea break booking
-    st.subheader("Early Tea Break")
-    tea_early_slot = st.selectbox("Select early tea time:", shift_rules[shift]["tea_break_early"]["slots"])
-    if st.button("Book Early Tea Break"):
-        book_break(shift, "tea_break_early", tea_early_slot)
-    
-    # Late tea break booking
-    st.subheader("Late Tea Break")
-    tea_late_slot = st.selectbox("Select late tea time:", shift_rules[shift]["tea_break_late"]["slots"])
-    if st.button("Book Late Tea Break"):
-        book_break(shift, "tea_break_late", tea_late_slot)
+    # Break booking section
+    with st.expander("Book Your Breaks", expanded=True):
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            st.subheader("Lunch Break")
+            lunch_slot = st.selectbox("Select lunch time:", 
+                                    shift_rules[shift]["lunch"]["slots"],
+                                    key="lunch_select")
+            if st.button("Book Lunch Break", key="lunch_btn"):
+                book_break(shift, "lunch", lunch_slot)
+        
+        with col2:
+            st.subheader("Early Tea Break")
+            tea_early_slot = st.selectbox("Select early tea time:", 
+                                         shift_rules[shift]["tea_break_early"]["slots"],
+                                         key="tea_early_select")
+            if st.button("Book Early Tea Break", key="tea_early_btn"):
+                book_break(shift, "tea_break_early", tea_early_slot)
+        
+        with col3:
+            st.subheader("Late Tea Break")
+            tea_late_slot = st.selectbox("Select late tea time:", 
+                                        shift_rules[shift]["tea_break_late"]["slots"],
+                                        key="tea_late_select")
+            if st.button("Book Late Tea Break", key="tea_late_btn"):
+                book_break(shift, "tea_break_late", tea_late_slot)
     
     # Display rules
     st.markdown("---")
