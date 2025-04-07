@@ -4,19 +4,19 @@ import pandas as pd
 import json
 import os
 
-# Default break templates with corrected structure
+# Default break templates with slot-based limits
 DEFAULT_TEMPLATES = {
     "2:00 PM Shift": {
         "lunch": {
             "slots": {
-                "18:30": {"max_users": None},
+                "18:30": {"max_users": None},  # None means unlimited
                 "19:00": {"max_users": None},
                 "19:30": {"max_users": None},
                 "20:00": {"max_users": None},
                 "20:30": {"max_users": None}
             },
             "duration": 30,
-            "max_bookings": None
+            "max_per_agent": 1
         },
         "tea_break_early": {
             "slots": {
@@ -29,7 +29,7 @@ DEFAULT_TEMPLATES = {
                 "16:30": {"max_users": 1}
             },
             "duration": 15,
-            "max_bookings": 1
+            "max_per_agent": 1
         },
         "tea_break_late": {
             "slots": {
@@ -39,7 +39,7 @@ DEFAULT_TEMPLATES = {
                 "21:30": {"max_users": 1}
             },
             "duration": 15,
-            "max_bookings": 1
+            "max_per_agent": 1
         },
         "last_hour": {
             "start": "22:00",
@@ -56,7 +56,7 @@ DEFAULT_TEMPLATES = {
                 "22:30": {"max_users": None}
             },
             "duration": 30,
-            "max_bookings": None
+            "max_per_agent": 1
         },
         "tea_break_early": {
             "slots": {
@@ -70,7 +70,7 @@ DEFAULT_TEMPLATES = {
                 "20:45": {"max_users": 1}
             },
             "duration": 15,
-            "max_bookings": 1
+            "max_per_agent": 1
         },
         "tea_break_late": {
             "slots": {
@@ -83,7 +83,7 @@ DEFAULT_TEMPLATES = {
                 "01:30": {"max_users": 1}
             },
             "duration": 15,
-            "max_bookings": 1
+            "max_per_agent": 1
         },
         "last_hour": {
             "start": "02:00",
@@ -103,18 +103,18 @@ TEMPLATES_FILE = "break_templates.json"
 BOOKINGS_FILE = "bookings.json"
 
 def migrate_template(templates):
-    """Migrate old list-based slot structure to new dictionary format"""
+    """Migrate old templates to new format if needed"""
     for shift, config in templates.items():
         for break_type in ["lunch", "tea_break_early", "tea_break_late"]:
-            if isinstance(config[break_type]["slots"], list):
-                # Convert list to dictionary format
+            # Convert list-based slots to dictionary format
+            if isinstance(config[break_type].get("slots"), list):
                 new_slots = {}
                 for slot in config[break_type]["slots"]:
-                    if break_type == "lunch":
-                        new_slots[slot] = {"max_users": None}
-                    else:
-                        new_slots[slot] = {"max_users": 1}
+                    new_slots[slot] = {"max_users": None if break_type == "lunch" else 1}
                 config[break_type]["slots"] = new_slots
+            # Ensure max_per_agent exists
+            if "max_per_agent" not in config[break_type]:
+                config[break_type]["max_per_agent"] = 1
     return templates
 
 # Initialize data files
@@ -188,7 +188,7 @@ def admin_interface():
             lunch_duration = st.number_input("Lunch Duration (minutes):", 
                                            value=template["lunch"]["duration"], min_value=1)
             lunch_max = st.number_input("Max Lunch Bookings per Agent:", 
-                                      value=template["lunch"]["max_bookings"] or 0)
+                                      value=template["lunch"]["max_per_agent"], min_value=1)
             
             # Early Tea settings
             st.subheader("Early Tea Break Settings")
@@ -197,7 +197,7 @@ def admin_interface():
             tea_early_duration = st.number_input("Early Tea Duration (minutes):", 
                                                value=template["tea_break_early"]["duration"], min_value=1)
             tea_early_max = st.number_input("Max Early Tea Bookings per Agent:", 
-                                          value=template["tea_break_early"]["max_bookings"] or 0)
+                                          value=template["tea_break_early"]["max_per_agent"], min_value=1)
             
             # Late Tea settings
             st.subheader("Late Tea Break Settings")
@@ -206,7 +206,7 @@ def admin_interface():
             tea_late_duration = st.number_input("Late Tea Duration (minutes):", 
                                               value=template["tea_break_late"]["duration"], min_value=1)
             tea_late_max = st.number_input("Max Late Tea Bookings per Agent:", 
-                                         value=template["tea_break_late"]["max_bookings"] or 0)
+                                         value=template["tea_break_late"]["max_per_agent"], min_value=1)
             
             # Last hour settings
             st.subheader("Last Hour Settings")
@@ -223,7 +223,7 @@ def admin_interface():
                         new_lunch_slots[slot]["max_users"] = template["lunch"]["slots"][slot]["max_users"]
                 template["lunch"]["slots"] = new_lunch_slots
                 template["lunch"]["duration"] = lunch_duration
-                template["lunch"]["max_bookings"] = lunch_max if lunch_max > 0 else None
+                template["lunch"]["max_per_agent"] = lunch_max
                 
                 new_tea_early_slots = {s.strip(): {"max_users": 1} for s in tea_early_slots.split(",")}
                 for slot in new_tea_early_slots:
@@ -231,7 +231,7 @@ def admin_interface():
                         new_tea_early_slots[slot]["max_users"] = template["tea_break_early"]["slots"][slot]["max_users"]
                 template["tea_break_early"]["slots"] = new_tea_early_slots
                 template["tea_break_early"]["duration"] = tea_early_duration
-                template["tea_break_early"]["max_bookings"] = tea_early_max if tea_early_max > 0 else None
+                template["tea_break_early"]["max_per_agent"] = tea_early_max
                 
                 new_tea_late_slots = {s.strip(): {"max_users": 1} for s in tea_late_slots.split(",")}
                 for slot in new_tea_late_slots:
@@ -239,7 +239,7 @@ def admin_interface():
                         new_tea_late_slots[slot]["max_users"] = template["tea_break_late"]["slots"][slot]["max_users"]
                 template["tea_break_late"]["slots"] = new_tea_late_slots
                 template["tea_break_late"]["duration"] = tea_late_duration
-                template["tea_break_late"]["max_bookings"] = tea_late_max if tea_late_max > 0 else None
+                template["tea_break_late"]["max_per_agent"] = tea_late_max
                 
                 template["last_hour"]["start"] = last_hour_start
                 template["last_hour"]["end"] = last_hour_end
@@ -276,7 +276,7 @@ def admin_interface():
                     value=data["max_users"] if data["max_users"] is not None else 1,
                     key=f"tea_early_{slot}_max"
                 )
-                template["tea_break_early"]["slots"][slot]["max_users"] = max_users if max_users > 0 else None
+                template["tea_break_early"]["slots"][slot]["max_users"] = max_users
         
         with col3:
             st.subheader("Late Tea Break Slots")
@@ -287,7 +287,7 @@ def admin_interface():
                     value=data["max_users"] if data["max_users"] is not None else 1,
                     key=f"tea_late_{slot}_max"
                 )
-                template["tea_break_late"]["slots"][slot]["max_users"] = max_users if max_users > 0 else None
+                template["tea_break_late"]["slots"][slot]["max_users"] = max_users
         
         if st.button("Save Slot Limits"):
             save_templates(st.session_state.templates)
@@ -308,7 +308,7 @@ def admin_interface():
                         "13:00": {"max_users": None}
                     },
                     "duration": 30,
-                    "max_bookings": None
+                    "max_per_agent": 1
                 },
                 "tea_break_early": {
                     "slots": {
@@ -317,7 +317,7 @@ def admin_interface():
                         "10:30": {"max_users": 1}
                     },
                     "duration": 15,
-                    "max_bookings": 1
+                    "max_per_agent": 1
                 },
                 "tea_break_late": {
                     "slots": {
@@ -326,7 +326,7 @@ def admin_interface():
                         "15:30": {"max_users": 1}
                     },
                     "duration": 15,
-                    "max_bookings": 1
+                    "max_per_agent": 1
                 },
                 "last_hour": {
                     "start": "17:00",
@@ -363,13 +363,14 @@ def book_break(shift, break_type, slot):
     if shift not in st.session_state.bookings:
         st.session_state.bookings[shift] = {"lunch": [], "tea_break_early": [], "tea_break_late": []}
     
+    # Check per-agent limit
     user_bookings = [b for b in st.session_state.bookings[shift][break_type] if b["agent"] == st.session_state.agent_id]
-    
-    max_bookings = st.session_state.templates[shift][break_type]["max_bookings"]
-    if max_bookings is not None and len(user_bookings) >= max_bookings:
-        st.warning(f"You can only book {max_bookings} {break_type.replace('_', ' ')} per shift!")
+    max_per_agent = st.session_state.templates[shift][break_type]["max_per_agent"]
+    if len(user_bookings) >= max_per_agent:
+        st.warning(f"You can only book {max_per_agent} {break_type.replace('_', ' ')} per shift!")
         return
     
+    # Check slot capacity
     slot_max = st.session_state.templates[shift][break_type]["slots"][slot]["max_users"]
     if slot_max is not None:
         slot_bookings = [b for b in st.session_state.bookings[shift][break_type] if b["slot"] == slot]
@@ -377,6 +378,7 @@ def book_break(shift, break_type, slot):
             st.warning(f"This time slot ({slot}) is already full (max {slot_max} users)!")
             return
     
+    # Add booking
     booking = {
         "agent": st.session_state.agent_id,
         "slot": slot,
@@ -455,12 +457,9 @@ def agent_interface():
             available_lunch_slots = []
             for slot in st.session_state.templates[shift]["lunch"]["slots"]:
                 max_users = st.session_state.templates[shift]["lunch"]["slots"][slot]["max_users"]
-                if max_users is None:
+                current_users = len([b for b in st.session_state.bookings.get(shift, {}).get("lunch", []) if b["slot"] == slot])
+                if max_users is None or current_users < max_users:
                     available_lunch_slots.append(slot)
-                else:
-                    current_users = len([b for b in st.session_state.bookings.get(shift, {}).get("lunch", []) if b["slot"] == slot])
-                    if current_users < max_users:
-                        available_lunch_slots.append(slot)
             
             if available_lunch_slots:
                 lunch_slot = st.selectbox("Select lunch time:", available_lunch_slots, key="lunch_select")
@@ -474,12 +473,9 @@ def agent_interface():
             available_tea_early_slots = []
             for slot in st.session_state.templates[shift]["tea_break_early"]["slots"]:
                 max_users = st.session_state.templates[shift]["tea_break_early"]["slots"][slot]["max_users"]
-                if max_users is None:
+                current_users = len([b for b in st.session_state.bookings.get(shift, {}).get("tea_break_early", []) if b["slot"] == slot])
+                if current_users < max_users:
                     available_tea_early_slots.append(slot)
-                else:
-                    current_users = len([b for b in st.session_state.bookings.get(shift, {}).get("tea_break_early", []) if b["slot"] == slot])
-                    if current_users < max_users:
-                        available_tea_early_slots.append(slot)
             
             if available_tea_early_slots:
                 tea_early_slot = st.selectbox("Select early tea time:", available_tea_early_slots, key="tea_early_select")
@@ -493,12 +489,9 @@ def agent_interface():
             available_tea_late_slots = []
             for slot in st.session_state.templates[shift]["tea_break_late"]["slots"]:
                 max_users = st.session_state.templates[shift]["tea_break_late"]["slots"][slot]["max_users"]
-                if max_users is None:
+                current_users = len([b for b in st.session_state.bookings.get(shift, {}).get("tea_break_late", []) if b["slot"] == slot])
+                if current_users < max_users:
                     available_tea_late_slots.append(slot)
-                else:
-                    current_users = len([b for b in st.session_state.bookings.get(shift, {}).get("tea_break_late", []) if b["slot"] == slot])
-                    if current_users < max_users:
-                        available_tea_late_slots.append(slot)
             
             if available_tea_late_slots:
                 tea_late_slot = st.selectbox("Select late tea time:", available_tea_late_slots, key="tea_late_select")
