@@ -4,7 +4,7 @@ import pandas as pd
 import json
 import os
 
-# Default break templates
+# Default break templates with corrected structure
 DEFAULT_TEMPLATES = {
     "2:00 PM Shift": {
         "lunch": {
@@ -93,7 +93,7 @@ DEFAULT_TEMPLATES = {
     }
 }
 
-# Admin credentials (in production, use proper authentication)
+# Admin credentials
 ADMIN_CREDENTIALS = {
     "admin": "admin123"
 }
@@ -101,6 +101,21 @@ ADMIN_CREDENTIALS = {
 # File paths
 TEMPLATES_FILE = "break_templates.json"
 BOOKINGS_FILE = "bookings.json"
+
+def migrate_template(templates):
+    """Migrate old list-based slot structure to new dictionary format"""
+    for shift, config in templates.items():
+        for break_type in ["lunch", "tea_break_early", "tea_break_late"]:
+            if isinstance(config[break_type]["slots"], list):
+                # Convert list to dictionary format
+                new_slots = {}
+                for slot in config[break_type]["slots"]:
+                    if break_type == "lunch":
+                        new_slots[slot] = {"max_users": None}
+                    else:
+                        new_slots[slot] = {"max_users": 1}
+                config[break_type]["slots"] = new_slots
+    return templates
 
 # Initialize data files
 def init_files():
@@ -111,12 +126,15 @@ def init_files():
         with open(BOOKINGS_FILE, 'w') as f:
             json.dump({}, f)
 
-# Load data
+# Load data with migration
 def load_templates():
     with open(TEMPLATES_FILE, 'r') as f:
-        return json.load(f)
+        templates = json.load(f)
+    return migrate_template(templates)
 
 def load_bookings():
+    if not os.path.exists(BOOKINGS_FILE):
+        return {}
     with open(BOOKINGS_FILE, 'r') as f:
         return json.load(f)
 
@@ -200,7 +218,6 @@ def admin_interface():
             if st.button("Update Template"):
                 # Process slots
                 new_lunch_slots = {s.strip(): {"max_users": None} for s in lunch_slots.split(",")}
-                # Preserve existing max_users if slot already exists
                 for slot in new_lunch_slots:
                     if slot in template["lunch"]["slots"]:
                         new_lunch_slots[slot]["max_users"] = template["lunch"]["slots"][slot]["max_users"]
@@ -228,7 +245,6 @@ def admin_interface():
                 template["last_hour"]["end"] = last_hour_end
                 template["last_hour"]["bio_break_duration"] = bio_duration
                 
-                # Handle name change
                 if new_name != selected_template:
                     st.session_state.templates[new_name] = st.session_state.templates.pop(selected_template)
                 
@@ -249,10 +265,7 @@ def admin_interface():
                     value=data["max_users"] if data["max_users"] is not None else 0,
                     key=f"lunch_{slot}_max"
                 )
-                if max_users == 0:
-                    template["lunch"]["slots"][slot]["max_users"] = None
-                else:
-                    template["lunch"]["slots"][slot]["max_users"] = max_users
+                template["lunch"]["slots"][slot]["max_users"] = max_users if max_users > 0 else None
         
         with col2:
             st.subheader("Early Tea Break Slots")
@@ -263,10 +276,7 @@ def admin_interface():
                     value=data["max_users"] if data["max_users"] is not None else 1,
                     key=f"tea_early_{slot}_max"
                 )
-                if max_users == 0:
-                    template["tea_break_early"]["slots"][slot]["max_users"] = None
-                else:
-                    template["tea_break_early"]["slots"][slot]["max_users"] = max_users
+                template["tea_break_early"]["slots"][slot]["max_users"] = max_users if max_users > 0 else None
         
         with col3:
             st.subheader("Late Tea Break Slots")
@@ -277,10 +287,7 @@ def admin_interface():
                     value=data["max_users"] if data["max_users"] is not None else 1,
                     key=f"tea_late_{slot}_max"
                 )
-                if max_users == 0:
-                    template["tea_break_late"]["slots"][slot]["max_users"] = None
-                else:
-                    template["tea_break_late"]["slots"][slot]["max_users"] = max_users
+                template["tea_break_late"]["slots"][slot]["max_users"] = max_users if max_users > 0 else None
         
         if st.button("Save Slot Limits"):
             save_templates(st.session_state.templates)
@@ -356,7 +363,6 @@ def book_break(shift, break_type, slot):
     if shift not in st.session_state.bookings:
         st.session_state.bookings[shift] = {"lunch": [], "tea_break_early": [], "tea_break_late": []}
     
-    # Check if user already booked this type of break
     user_bookings = [b for b in st.session_state.bookings[shift][break_type] if b["agent"] == st.session_state.agent_id]
     
     max_bookings = st.session_state.templates[shift][break_type]["max_bookings"]
@@ -364,7 +370,6 @@ def book_break(shift, break_type, slot):
         st.warning(f"You can only book {max_bookings} {break_type.replace('_', ' ')} per shift!")
         return
     
-    # Check slot max users
     slot_max = st.session_state.templates[shift][break_type]["slots"][slot]["max_users"]
     if slot_max is not None:
         slot_bookings = [b for b in st.session_state.bookings[shift][break_type] if b["slot"] == slot]
@@ -372,7 +377,6 @@ def book_break(shift, break_type, slot):
             st.warning(f"This time slot ({slot}) is already full (max {slot_max} users)!")
             return
     
-    # Add the booking
     booking = {
         "agent": st.session_state.agent_id,
         "slot": slot,
@@ -395,7 +399,6 @@ def display_shift_bookings(shift):
         lunch_bookings = st.session_state.bookings[shift]["lunch"]
         if lunch_bookings:
             df = pd.DataFrame(lunch_bookings)
-            # Add slot limits information
             df["Max Users"] = df["slot"].apply(
                 lambda x: st.session_state.templates[shift]["lunch"]["slots"][x]["max_users"] or "Unlimited"
             )
@@ -439,13 +442,11 @@ def display_shift_bookings(shift):
 def agent_interface():
     st.title("Agent Break Booking System")
     
-    # Shift selection
     shift_names = list(st.session_state.templates.keys())
     shift = st.radio("Select your shift:", shift_names, horizontal=True)
     
     st.header(f"Book Breaks for {shift}")
     
-    # Break booking section
     with st.expander("Book Your Breaks", expanded=True):
         col1, col2, col3 = st.columns(3)
         
@@ -462,9 +463,7 @@ def agent_interface():
                         available_lunch_slots.append(slot)
             
             if available_lunch_slots:
-                lunch_slot = st.selectbox("Select lunch time:", 
-                                         available_lunch_slots,
-                                         key="lunch_select")
+                lunch_slot = st.selectbox("Select lunch time:", available_lunch_slots, key="lunch_select")
                 if st.button("Book Lunch Break", key="lunch_btn"):
                     book_break(shift, "lunch", lunch_slot)
             else:
@@ -483,9 +482,7 @@ def agent_interface():
                         available_tea_early_slots.append(slot)
             
             if available_tea_early_slots:
-                tea_early_slot = st.selectbox("Select early tea time:", 
-                                            available_tea_early_slots,
-                                            key="tea_early_select")
+                tea_early_slot = st.selectbox("Select early tea time:", available_tea_early_slots, key="tea_early_select")
                 if st.button("Book Early Tea Break", key="tea_early_btn"):
                     book_break(shift, "tea_break_early", tea_early_slot)
             else:
@@ -504,15 +501,12 @@ def agent_interface():
                         available_tea_late_slots.append(slot)
             
             if available_tea_late_slots:
-                tea_late_slot = st.selectbox("Select late tea time:", 
-                                           available_tea_late_slots,
-                                           key="tea_late_select")
+                tea_late_slot = st.selectbox("Select late tea time:", available_tea_late_slots, key="tea_late_select")
                 if st.button("Book Late Tea Break", key="tea_late_btn"):
                     book_break(shift, "tea_break_late", tea_late_slot)
             else:
                 st.warning("No available late tea slots!")
     
-    # Display rules
     st.markdown("---")
     st.subheader("Break Rules")
     st.write(f"**{shift} Rules:**")
@@ -522,7 +516,6 @@ def agent_interface():
     st.write("- NO BREAK AFTER THE LAST HOUR END TIME!")
     st.write("- Breaks must be confirmed by RTA or Team Leaders")
     
-    # Display current bookings
     st.markdown("---")
     display_shift_bookings(shift)
 
@@ -530,7 +523,6 @@ def main():
     init_files()
     init_session_state()
     
-    # Login section
     if not st.session_state.agent_id and not st.session_state.admin_mode:
         st.title("Break Booking System Login")
         
@@ -554,14 +546,12 @@ def main():
             st.warning("Please login to continue")
             return
     
-    # Logout button
     if st.session_state.agent_id or st.session_state.admin_mode:
         if st.button("Logout"):
             st.session_state.agent_id = None
             st.session_state.admin_mode = False
             st.experimental_rerun()
     
-    # Show appropriate interface
     if st.session_state.admin_mode:
         admin_interface()
     elif st.session_state.agent_id:
