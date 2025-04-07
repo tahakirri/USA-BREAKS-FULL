@@ -777,7 +777,9 @@ def get_quality_issues():
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM quality_issues ORDER BY timestamp DESC")
         return cursor.fetchall()
-    finally
+    except Exception as e:
+        st.error(f"Error fetching quality issues: {str(e)}")
+    finally:
         conn.close()
 
 def add_midshift_issue(agent_name, issue_type, start_time, end_time):
@@ -795,6 +797,8 @@ def add_midshift_issue(agent_name, issue_type, start_time, end_time):
              datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
         conn.commit()
         return True
+    except Exception as e:
+        st.error(f"Error adding mid-shift issue: {str(e)}")
     finally:
         conn.close()
 
@@ -804,6 +808,8 @@ def get_midshift_issues():
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM midshift_issues ORDER BY timestamp DESC")
         return cursor.fetchall()
+    except Exception as e:
+        st.error(f"Error fetching mid-shift issues: {str(e)}")
     finally:
         conn.close()
 
@@ -818,6 +824,8 @@ def clear_late_logins():
         cursor.execute("DELETE FROM late_logins")
         conn.commit()
         return True
+    except Exception as e:
+        st.error(f"Error clearing late logins: {str(e)}")
     finally:
         conn.close()
 
@@ -832,6 +840,8 @@ def clear_quality_issues():
         cursor.execute("DELETE FROM quality_issues")
         conn.commit()
         return True
+    except Exception as e:
+        st.error(f"Error clearing quality issues: {str(e)}")
     finally:
         conn.close()
 
@@ -846,6 +856,8 @@ def clear_midshift_issues():
         cursor.execute("DELETE FROM midshift_issues")
         conn.commit()
         return True
+    except Exception as e:
+        st.error(f"Error clearing mid-shift issues: {str(e)}")
     finally:
         conn.close()
 
