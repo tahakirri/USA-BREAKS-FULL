@@ -53,24 +53,51 @@ def initialize_app():
     if settings["current_template"] not in templates:
         settings["current_template"] = "default"
         save_settings(settings)
-    
-    # Create empty bookings file if not exists
-    if not os.path.exists(BOOKINGS_FILE):
-        with open(BOOKINGS_FILE, "w") as f:
-            json.dump({}, f)
 
 # Load data functions
 def load_settings():
-    with open(SETTINGS_FILE, "r") as f:
-        return json.load(f)
+    try:
+        with open(SETTINGS_FILE, "r") as f:
+            settings = json.load(f)
+            # Ensure settings has required keys
+            if "current_template" not in settings:
+                settings["current_template"] = "default"
+            if "max_per_slot" not in settings:
+                settings["max_per_slot"] = 3
+            return settings
+    except (FileNotFoundError, json.JSONDecodeError):
+        # If settings file is corrupted, recreate it
+        default_settings = {
+            "max_per_slot": 3,
+            "current_template": "default",
+        }
+        with open(SETTINGS_FILE, "w") as f:
+            json.dump(default_settings, f)
+        return default_settings
 
 def load_templates():
-    with open(TEMPLATES_FILE, "r") as f:
-        return json.load(f)
+    try:
+        with open(TEMPLATES_FILE, "r") as f:
+            templates = json.load(f)
+            # Ensure at least default template exists
+            if "default" not in templates:
+                initialize_app()  # Reinitialize if default template is missing
+                templates = json.load(open(TEMPLATES_FILE, "r"))
+            return templates
+    except (FileNotFoundError, json.JSONDecodeError):
+        # If templates file is corrupted, recreate it
+        initialize_app()
+        return json.load(open(TEMPLATES_FILE, "r"))
 
 def load_bookings():
-    with open(BOOKINGS_FILE, "r") as f:
-        return json.load(f)
+    try:
+        with open(BOOKINGS_FILE, "r") as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        # If bookings file is corrupted, recreate it
+        with open(BOOKINGS_FILE, "w") as f:
+            json.dump({}, f)
+        return {}
 
 # Save data functions
 def save_settings(settings):
@@ -85,7 +112,7 @@ def save_bookings(bookings):
     with open(BOOKINGS_FILE, "w") as f:
         json.dump(bookings, f)
 
-# Get current template data
+# Get current template data with error handling
 def get_current_template():
     settings = load_settings()
     templates = load_templates()
@@ -202,7 +229,12 @@ def agent_interface():
     agent_bookings = get_agent_bookings(agent_id, date_str)
     
     # Get current template
-    current_template = get_current_template()
+    try:
+        current_template = get_current_template()
+    except Exception as e:
+        st.error(f"Error loading break schedule: {str(e)}")
+        st.stop()
+    
     settings = load_settings()
     max_per_slot = settings["max_per_slot"]
     
