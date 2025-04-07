@@ -51,14 +51,16 @@ shift_rules = {
 }
 
 # Initialize session state
-if 'bookings' not in st.session_state:
-    st.session_state.bookings = {
-        "2:00 PM Shift": {"lunch": [], "tea_break_early": [], "tea_break_late": []},
-        "6:00 PM Shift": {"lunch": [], "tea_break_early": [], "tea_break_late": []}
-    }
-
-if 'agent_id' not in st.session_state:
-    st.session_state.agent_id = None
+def init_session_state():
+    if 'bookings' not in st.session_state:
+        st.session_state.bookings = {
+            "2:00 PM Shift": {"lunch": [], "tea_break_early": [], "tea_break_late": []},
+            "6:00 PM Shift": {"lunch": [], "tea_break_early": [], "tea_break_late": []}
+        }
+    if 'agent_id' not in st.session_state:
+        st.session_state.agent_id = None
+    if 'initialized' not in st.session_state:
+        st.session_state.initialized = True
 
 def book_break(shift, break_type, slot):
     # Check if user already booked this type of break
@@ -77,7 +79,6 @@ def book_break(shift, break_type, slot):
     }
     st.session_state.bookings[shift][break_type].append(booking)
     st.success(f"Booked {break_type.replace('_', ' ')} at {slot}!")
-    st.experimental_rerun()
 
 def display_shift_bookings(shift):
     st.subheader(f"{shift} Bookings")
@@ -112,18 +113,25 @@ def display_shift_bookings(shift):
             st.write("No late tea break bookings yet")
 
 def main():
+    init_session_state()
     st.title("Agent Break Booking System")
     
     # Agent ID input at the top
     if not st.session_state.agent_id:
-        agent_id = st.text_input("Enter your Agent ID:")
-        if agent_id:
+        agent_id = st.text_input("Enter your Agent ID:", key="agent_input")
+        if st.button("Login") and agent_id:
             st.session_state.agent_id = agent_id
-            st.experimental_rerun()
-        st.warning("Please enter your Agent ID to continue")
+            return
+        st.warning("Please enter your Agent ID and click Login to continue")
         return
     
     st.success(f"Logged in as Agent {st.session_state.agent_id}")
+    
+    if st.button("Logout"):
+        st.session_state.agent_id = None
+        st.session_state.pop('bookings', None)
+        init_session_state()
+        return
     
     # Shift selection
     shift = st.radio("Select your shift:", list(shift_rules.keys()), horizontal=True)
