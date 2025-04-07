@@ -46,6 +46,18 @@ def initialize_app():
     if not os.path.exists(BOOKINGS_FILE):
         with open(BOOKINGS_FILE, "w") as f:
             json.dump({}, f)
+    
+    # Ensure current_template exists in templates
+    settings = load_settings()
+    templates = load_templates()
+    if settings["current_template"] not in templates:
+        settings["current_template"] = "default"
+        save_settings(settings)
+    
+    # Create empty bookings file if not exists
+    if not os.path.exists(BOOKINGS_FILE):
+        with open(BOOKINGS_FILE, "w") as f:
+            json.dump({}, f)
 
 # Load data functions
 def load_settings():
@@ -77,6 +89,12 @@ def save_bookings(bookings):
 def get_current_template():
     settings = load_settings()
     templates = load_templates()
+    
+    # If the current_template doesn't exist, fall back to "default"
+    if settings["current_template"] not in templates:
+        settings["current_template"] = "default"
+        save_settings(settings)
+    
     return templates[settings["current_template"]]
 
 # Add a booking
