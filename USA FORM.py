@@ -3,11 +3,17 @@ import pandas as pd
 from datetime import datetime, time
 import json
 import os
+import hashlib
 
 # File paths for storing data
 BOOKINGS_FILE = "bookings.json"
 SETTINGS_FILE = "settings.json"
 TEMPLATES_FILE = "templates.json"
+
+# Helper function to generate unique element IDs
+def generate_element_id(*args):
+    str_args = "|".join(str(arg) for arg in args)
+    return hashlib.md5(str_args.encode()).hexdigest()
 
 # Initialize app state
 def initialize_app():
@@ -258,7 +264,7 @@ def agent_interface():
             
             if early_tea_booked:
                 st.success(f"Booked: {', '.join(agent_bookings['2pm']['early_tea'])}")
-                if st.button("Cancel Early Tea Booking (2PM)"):
+                if st.button("Cancel Early Tea Booking (2PM)", key="cancel_early_tea_2pm"):
                     for slot in agent_bookings["2pm"]["early_tea"]:
                         remove_booking(agent_id, "2pm", "early_tea", slot, date_str)
                     st.rerun()
@@ -270,8 +276,8 @@ def agent_interface():
                         early_tea_options.append(f"{slot} ({count}/{max_per_slot})")
                 
                 if early_tea_options:
-                    selected_early_tea = st.selectbox("Select Early Tea Time (2PM)", early_tea_options)
-                    if st.button("Book Early Tea Break (2PM)"):
+                    selected_early_tea = st.selectbox("Select Early Tea Time (2PM)", early_tea_options, key="early_tea_2pm")
+                    if st.button("Book Early Tea Break (2PM)", key="book_early_tea_2pm"):
                         slot = selected_early_tea.split(" ")[0]  # Extract time from display format
                         success = add_booking(agent_id, "2pm", "early_tea", slot, date_str)
                         if success:
@@ -289,7 +295,7 @@ def agent_interface():
             
             if lunch_booked:
                 st.success(f"Booked: {', '.join(agent_bookings['2pm']['lunch'])}")
-                if st.button("Cancel Lunch Booking (2PM)"):
+                if st.button("Cancel Lunch Booking (2PM)", key="cancel_lunch_2pm"):
                     for slot in agent_bookings["2pm"]["lunch"]:
                         remove_booking(agent_id, "2pm", "lunch", slot, date_str)
                     st.rerun()
@@ -301,8 +307,8 @@ def agent_interface():
                         lunch_options.append(f"{slot} ({count}/{max_per_slot})")
                 
                 if lunch_options:
-                    selected_lunch = st.selectbox("Select Lunch Time (2PM)", lunch_options)
-                    if st.button("Book Lunch Break (2PM)"):
+                    selected_lunch = st.selectbox("Select Lunch Time (2PM)", lunch_options, key="lunch_2pm")
+                    if st.button("Book Lunch Break (2PM)", key="book_lunch_2pm"):
                         slot = selected_lunch.split(" ")[0]  # Extract time from display format
                         success = add_booking(agent_id, "2pm", "lunch", slot, date_str)
                         if success:
@@ -320,7 +326,7 @@ def agent_interface():
             
             if late_tea_booked:
                 st.success(f"Booked: {', '.join(agent_bookings['2pm']['late_tea'])}")
-                if st.button("Cancel Late Tea Booking (2PM)"):
+                if st.button("Cancel Late Tea Booking (2PM)", key="cancel_late_tea_2pm"):
                     for slot in agent_bookings["2pm"]["late_tea"]:
                         remove_booking(agent_id, "2pm", "late_tea", slot, date_str)
                     st.rerun()
@@ -332,8 +338,8 @@ def agent_interface():
                         late_tea_options.append(f"{slot} ({count}/{max_per_slot})")
                 
                 if late_tea_options:
-                    selected_late_tea = st.selectbox("Select Late Tea Time (2PM)", late_tea_options)
-                    if st.button("Book Late Tea Break (2PM)"):
+                    selected_late_tea = st.selectbox("Select Late Tea Time (2PM)", late_tea_options, key="late_tea_2pm")
+                    if st.button("Book Late Tea Break (2PM)", key="book_late_tea_2pm"):
                         slot = selected_late_tea.split(" ")[0]  # Extract time from display format
                         success = add_booking(agent_id, "2pm", "late_tea", slot, date_str)
                         if success:
@@ -356,7 +362,7 @@ def agent_interface():
             
             if early_tea_booked:
                 st.success(f"Booked: {', '.join(agent_bookings['6pm']['early_tea'])}")
-                if st.button("Cancel Early Tea Booking (6PM)"):
+                if st.button("Cancel Early Tea Booking (6PM)", key="cancel_early_tea_6pm"):
                     for slot in agent_bookings["6pm"]["early_tea"]:
                         remove_booking(agent_id, "6pm", "early_tea", slot, date_str)
                     st.rerun()
@@ -368,8 +374,8 @@ def agent_interface():
                         early_tea_options.append(f"{slot} ({count}/{max_per_slot})")
                 
                 if early_tea_options:
-                    selected_early_tea = st.selectbox("Select Early Tea Time (6PM)", early_tea_options)
-                    if st.button("Book Early Tea Break (6PM)"):
+                    selected_early_tea = st.selectbox("Select Early Tea Time (6PM)", early_tea_options, key="early_tea_6pm")
+                    if st.button("Book Early Tea Break (6PM)", key="book_early_tea_6pm"):
                         slot = selected_early_tea.split(" ")[0]  # Extract time from display format
                         success = add_booking(agent_id, "6pm", "early_tea", slot, date_str)
                         if success:
@@ -387,7 +393,7 @@ def agent_interface():
             
             if lunch_booked:
                 st.success(f"Booked: {', '.join(agent_bookings['6pm']['lunch'])}")
-                if st.button("Cancel Lunch Booking (6PM)"):
+                if st.button("Cancel Lunch Booking (6PM)", key="cancel_lunch_6pm"):
                     for slot in agent_bookings["6pm"]["lunch"]:
                         remove_booking(agent_id, "6pm", "lunch", slot, date_str)
                     st.rerun()
@@ -399,8 +405,8 @@ def agent_interface():
                         lunch_options.append(f"{slot} ({count}/{max_per_slot})")
                 
                 if lunch_options:
-                    selected_lunch = st.selectbox("Select Lunch Time (6PM)", lunch_options)
-                    if st.button("Book Lunch Break (6PM)"):
+                    selected_lunch = st.selectbox("Select Lunch Time (6PM)", lunch_options, key="lunch_6pm")
+                    if st.button("Book Lunch Break (6PM)", key="book_lunch_6pm"):
                         slot = selected_lunch.split(" ")[0]  # Extract time from display format
                         success = add_booking(agent_id, "6pm", "lunch", slot, date_str)
                         if success:
@@ -418,7 +424,7 @@ def agent_interface():
             
             if late_tea_booked:
                 st.success(f"Booked: {', '.join(agent_bookings['6pm']['late_tea'])}")
-                if st.button("Cancel Late Tea Booking (6PM)"):
+                if st.button("Cancel Late Tea Booking (6PM)", key="cancel_late_tea_6pm"):
                     for slot in agent_bookings["6pm"]["late_tea"]:
                         remove_booking(agent_id, "6pm", "late_tea", slot, date_str)
                     st.rerun()
@@ -430,8 +436,8 @@ def agent_interface():
                         late_tea_options.append(f"{slot} ({count}/{max_per_slot})")
                 
                 if late_tea_options:
-                    selected_late_tea = st.selectbox("Select Late Tea Time (6PM)", late_tea_options)
-                    if st.button("Book Late Tea Break (6PM)"):
+                    selected_late_tea = st.selectbox("Select Late Tea Time (6PM)", late_tea_options, key="late_tea_6pm")
+                    if st.button("Book Late Tea Break (6PM)", key="book_late_tea_6pm"):
                         slot = selected_late_tea.split(" ")[0]  # Extract time from display format
                         success = add_booking(agent_id, "6pm", "late_tea", slot, date_str)
                         if success:
@@ -458,7 +464,7 @@ def admin_interface():
         st.subheader("View All Bookings")
         
         # Date selector
-        date = st.date_input("Select Date to View")
+        date = st.date_input("Select Date to View", key="view_date_selector")
         date_str = date.strftime("%Y-%m-%d")
         
         # Load bookings
@@ -589,8 +595,8 @@ def admin_interface():
         
         current_template = get_current_template()
         
-        shift_option = st.selectbox("Select Shift", ["2pm", "6pm"])
-        break_type_option = st.selectbox("Select Break Type", ["early_tea", "lunch", "late_tea"])
+        shift_option = st.selectbox("Select Shift", ["2pm", "6pm"], key="manage_slots_shift")
+        break_type_option = st.selectbox("Select Break Type", ["early_tea", "lunch", "late_tea"], key="manage_slots_break_type")
         
         # Display current slots
         current_slots = current_template["shifts"][shift_option][break_type_option]["slots"]
@@ -599,9 +605,9 @@ def admin_interface():
         
         # Edit slots
         new_slots = st.text_area("Edit Slots (comma-separated times in 24-hour format, e.g., 15:00, 15:15)", 
-                                value=", ".join(current_slots))
+                                value=", ".join(current_slots), key="manage_slots_textarea")
         
-        if st.button("Update Slots"):
+        if st.button("Update Slots", key="update_slots_button"):
             try:
                 # Parse and validate slots
                 slots_list = [slot.strip() for slot in new_slots.split(",")]
@@ -637,9 +643,10 @@ def admin_interface():
         max_per_slot = st.number_input("Maximum Bookings Per Slot", 
                                        min_value=1, 
                                        max_value=20, 
-                                       value=settings["max_per_slot"])
+                                       value=settings["max_per_slot"],
+                                       key="max_per_slot_input")
         
-        if st.button("Update Max Bookings"):
+        if st.button("Update Max Bookings", key="update_max_bookings"):
             settings["max_per_slot"] = int(max_per_slot)
             save_settings(settings)
             st.success(f"Maximum bookings per slot updated to {max_per_slot}!")
@@ -652,10 +659,10 @@ def admin_interface():
         
         with col1:
             st.markdown("#### Delete All Bookings for a Date")
-            delete_date = st.date_input("Select Date to Delete")
+            delete_date = st.date_input("Select Date to Delete", key="delete_date_input")
             delete_date_str = delete_date.strftime("%Y-%m-%d")
             
-            if st.button("Delete Date Bookings", type="primary", use_container_width=True):
+            if st.button("Delete Date Bookings", key="delete_date_bookings", type="primary", use_container_width=True):
                 bookings = load_bookings()
                 if delete_date_str in bookings:
                     del bookings[delete_date_str]
@@ -667,7 +674,7 @@ def admin_interface():
         with col2:
             st.markdown("#### Clear All Bookings")
             st.warning("This will delete ALL bookings from the system!")
-            if st.button("Clear All Bookings", type="primary", use_container_width=True):
+            if st.button("Clear All Bookings", key="clear_all_bookings", type="primary", use_container_width=True):
                 clear_all_bookings()
                 st.success("All bookings have been cleared!")
     
@@ -684,9 +691,11 @@ def admin_interface():
         
         # Template selector
         template_names = list(templates.keys())
-        selected_template = st.selectbox("Select Template", template_names, index=template_names.index(current_template_name))
+        selected_template = st.selectbox("Select Template", template_names, 
+                                       index=template_names.index(current_template_name),
+                                       key="template_selector")
         
-        if st.button("Set as Active Template"):
+        if st.button("Set as Active Template", key="set_active_template"):
             settings["current_template"] = selected_template
             save_settings(settings)
             st.success(f"Template '{selected_template}' is now active!")
@@ -694,13 +703,13 @@ def admin_interface():
         
         # Create new template
         st.markdown("### Create New Template")
-        new_template_name = st.text_input("New Template Name")
-        new_template_description = st.text_input("Description")
+        new_template_name = st.text_input("New Template Name", key="new_template_name")
+        new_template_description = st.text_input("Description", key="new_template_description")
         
         # Copy from existing template
-        copy_from = st.selectbox("Copy settings from", template_names)
+        copy_from = st.selectbox("Copy settings from", template_names, key="copy_from_template")
         
-        if st.button("Create New Template"):
+        if st.button("Create New Template", key="create_new_template"):
             if new_template_name in templates:
                 st.error("A template with this name already exists!")
             elif not new_template_name:
@@ -718,15 +727,15 @@ def admin_interface():
         
         # Edit existing template
         st.markdown("### Edit Template Breaks")
-        edit_template = st.selectbox("Select template to edit", template_names)
+        edit_template = st.selectbox("Select template to edit", template_names, key="edit_template_selector")
         
         if edit_template in templates:
             template_to_edit = templates[edit_template]
             
             st.markdown(f"#### Editing: {edit_template}")
             
-            shift_to_edit = st.selectbox("Select Shift", ["2pm", "6pm"])
-            break_to_edit = st.selectbox("Select Break Type", ["early_tea", "lunch", "late_tea"])
+            shift_to_edit = st.selectbox("Select Shift", ["2pm", "6pm"], key="edit_shift_selector")
+            break_to_edit = st.selectbox("Select Break Type", ["early_tea", "lunch", "late_tea"], key="edit_break_selector")
             
             # Get current slots for the selected break
             current_slots = template_to_edit["shifts"][shift_to_edit][break_to_edit]["slots"]
@@ -735,9 +744,9 @@ def admin_interface():
             
             # Edit slots
             new_slots = st.text_area("Edit Break Slots (comma-separated times)", 
-                                    value=", ".join(current_slots))
+                                    value=", ".join(current_slots), key="edit_slots_textarea")
             
-            if st.button("Update Template Breaks"):
+            if st.button("Update Template Breaks", key="update_template_breaks"):
                 try:
                     # Parse and validate slots
                     slots_list = [slot.strip() for slot in new_slots.split(",")]
@@ -767,9 +776,10 @@ def admin_interface():
         st.markdown("### Delete Template")
         if len(templates) > 1:  # Don't allow deleting the last template
             template_to_delete = st.selectbox("Select template to delete", 
-                                            [t for t in template_names if t != "default"])
+                                            [t for t in template_names if t != "default"],
+                                            key="delete_template_selector")
             
-            if st.button("Delete Template", type="primary"):
+            if st.button("Delete Template", key="delete_template_button", type="primary"):
                 if template_to_delete == settings["current_template"]:
                     st.error("Cannot delete the active template. Please select another template first.")
                 else:
@@ -793,14 +803,14 @@ def main():
     # Create sidebar for navigation
     with st.sidebar:
         st.header("Navigation")
-        app_mode = st.radio("Select Mode", ["Agent", "Admin"])
+        app_mode = st.radio("Select Mode", ["Agent", "Admin"], key="app_mode_selector")
     
     # Show the appropriate interface
     if app_mode == "Agent":
         agent_interface()
     else:
         # Admin authentication (simple password for demo)
-        admin_password = st.sidebar.text_input("Admin Password", type="password")
+        admin_password = st.sidebar.text_input("Admin Password", type="password", key="admin_password")
         if admin_password == "admin123":  # In a real app, use a more secure authentication system
             admin_interface()
         else:
