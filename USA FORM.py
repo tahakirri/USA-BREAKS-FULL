@@ -22,6 +22,10 @@ def initialize_app():
         default_settings = {
             "max_per_slot": 3,
             "current_template": "default",
+            "active_breaks": {
+                "2pm": ["early_tea", "lunch", "late_tea"],
+                "6pm": ["early_tea", "lunch", "late_tea"]
+            }
         }
         with open(SETTINGS_FILE, "w") as f:
             json.dump(default_settings, f)
@@ -70,12 +74,21 @@ def load_settings():
                 settings["current_template"] = "default"
             if "max_per_slot" not in settings:
                 settings["max_per_slot"] = 3
+            if "active_breaks" not in settings:
+                settings["active_breaks"] = {
+                    "2pm": ["early_tea", "lunch", "late_tea"],
+                    "6pm": ["early_tea", "lunch", "late_tea"]
+                }
             return settings
     except (FileNotFoundError, json.JSONDecodeError):
         # If settings file is corrupted, recreate it
         default_settings = {
             "max_per_slot": 3,
             "current_template": "default",
+            "active_breaks": {
+                "2pm": ["early_tea", "lunch", "late_tea"],
+                "6pm": ["early_tea", "lunch", "late_tea"]
+            }
         }
         with open(SETTINGS_FILE, "w") as f:
             json.dump(default_settings, f)
@@ -130,8 +143,16 @@ def get_current_template():
     
     return templates[settings["current_template"]]
 
+# Check if a break type is active
+def is_break_active(shift, break_type):
+    settings = load_settings()
+    return break_type in settings["active_breaks"].get(shift, [])
+
 # Add a booking
 def add_booking(agent_id, shift, break_type, slot, date):
+    if not is_break_active(shift, break_type):
+        return False
+        
     bookings = load_bookings()
     
     # Create date key if not exists
@@ -226,10 +247,10 @@ def agent_interface():
     st.header("Break Booking System - Agent View")
     
     # Agent ID input
-    agent_id = st.text_input("Enter your Agent ID")
+    agent_id = st.text_input("Enter your Agent ID", key="agent_id_input")
     
     # Date selector
-    date = st.date_input("Select Date")
+    date = st.date_input("Select Date", key="agent_date_input")
     date_str = date.strftime("%Y-%m-%d")
     
     if not agent_id:
@@ -242,11 +263,11 @@ def agent_interface():
     # Get current template
     try:
         current_template = get_current_template()
+        settings = load_settings()
     except Exception as e:
         st.error(f"Error loading break schedule: {str(e)}")
         st.stop()
     
-    settings = load_settings()
     max_per_slot = settings["max_per_slot"]
     
     # Create tabs for the two shifts
@@ -258,97 +279,100 @@ def agent_interface():
         col1, col2, col3 = st.columns(3)
         
         # Early Tea Break
-        with col1:
-            st.markdown("### Early Tea Break")
-            early_tea_booked = "early_tea" in agent_bookings["2pm"]
-            
-            if early_tea_booked:
-                st.success(f"Booked: {', '.join(agent_bookings['2pm']['early_tea'])}")
-                if st.button("Cancel Early Tea Booking (2PM)", key="cancel_early_tea_2pm"):
-                    for slot in agent_bookings["2pm"]["early_tea"]:
-                        remove_booking(agent_id, "2pm", "early_tea", slot, date_str)
-                    st.rerun()
-            else:
-                early_tea_options = []
-                for slot in current_template["shifts"]["2pm"]["early_tea"]["slots"]:
-                    count = count_bookings("2pm", "early_tea", slot, date_str)
-                    if count < max_per_slot:
-                        early_tea_options.append(f"{slot} ({count}/{max_per_slot})")
+        if is_break_active("2pm", "early_tea"):
+            with col1:
+                st.markdown("### Early Tea Break")
+                early_tea_booked = "early_tea" in agent_bookings["2pm"]
                 
-                if early_tea_options:
-                    selected_early_tea = st.selectbox("Select Early Tea Time (2PM)", early_tea_options, key="early_tea_2pm")
-                    if st.button("Book Early Tea Break (2PM)", key="book_early_tea_2pm"):
-                        slot = selected_early_tea.split(" ")[0]  # Extract time from display format
-                        success = add_booking(agent_id, "2pm", "early_tea", slot, date_str)
-                        if success:
-                            st.success(f"Booked Early Tea Break at {slot}")
-                            st.rerun()
-                        else:
-                            st.error("Booking failed. Please try again.")
+                if early_tea_booked:
+                    st.success(f"Booked: {', '.join(agent_bookings['2pm']['early_tea'])}")
+                    if st.button("Cancel Early Tea Booking (2PM)", key="cancel_early_tea_2pm"):
+                        for slot in agent_bookings["2pm"]["early_tea"]:
+                            remove_booking(agent_id, "2pm", "early_tea", slot, date_str)
+                        st.rerun()
                 else:
-                    st.info("No available slots for Early Tea Break")
+                    early_tea_options = []
+                    for slot in current_template["shifts"]["2pm"]["early_tea"]["slots"]:
+                        count = count_bookings("2pm", "early_tea", slot, date_str)
+                        if count < max_per_slot:
+                            early_tea_options.append(f"{slot} ({count}/{max_per_slot})")
+                    
+                    if early_tea_options:
+                        selected_early_tea = st.selectbox("Select Early Tea Time (2PM)", early_tea_options, key="early_tea_2pm")
+                        if st.button("Book Early Tea Break (2PM)", key="book_early_tea_2pm"):
+                            slot = selected_early_tea.split(" ")[0]  # Extract time from display format
+                            success = add_booking(agent_id, "2pm", "early_tea", slot, date_str)
+                            if success:
+                                st.success(f"Booked Early Tea Break at {slot}")
+                                st.rerun()
+                            else:
+                                st.error("Booking failed. Please try again.")
+                    else:
+                        st.info("No available slots for Early Tea Break")
         
         # Lunch Break
-        with col2:
-            st.markdown("### Lunch Break")
-            lunch_booked = "lunch" in agent_bookings["2pm"]
-            
-            if lunch_booked:
-                st.success(f"Booked: {', '.join(agent_bookings['2pm']['lunch'])}")
-                if st.button("Cancel Lunch Booking (2PM)", key="cancel_lunch_2pm"):
-                    for slot in agent_bookings["2pm"]["lunch"]:
-                        remove_booking(agent_id, "2pm", "lunch", slot, date_str)
-                    st.rerun()
-            else:
-                lunch_options = []
-                for slot in current_template["shifts"]["2pm"]["lunch"]["slots"]:
-                    count = count_bookings("2pm", "lunch", slot, date_str)
-                    if count < max_per_slot:
-                        lunch_options.append(f"{slot} ({count}/{max_per_slot})")
+        if is_break_active("2pm", "lunch"):
+            with col2:
+                st.markdown("### Lunch Break")
+                lunch_booked = "lunch" in agent_bookings["2pm"]
                 
-                if lunch_options:
-                    selected_lunch = st.selectbox("Select Lunch Time (2PM)", lunch_options, key="lunch_2pm")
-                    if st.button("Book Lunch Break (2PM)", key="book_lunch_2pm"):
-                        slot = selected_lunch.split(" ")[0]  # Extract time from display format
-                        success = add_booking(agent_id, "2pm", "lunch", slot, date_str)
-                        if success:
-                            st.success(f"Booked Lunch Break at {slot}")
-                            st.rerun()
-                        else:
-                            st.error("Booking failed. Please try again.")
+                if lunch_booked:
+                    st.success(f"Booked: {', '.join(agent_bookings['2pm']['lunch'])}")
+                    if st.button("Cancel Lunch Booking (2PM)", key="cancel_lunch_2pm"):
+                        for slot in agent_bookings["2pm"]["lunch"]:
+                            remove_booking(agent_id, "2pm", "lunch", slot, date_str)
+                        st.rerun()
                 else:
-                    st.info("No available slots for Lunch Break")
+                    lunch_options = []
+                    for slot in current_template["shifts"]["2pm"]["lunch"]["slots"]:
+                        count = count_bookings("2pm", "lunch", slot, date_str)
+                        if count < max_per_slot:
+                            lunch_options.append(f"{slot} ({count}/{max_per_slot})")
+                    
+                    if lunch_options:
+                        selected_lunch = st.selectbox("Select Lunch Time (2PM)", lunch_options, key="lunch_2pm")
+                        if st.button("Book Lunch Break (2PM)", key="book_lunch_2pm"):
+                            slot = selected_lunch.split(" ")[0]  # Extract time from display format
+                            success = add_booking(agent_id, "2pm", "lunch", slot, date_str)
+                            if success:
+                                st.success(f"Booked Lunch Break at {slot}")
+                                st.rerun()
+                            else:
+                                st.error("Booking failed. Please try again.")
+                    else:
+                        st.info("No available slots for Lunch Break")
         
         # Late Tea Break
-        with col3:
-            st.markdown("### Late Tea Break")
-            late_tea_booked = "late_tea" in agent_bookings["2pm"]
-            
-            if late_tea_booked:
-                st.success(f"Booked: {', '.join(agent_bookings['2pm']['late_tea'])}")
-                if st.button("Cancel Late Tea Booking (2PM)", key="cancel_late_tea_2pm"):
-                    for slot in agent_bookings["2pm"]["late_tea"]:
-                        remove_booking(agent_id, "2pm", "late_tea", slot, date_str)
-                    st.rerun()
-            else:
-                late_tea_options = []
-                for slot in current_template["shifts"]["2pm"]["late_tea"]["slots"]:
-                    count = count_bookings("2pm", "late_tea", slot, date_str)
-                    if count < max_per_slot:
-                        late_tea_options.append(f"{slot} ({count}/{max_per_slot})")
+        if is_break_active("2pm", "late_tea"):
+            with col3:
+                st.markdown("### Late Tea Break")
+                late_tea_booked = "late_tea" in agent_bookings["2pm"]
                 
-                if late_tea_options:
-                    selected_late_tea = st.selectbox("Select Late Tea Time (2PM)", late_tea_options, key="late_tea_2pm")
-                    if st.button("Book Late Tea Break (2PM)", key="book_late_tea_2pm"):
-                        slot = selected_late_tea.split(" ")[0]  # Extract time from display format
-                        success = add_booking(agent_id, "2pm", "late_tea", slot, date_str)
-                        if success:
-                            st.success(f"Booked Late Tea Break at {slot}")
-                            st.rerun()
-                        else:
-                            st.error("Booking failed. Please try again.")
+                if late_tea_booked:
+                    st.success(f"Booked: {', '.join(agent_bookings['2pm']['late_tea'])}")
+                    if st.button("Cancel Late Tea Booking (2PM)", key="cancel_late_tea_2pm"):
+                        for slot in agent_bookings["2pm"]["late_tea"]:
+                            remove_booking(agent_id, "2pm", "late_tea", slot, date_str)
+                        st.rerun()
                 else:
-                    st.info("No available slots for Late Tea Break")
+                    late_tea_options = []
+                    for slot in current_template["shifts"]["2pm"]["late_tea"]["slots"]:
+                        count = count_bookings("2pm", "late_tea", slot, date_str)
+                        if count < max_per_slot:
+                            late_tea_options.append(f"{slot} ({count}/{max_per_slot})")
+                    
+                    if late_tea_options:
+                        selected_late_tea = st.selectbox("Select Late Tea Time (2PM)", late_tea_options, key="late_tea_2pm")
+                        if st.button("Book Late Tea Break (2PM)", key="book_late_tea_2pm"):
+                            slot = selected_late_tea.split(" ")[0]  # Extract time from display format
+                            success = add_booking(agent_id, "2pm", "late_tea", slot, date_str)
+                            if success:
+                                st.success(f"Booked Late Tea Break at {slot}")
+                                st.rerun()
+                            else:
+                                st.error("Booking failed. Please try again.")
+                    else:
+                        st.info("No available slots for Late Tea Break")
     
     # 6 PM Shift
     with tab2:
@@ -356,97 +380,100 @@ def agent_interface():
         col1, col2, col3 = st.columns(3)
         
         # Early Tea Break
-        with col1:
-            st.markdown("### Early Tea Break")
-            early_tea_booked = "early_tea" in agent_bookings["6pm"]
-            
-            if early_tea_booked:
-                st.success(f"Booked: {', '.join(agent_bookings['6pm']['early_tea'])}")
-                if st.button("Cancel Early Tea Booking (6PM)", key="cancel_early_tea_6pm"):
-                    for slot in agent_bookings["6pm"]["early_tea"]:
-                        remove_booking(agent_id, "6pm", "early_tea", slot, date_str)
-                    st.rerun()
-            else:
-                early_tea_options = []
-                for slot in current_template["shifts"]["6pm"]["early_tea"]["slots"]:
-                    count = count_bookings("6pm", "early_tea", slot, date_str)
-                    if count < max_per_slot:
-                        early_tea_options.append(f"{slot} ({count}/{max_per_slot})")
+        if is_break_active("6pm", "early_tea"):
+            with col1:
+                st.markdown("### Early Tea Break")
+                early_tea_booked = "early_tea" in agent_bookings["6pm"]
                 
-                if early_tea_options:
-                    selected_early_tea = st.selectbox("Select Early Tea Time (6PM)", early_tea_options, key="early_tea_6pm")
-                    if st.button("Book Early Tea Break (6PM)", key="book_early_tea_6pm"):
-                        slot = selected_early_tea.split(" ")[0]  # Extract time from display format
-                        success = add_booking(agent_id, "6pm", "early_tea", slot, date_str)
-                        if success:
-                            st.success(f"Booked Early Tea Break at {slot}")
-                            st.rerun()
-                        else:
-                            st.error("Booking failed. Please try again.")
+                if early_tea_booked:
+                    st.success(f"Booked: {', '.join(agent_bookings['6pm']['early_tea'])}")
+                    if st.button("Cancel Early Tea Booking (6PM)", key="cancel_early_tea_6pm"):
+                        for slot in agent_bookings["6pm"]["early_tea"]:
+                            remove_booking(agent_id, "6pm", "early_tea", slot, date_str)
+                        st.rerun()
                 else:
-                    st.info("No available slots for Early Tea Break")
+                    early_tea_options = []
+                    for slot in current_template["shifts"]["6pm"]["early_tea"]["slots"]:
+                        count = count_bookings("6pm", "early_tea", slot, date_str)
+                        if count < max_per_slot:
+                            early_tea_options.append(f"{slot} ({count}/{max_per_slot})")
+                    
+                    if early_tea_options:
+                        selected_early_tea = st.selectbox("Select Early Tea Time (6PM)", early_tea_options, key="early_tea_6pm")
+                        if st.button("Book Early Tea Break (6PM)", key="book_early_tea_6pm"):
+                            slot = selected_early_tea.split(" ")[0]  # Extract time from display format
+                            success = add_booking(agent_id, "6pm", "early_tea", slot, date_str)
+                            if success:
+                                st.success(f"Booked Early Tea Break at {slot}")
+                                st.rerun()
+                            else:
+                                st.error("Booking failed. Please try again.")
+                    else:
+                        st.info("No available slots for Early Tea Break")
         
         # Lunch Break
-        with col2:
-            st.markdown("### Lunch Break")
-            lunch_booked = "lunch" in agent_bookings["6pm"]
-            
-            if lunch_booked:
-                st.success(f"Booked: {', '.join(agent_bookings['6pm']['lunch'])}")
-                if st.button("Cancel Lunch Booking (6PM)", key="cancel_lunch_6pm"):
-                    for slot in agent_bookings["6pm"]["lunch"]:
-                        remove_booking(agent_id, "6pm", "lunch", slot, date_str)
-                    st.rerun()
-            else:
-                lunch_options = []
-                for slot in current_template["shifts"]["6pm"]["lunch"]["slots"]:
-                    count = count_bookings("6pm", "lunch", slot, date_str)
-                    if count < max_per_slot:
-                        lunch_options.append(f"{slot} ({count}/{max_per_slot})")
+        if is_break_active("6pm", "lunch"):
+            with col2:
+                st.markdown("### Lunch Break")
+                lunch_booked = "lunch" in agent_bookings["6pm"]
                 
-                if lunch_options:
-                    selected_lunch = st.selectbox("Select Lunch Time (6PM)", lunch_options, key="lunch_6pm")
-                    if st.button("Book Lunch Break (6PM)", key="book_lunch_6pm"):
-                        slot = selected_lunch.split(" ")[0]  # Extract time from display format
-                        success = add_booking(agent_id, "6pm", "lunch", slot, date_str)
-                        if success:
-                            st.success(f"Booked Lunch Break at {slot}")
-                            st.rerun()
-                        else:
-                            st.error("Booking failed. Please try again.")
+                if lunch_booked:
+                    st.success(f"Booked: {', '.join(agent_bookings['6pm']['lunch'])}")
+                    if st.button("Cancel Lunch Booking (6PM)", key="cancel_lunch_6pm"):
+                        for slot in agent_bookings["6pm"]["lunch"]:
+                            remove_booking(agent_id, "6pm", "lunch", slot, date_str)
+                        st.rerun()
                 else:
-                    st.info("No available slots for Lunch Break")
+                    lunch_options = []
+                    for slot in current_template["shifts"]["6pm"]["lunch"]["slots"]:
+                        count = count_bookings("6pm", "lunch", slot, date_str)
+                        if count < max_per_slot:
+                            lunch_options.append(f"{slot} ({count}/{max_per_slot})")
+                    
+                    if lunch_options:
+                        selected_lunch = st.selectbox("Select Lunch Time (6PM)", lunch_options, key="lunch_6pm")
+                        if st.button("Book Lunch Break (6PM)", key="book_lunch_6pm"):
+                            slot = selected_lunch.split(" ")[0]  # Extract time from display format
+                            success = add_booking(agent_id, "6pm", "lunch", slot, date_str)
+                            if success:
+                                st.success(f"Booked Lunch Break at {slot}")
+                                st.rerun()
+                            else:
+                                st.error("Booking failed. Please try again.")
+                    else:
+                        st.info("No available slots for Lunch Break")
         
         # Late Tea Break
-        with col3:
-            st.markdown("### Late Tea Break")
-            late_tea_booked = "late_tea" in agent_bookings["6pm"]
-            
-            if late_tea_booked:
-                st.success(f"Booked: {', '.join(agent_bookings['6pm']['late_tea'])}")
-                if st.button("Cancel Late Tea Booking (6PM)", key="cancel_late_tea_6pm"):
-                    for slot in agent_bookings["6pm"]["late_tea"]:
-                        remove_booking(agent_id, "6pm", "late_tea", slot, date_str)
-                    st.rerun()
-            else:
-                late_tea_options = []
-                for slot in current_template["shifts"]["6pm"]["late_tea"]["slots"]:
-                    count = count_bookings("6pm", "late_tea", slot, date_str)
-                    if count < max_per_slot:
-                        late_tea_options.append(f"{slot} ({count}/{max_per_slot})")
+        if is_break_active("6pm", "late_tea"):
+            with col3:
+                st.markdown("### Late Tea Break")
+                late_tea_booked = "late_tea" in agent_bookings["6pm"]
                 
-                if late_tea_options:
-                    selected_late_tea = st.selectbox("Select Late Tea Time (6PM)", late_tea_options, key="late_tea_6pm")
-                    if st.button("Book Late Tea Break (6PM)", key="book_late_tea_6pm"):
-                        slot = selected_late_tea.split(" ")[0]  # Extract time from display format
-                        success = add_booking(agent_id, "6pm", "late_tea", slot, date_str)
-                        if success:
-                            st.success(f"Booked Late Tea Break at {slot}")
-                            st.rerun()
-                        else:
-                            st.error("Booking failed. Please try again.")
+                if late_tea_booked:
+                    st.success(f"Booked: {', '.join(agent_bookings['6pm']['late_tea'])}")
+                    if st.button("Cancel Late Tea Booking (6PM)", key="cancel_late_tea_6pm"):
+                        for slot in agent_bookings["6pm"]["late_tea"]:
+                            remove_booking(agent_id, "6pm", "late_tea", slot, date_str)
+                        st.rerun()
                 else:
-                    st.info("No available slots for Late Tea Break")
+                    late_tea_options = []
+                    for slot in current_template["shifts"]["6pm"]["late_tea"]["slots"]:
+                        count = count_bookings("6pm", "late_tea", slot, date_str)
+                        if count < max_per_slot:
+                            late_tea_options.append(f"{slot} ({count}/{max_per_slot})")
+                    
+                    if late_tea_options:
+                        selected_late_tea = st.selectbox("Select Late Tea Time (6PM)", late_tea_options, key="late_tea_6pm")
+                        if st.button("Book Late Tea Break (6PM)", key="book_late_tea_6pm"):
+                            slot = selected_late_tea.split(" ")[0]  # Extract time from display format
+                            success = add_booking(agent_id, "6pm", "late_tea", slot, date_str)
+                            if success:
+                                st.success(f"Booked Late Tea Break at {slot}")
+                                st.rerun()
+                            else:
+                                st.error("Booking failed. Please try again.")
+                    else:
+                        st.info("No available slots for Late Tea Break")
 
 # Admin Interface
 def admin_interface():
@@ -457,7 +484,7 @@ def admin_interface():
     templates = load_templates()
     
     # Create tabs for different admin functions
-    tab1, tab2, tab3, tab4 = st.tabs(["View Bookings", "Manage Slots", "Settings", "Templates"])
+    tab1, tab2, tab3, tab4, tab5 = st.tabs(["View Bookings", "Manage Slots", "Settings", "Templates", "Active Breaks"])
     
     # Tab 1: View Bookings
     with tab1:
@@ -789,6 +816,58 @@ def admin_interface():
                     st.rerun()
         else:
             st.info("Cannot delete the only remaining template")
+    
+    # Tab 5: Active Breaks
+    with tab5:
+        st.subheader("Manage Active Breaks")
+        st.info("Select which breaks should be available for agents to book")
+        
+        # 2pm Shift
+        st.markdown("### 2:00 PM Shift")
+        early_tea_2pm = st.checkbox("Early Tea Break (2PM)", 
+                                  value="early_tea" in settings["active_breaks"]["2pm"],
+                                  key="early_tea_2pm_active")
+        lunch_2pm = st.checkbox("Lunch Break (2PM)", 
+                              value="lunch" in settings["active_breaks"]["2pm"],
+                              key="lunch_2pm_active")
+        late_tea_2pm = st.checkbox("Late Tea Break (2PM)", 
+                                 value="late_tea" in settings["active_breaks"]["2pm"],
+                                 key="late_tea_2pm_active")
+        
+        # 6pm Shift
+        st.markdown("### 6:00 PM Shift")
+        early_tea_6pm = st.checkbox("Early Tea Break (6PM)", 
+                                  value="early_tea" in settings["active_breaks"]["6pm"],
+                                  key="early_tea_6pm_active")
+        lunch_6pm = st.checkbox("Lunch Break (6PM)", 
+                              value="lunch" in settings["active_breaks"]["6pm"],
+                              key="lunch_6pm_active")
+        late_tea_6pm = st.checkbox("Late Tea Break (6PM)", 
+                                 value="late_tea" in settings["active_breaks"]["6pm"],
+                                 key="late_tea_6pm_active")
+        
+        if st.button("Save Active Breaks", key="save_active_breaks"):
+            # Update active breaks for 2pm shift
+            settings["active_breaks"]["2pm"] = []
+            if early_tea_2pm:
+                settings["active_breaks"]["2pm"].append("early_tea")
+            if lunch_2pm:
+                settings["active_breaks"]["2pm"].append("lunch")
+            if late_tea_2pm:
+                settings["active_breaks"]["2pm"].append("late_tea")
+            
+            # Update active breaks for 6pm shift
+            settings["active_breaks"]["6pm"] = []
+            if early_tea_6pm:
+                settings["active_breaks"]["6pm"].append("early_tea")
+            if lunch_6pm:
+                settings["active_breaks"]["6pm"].append("lunch")
+            if late_tea_6pm:
+                settings["active_breaks"]["6pm"].append("late_tea")
+            
+            save_settings(settings)
+            st.success("Active breaks configuration saved!")
+            st.rerun()
 
 # Main app
 def main():
