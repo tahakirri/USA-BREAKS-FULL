@@ -22,30 +22,22 @@ def initialize_app():
         default_settings = {
             "max_per_slot": 3,
             "current_template": "default",
-            "active_templates": ["default"],
+            "active_templates": [],
             "template_states": {
-                "default": "active"
+                "default": "standby"  # Changed to standby by default
             }
         }
         with open(SETTINGS_FILE, "w") as f:
             json.dump(default_settings, f)
     
-    # Default templates if not exists
+    # Default templates if not exists (empty template)
     if not os.path.exists(TEMPLATES_FILE):
         default_templates = {
             "default": {
-                "description": "Default break schedule",
+                "description": "Default template (empty - edit to create breaks)",
                 "shifts": {
-                    "2pm": {
-                        "early_tea": {"start": "15:00", "end": "16:30", "slots": ["15:00", "15:15", "15:30", "15:45", "16:00", "16:15", "16:30"]},
-                        "lunch": {"start": "18:30", "end": "20:30", "slots": ["18:30", "19:00", "19:30", "20:00", "20:30"]},
-                        "late_tea": {"start": "20:45", "end": "21:30", "slots": ["20:45", "21:00", "21:15", "21:30"]},
-                    },
-                    "6pm": {
-                        "early_tea": {"start": "19:00", "end": "20:45", "slots": ["19:00", "19:15", "19:30", "19:45", "20:00", "20:15", "20:30", "20:45"]},
-                        "lunch": {"start": "21:00", "end": "22:30", "slots": ["21:00", "21:30", "22:00", "22:30"]},
-                        "late_tea": {"start": "00:00", "end": "01:30", "slots": ["00:00", "00:15", "00:30", "00:45", "01:00", "01:15", "01:30"]},
-                    }
+                    "2pm": {},
+                    "6pm": {}
                 }
             }
         }
@@ -75,18 +67,18 @@ def load_settings():
             if "max_per_slot" not in settings:
                 settings["max_per_slot"] = 3
             if "active_templates" not in settings:
-                settings["active_templates"] = ["default"]
+                settings["active_templates"] = []
             if "template_states" not in settings:
-                settings["template_states"] = {"default": "active"}
+                settings["template_states"] = {"default": "standby"}
             return settings
     except (FileNotFoundError, json.JSONDecodeError):
         # If settings file is corrupted, recreate it
         default_settings = {
             "max_per_slot": 3,
             "current_template": "default",
-            "active_templates": ["default"],
+            "active_templates": [],
             "template_states": {
-                "default": "active"
+                "default": "standby"
             }
         }
         with open(SETTINGS_FILE, "w") as f:
@@ -148,23 +140,27 @@ def is_template_active(template_name):
     return template_name in settings["active_templates"]
 
 # Check if a break type is active
-def is_break_active(shift, break_type):
+def is_break_active(template_name, shift, break_type):
     settings = load_settings()
-    current_template = get_current_template()
+    templates = load_templates()
     
     # First check if the template is active
-    if not is_template_active(settings["current_template"]):
+    if not is_template_active(template_name):
         return False
         
-    # Then check if the break exists in the current template
-    if shift not in current_template["shifts"] or break_type not in current_template["shifts"][shift]:
+    # Then check if the break exists in the template
+    if template_name not in templates:
+        return False
+    if shift not in templates[template_name]["shifts"]:
+        return False
+    if break_type not in templates[template_name]["shifts"][shift]:
         return False
         
     return True
 
 # Add a booking
-def add_booking(agent_id, shift, break_type, slot, date):
-    if not is_break_active(shift, break_type):
+def add_booking(agent_id, template_name, shift, break_type, slot, date):
+    if not is_break_active(template_name, shift, break_type):
         return False
         
     bookings = load_bookings()
@@ -173,46 +169,53 @@ def add_booking(agent_id, shift, break_type, slot, date):
     if date not in bookings:
         bookings[date] = {}
     
+    # Create template key if not exists
+    if template_name not in bookings[date]:
+        bookings[date][template_name] = {}
+    
     # Create shift key if not exists
-    if shift not in bookings[date]:
-        bookings[date][shift] = {}
+    if shift not in bookings[date][template_name]:
+        bookings[date][template_name][shift] = {}
     
     # Create break type key if not exists
-    if break_type not in bookings[date][shift]:
-        bookings[date][shift][break_type] = {}
+    if break_type not in bookings[date][template_name][shift]:
+        bookings[date][template_name][shift][break_type] = {}
     
     # Create slot key if not exists
-    if slot not in bookings[date][shift][break_type]:
-        bookings[date][shift][break_type][slot] = []
+    if slot not in bookings[date][template_name][shift][break_type]:
+        bookings[date][template_name][shift][break_type][slot] = []
     
     # Add booking if not already booked
-    if agent_id not in bookings[date][shift][break_type][slot]:
-        bookings[date][shift][break_type][slot].append(agent_id)
+    if agent_id not in bookings[date][template_name][shift][break_type][slot]:
+        bookings[date][template_name][shift][break_type][slot].append(agent_id)
         save_bookings(bookings)
         return True
     
     return False
 
 # Remove a booking
-def remove_booking(agent_id, shift, break_type, slot, date):
+def remove_booking(agent_id, template_name, shift, break_type, slot, date):
     bookings = load_bookings()
     
     # Check if booking exists
-    if (date in bookings and shift in bookings[date] and 
-        break_type in bookings[date][shift] and 
-        slot in bookings[date][shift][break_type] and 
-        agent_id in bookings[date][shift][break_type][slot]):
+    if (date in bookings and template_name in bookings[date] and 
+        shift in bookings[date][template_name] and 
+        break_type in bookings[date][template_name][shift] and 
+        slot in bookings[date][template_name][shift][break_type] and 
+        agent_id in bookings[date][template_name][shift][break_type][slot]):
         
         # Remove booking
-        bookings[date][shift][break_type][slot].remove(agent_id)
+        bookings[date][template_name][shift][break_type][slot].remove(agent_id)
         
         # Clean up empty structures
-        if not bookings[date][shift][break_type][slot]:
-            del bookings[date][shift][break_type][slot]
-        if not bookings[date][shift][break_type]:
-            del bookings[date][shift][break_type]
-        if not bookings[date][shift]:
-            del bookings[date][shift]
+        if not bookings[date][template_name][shift][break_type][slot]:
+            del bookings[date][template_name][shift][break_type][slot]
+        if not bookings[date][template_name][shift][break_type]:
+            del bookings[date][template_name][shift][break_type]
+        if not bookings[date][template_name][shift]:
+            del bookings[date][template_name][shift]
+        if not bookings[date][template_name]:
+            del bookings[date][template_name]
         if not bookings[date]:
             del bookings[date]
         
@@ -222,41 +225,44 @@ def remove_booking(agent_id, shift, break_type, slot, date):
     return False
 
 # Count bookings for a slot
-def count_bookings(shift, break_type, slot, date):
+def count_bookings(template_name, shift, break_type, slot, date):
     bookings = load_bookings()
     
     try:
-        return len(bookings[date][shift][break_type][slot])
+        return len(bookings[date][template_name][shift][break_type][slot])
     except KeyError:
         return 0
 
 # Get all agent bookings for a date
 def get_agent_bookings(agent_id, date):
     bookings = load_bookings()
-    agent_bookings = {"2pm": {}, "6pm": {}}
+    agent_bookings = {}
     
     if date in bookings:
-        for shift in bookings[date]:
-            for break_type in bookings[date][shift]:
-                for slot in bookings[date][shift][break_type]:
-                    if agent_id in bookings[date][shift][break_type][slot]:
-                        if break_type not in agent_bookings[shift]:
-                            agent_bookings[shift][break_type] = []
-                        agent_bookings[shift][break_type].append(slot)
+        for template_name in bookings[date]:
+            agent_bookings[template_name] = {"2pm": {}, "6pm": {}}
+            for shift in bookings[date][template_name]:
+                for break_type in bookings[date][template_name][shift]:
+                    for slot in bookings[date][template_name][shift][break_type]:
+                        if agent_id in bookings[date][template_name][shift][break_type][slot]:
+                            if break_type not in agent_bookings[template_name][shift]:
+                                agent_bookings[template_name][shift][break_type] = []
+                            agent_bookings[template_name][shift][break_type].append(slot)
     
     return agent_bookings
 
 # Check if an agent already has a booking for a break type on a date
-def has_break_booking(agent_id, shift, break_type, date):
+def has_break_booking(agent_id, template_name, shift, break_type, date):
     agent_bookings = get_agent_bookings(agent_id, date)
-    return break_type in agent_bookings[shift]
+    return (template_name in agent_bookings and 
+            shift in agent_bookings[template_name] and 
+            break_type in agent_bookings[template_name][shift])
 
 # Clear all bookings
 def clear_all_bookings():
     with open(BOOKINGS_FILE, "w") as f:
         json.dump({}, f)
 
-# Agent Interface
 # Agent Interface
 def agent_interface():
     st.header("Break Booking System - Agent View")
@@ -288,7 +294,7 @@ def agent_interface():
     max_per_slot = settings["max_per_slot"]
     
     # Create tabs for each active template
-    template_tabs = st.tabs(active_templates)
+    template_tabs = st.tabs([f"{name} - {templates[name].get('description', '')}" for name in active_templates])
     
     for i, template_name in enumerate(active_templates):
         with template_tabs[i]:
@@ -302,205 +308,95 @@ def agent_interface():
             
             # 2 PM Shift
             with tab1:
-                st.subheader("2:00 PM Shift")
-                col1, col2, col3 = st.columns(3)
-                
-                # Early Tea Break
-                if "early_tea" in template["shifts"]["2pm"]:
-                    with col1:
-                        st.markdown("### Early Tea Break")
-                        early_tea_booked = "early_tea" in agent_bookings["2pm"]
-                        
-                        if early_tea_booked:
-                            st.success(f"Booked: {', '.join(agent_bookings['2pm']['early_tea'])}")
-                            if st.button(f"Cancel Early Tea Booking (2PM) - {template_name}", key=f"cancel_early_tea_2pm_{template_name}"):
-                                for slot in agent_bookings["2pm"]["early_tea"]:
-                                    remove_booking(agent_id, "2pm", "early_tea", slot, date_str)
-                                st.rerun()
-                        else:
-                            early_tea_options = []
-                            for slot in template["shifts"]["2pm"]["early_tea"]["slots"]:
-                                count = count_bookings("2pm", "early_tea", slot, date_str)
-                                if count < max_per_slot:
-                                    early_tea_options.append(f"{slot} ({count}/{max_per_slot})")
+                if not template["shifts"]["2pm"]:
+                    st.info("No breaks configured for 2pm shift")
+                else:
+                    st.subheader("2:00 PM Shift")
+                    cols = st.columns(len(template["shifts"]["2pm"]))
+                    
+                    for j, (break_type, break_data) in enumerate(template["shifts"]["2pm"].items()):
+                        with cols[j]:
+                            st.markdown(f"### {break_type.replace('_', ' ').title()}")
                             
-                            if early_tea_options:
-                                selected_early_tea = st.selectbox(f"Select Early Tea Time (2PM) - {template_name}", early_tea_options, key=f"early_tea_2pm_{template_name}")
-                                if st.button(f"Book Early Tea Break (2PM) - {template_name}", key=f"book_early_tea_2pm_{template_name}"):
-                                    slot = selected_early_tea.split(" ")[0]  # Extract time from display format
-                                    success = add_booking(agent_id, "2pm", "early_tea", slot, date_str)
-                                    if success:
-                                        st.success(f"Booked Early Tea Break at {slot}")
-                                        st.rerun()
-                                    else:
-                                        st.error("Booking failed. Please try again.")
-                            else:
-                                st.info("No available slots for Early Tea Break")
-                
-                # Lunch Break
-                if "lunch" in template["shifts"]["2pm"]:
-                    with col2:
-                        st.markdown("### Lunch Break")
-                        lunch_booked = "lunch" in agent_bookings["2pm"]
-                        
-                        if lunch_booked:
-                            st.success(f"Booked: {', '.join(agent_bookings['2pm']['lunch'])}")
-                            if st.button(f"Cancel Lunch Booking (2PM) - {template_name}", key=f"cancel_lunch_2pm_{template_name}"):
-                                for slot in agent_bookings["2pm"]["lunch"]:
-                                    remove_booking(agent_id, "2pm", "lunch", slot, date_str)
-                                st.rerun()
-                        else:
-                            lunch_options = []
-                            for slot in template["shifts"]["2pm"]["lunch"]["slots"]:
-                                count = count_bookings("2pm", "lunch", slot, date_str)
-                                if count < max_per_slot:
-                                    lunch_options.append(f"{slot} ({count}/{max_per_slot})")
+                            # Check if agent has booking for this break type
+                            has_booking = has_break_booking(agent_id, template_name, "2pm", break_type, date_str)
                             
-                            if lunch_options:
-                                selected_lunch = st.selectbox(f"Select Lunch Time (2PM) - {template_name}", lunch_options, key=f"lunch_2pm_{template_name}")
-                                if st.button(f"Book Lunch Break (2PM) - {template_name}", key=f"book_lunch_2pm_{template_name}"):
-                                    slot = selected_lunch.split(" ")[0]  # Extract time from display format
-                                    success = add_booking(agent_id, "2pm", "lunch", slot, date_str)
-                                    if success:
-                                        st.success(f"Booked Lunch Break at {slot}")
-                                        st.rerun()
-                                    else:
-                                        st.error("Booking failed. Please try again.")
+                            if has_booking:
+                                booked_slots = agent_bookings[template_name]["2pm"][break_type]
+                                st.success(f"Booked: {', '.join(booked_slots)}")
+                                if st.button(f"Cancel {break_type.replace('_', ' ').title()} Booking (2PM)", 
+                                           key=f"cancel_{break_type}_2pm_{template_name}"):
+                                    for slot in booked_slots:
+                                        remove_booking(agent_id, template_name, "2pm", break_type, slot, date_str)
+                                    st.rerun()
                             else:
-                                st.info("No available slots for Lunch Break")
-                
-                # Late Tea Break
-                if "late_tea" in template["shifts"]["2pm"]:
-                    with col3:
-                        st.markdown("### Late Tea Break")
-                        late_tea_booked = "late_tea" in agent_bookings["2pm"]
-                        
-                        if late_tea_booked:
-                            st.success(f"Booked: {', '.join(agent_bookings['2pm']['late_tea'])}")
-                            if st.button(f"Cancel Late Tea Booking (2PM) - {template_name}", key=f"cancel_late_tea_2pm_{template_name}"):
-                                for slot in agent_bookings["2pm"]["late_tea"]:
-                                    remove_booking(agent_id, "2pm", "late_tea", slot, date_str)
-                                st.rerun()
-                        else:
-                            late_tea_options = []
-                            for slot in template["shifts"]["2pm"]["late_tea"]["slots"]:
-                                count = count_bookings("2pm", "late_tea", slot, date_str)
-                                if count < max_per_slot:
-                                    late_tea_options.append(f"{slot} ({count}/{max_per_slot})")
-                            
-                            if late_tea_options:
-                                selected_late_tea = st.selectbox(f"Select Late Tea Time (2PM) - {template_name}", late_tea_options, key=f"late_tea_2pm_{template_name}")
-                                if st.button(f"Book Late Tea Break (2PM) - {template_name}", key=f"book_late_tea_2pm_{template_name}"):
-                                    slot = selected_late_tea.split(" ")[0]  # Extract time from display format
-                                    success = add_booking(agent_id, "2pm", "late_tea", slot, date_str)
-                                    if success:
-                                        st.success(f"Booked Late Tea Break at {slot}")
-                                        st.rerun()
-                                    else:
-                                        st.error("Booking failed. Please try again.")
-                            else:
-                                st.info("No available slots for Late Tea Break")
+                                available_slots = []
+                                for slot in break_data["slots"]:
+                                    count = count_bookings(template_name, "2pm", break_type, slot, date_str)
+                                    if count < max_per_slot:
+                                        available_slots.append(f"{slot} ({count}/{max_per_slot})")
+                                
+                                if available_slots:
+                                    selected_slot = st.selectbox(f"Select {break_type.replace('_', ' ').title()} Time (2PM)", 
+                                                               available_slots, 
+                                                               key=f"select_{break_type}_2pm_{template_name}")
+                                    if st.button(f"Book {break_type.replace('_', ' ').title()} (2PM)", 
+                                               key=f"book_{break_type}_2pm_{template_name}"):
+                                        slot = selected_slot.split(" ")[0]
+                                        success = add_booking(agent_id, template_name, "2pm", break_type, slot, date_str)
+                                        if success:
+                                            st.success(f"Booked {break_type.replace('_', ' ')} at {slot}")
+                                            st.rerun()
+                                        else:
+                                            st.error("Booking failed. Please try again.")
+                                else:
+                                    st.info("No available slots")
             
             # 6 PM Shift
             with tab2:
-                st.subheader("6:00 PM Shift")
-                col1, col2, col3 = st.columns(3)
-                
-                # Early Tea Break
-                if "early_tea" in template["shifts"]["6pm"]:
-                    with col1:
-                        st.markdown("### Early Tea Break")
-                        early_tea_booked = "early_tea" in agent_bookings["6pm"]
-                        
-                        if early_tea_booked:
-                            st.success(f"Booked: {', '.join(agent_bookings['6pm']['early_tea'])}")
-                            if st.button(f"Cancel Early Tea Booking (6PM) - {template_name}", key=f"cancel_early_tea_6pm_{template_name}"):
-                                for slot in agent_bookings["6pm"]["early_tea"]:
-                                    remove_booking(agent_id, "6pm", "early_tea", slot, date_str)
-                                st.rerun()
-                        else:
-                            early_tea_options = []
-                            for slot in template["shifts"]["6pm"]["early_tea"]["slots"]:
-                                count = count_bookings("6pm", "early_tea", slot, date_str)
-                                if count < max_per_slot:
-                                    early_tea_options.append(f"{slot} ({count}/{max_per_slot})")
+                if not template["shifts"]["6pm"]:
+                    st.info("No breaks configured for 6pm shift")
+                else:
+                    st.subheader("6:00 PM Shift")
+                    cols = st.columns(len(template["shifts"]["6pm"]))
+                    
+                    for j, (break_type, break_data) in enumerate(template["shifts"]["6pm"].items()):
+                        with cols[j]:
+                            st.markdown(f"### {break_type.replace('_', ' ').title()}")
                             
-                            if early_tea_options:
-                                selected_early_tea = st.selectbox(f"Select Early Tea Time (6PM) - {template_name}", early_tea_options, key=f"early_tea_6pm_{template_name}")
-                                if st.button(f"Book Early Tea Break (6PM) - {template_name}", key=f"book_early_tea_6pm_{template_name}"):
-                                    slot = selected_early_tea.split(" ")[0]  # Extract time from display format
-                                    success = add_booking(agent_id, "6pm", "early_tea", slot, date_str)
-                                    if success:
-                                        st.success(f"Booked Early Tea Break at {slot}")
-                                        st.rerun()
-                                    else:
-                                        st.error("Booking failed. Please try again.")
-                            else:
-                                st.info("No available slots for Early Tea Break")
-                
-                # Lunch Break
-                if "lunch" in template["shifts"]["6pm"]:
-                    with col2:
-                        st.markdown("### Lunch Break")
-                        lunch_booked = "lunch" in agent_bookings["6pm"]
-                        
-                        if lunch_booked:
-                            st.success(f"Booked: {', '.join(agent_bookings['6pm']['lunch'])}")
-                            if st.button(f"Cancel Lunch Booking (6PM) - {template_name}", key=f"cancel_lunch_6pm_{template_name}"):
-                                for slot in agent_bookings["6pm"]["lunch"]:
-                                    remove_booking(agent_id, "6pm", "lunch", slot, date_str)
-                                st.rerun()
-                        else:
-                            lunch_options = []
-                            for slot in template["shifts"]["6pm"]["lunch"]["slots"]:
-                                count = count_bookings("6pm", "lunch", slot, date_str)
-                                if count < max_per_slot:
-                                    lunch_options.append(f"{slot} ({count}/{max_per_slot})")
+                            # Check if agent has booking for this break type
+                            has_booking = has_break_booking(agent_id, template_name, "6pm", break_type, date_str)
                             
-                            if lunch_options:
-                                selected_lunch = st.selectbox(f"Select Lunch Time (6PM) - {template_name}", lunch_options, key=f"lunch_6pm_{template_name}")
-                                if st.button(f"Book Lunch Break (6PM) - {template_name}", key=f"book_lunch_6pm_{template_name}"):
-                                    slot = selected_lunch.split(" ")[0]  # Extract time from display format
-                                    success = add_booking(agent_id, "6pm", "lunch", slot, date_str)
-                                    if success:
-                                        st.success(f"Booked Lunch Break at {slot}")
-                                        st.rerun()
-                                    else:
-                                        st.error("Booking failed. Please try again.")
+                            if has_booking:
+                                booked_slots = agent_bookings[template_name]["6pm"][break_type]
+                                st.success(f"Booked: {', '.join(booked_slots)}")
+                                if st.button(f"Cancel {break_type.replace('_', ' ').title()} Booking (6PM)", 
+                                           key=f"cancel_{break_type}_6pm_{template_name}"):
+                                    for slot in booked_slots:
+                                        remove_booking(agent_id, template_name, "6pm", break_type, slot, date_str)
+                                    st.rerun()
                             else:
-                                st.info("No available slots for Lunch Break")
-                
-                # Late Tea Break
-                if "late_tea" in template["shifts"]["6pm"]:
-                    with col3:
-                        st.markdown("### Late Tea Break")
-                        late_tea_booked = "late_tea" in agent_bookings["6pm"]
-                        
-                        if late_tea_booked:
-                            st.success(f"Booked: {', '.join(agent_bookings['6pm']['late_tea'])}")
-                            if st.button(f"Cancel Late Tea Booking (6PM) - {template_name}", key=f"cancel_late_tea_6pm_{template_name}"):
-                                for slot in agent_bookings["6pm"]["late_tea"]:
-                                    remove_booking(agent_id, "6pm", "late_tea", slot, date_str)
-                                st.rerun()
-                        else:
-                            late_tea_options = []
-                            for slot in template["shifts"]["6pm"]["late_tea"]["slots"]:
-                                count = count_bookings("6pm", "late_tea", slot, date_str)
-                                if count < max_per_slot:
-                                    late_tea_options.append(f"{slot} ({count}/{max_per_slot})")
-                            
-                            if late_tea_options:
-                                selected_late_tea = st.selectbox(f"Select Late Tea Time (6PM) - {template_name}", late_tea_options, key=f"late_tea_6pm_{template_name}")
-                                if st.button(f"Book Late Tea Break (6PM) - {template_name}", key=f"book_late_tea_6pm_{template_name}"):
-                                    slot = selected_late_tea.split(" ")[0]  # Extract time from display format
-                                    success = add_booking(agent_id, "6pm", "late_tea", slot, date_str)
-                                    if success:
-                                        st.success(f"Booked Late Tea Break at {slot}")
-                                        st.rerun()
-                                    else:
-                                        st.error("Booking failed. Please try again.")
-                            else:
-                                st.info("No available slots for Late Tea Break")
+                                available_slots = []
+                                for slot in break_data["slots"]:
+                                    count = count_bookings(template_name, "6pm", break_type, slot, date_str)
+                                    if count < max_per_slot:
+                                        available_slots.append(f"{slot} ({count}/{max_per_slot})")
+                                
+                                if available_slots:
+                                    selected_slot = st.selectbox(f"Select {break_type.replace('_', ' ').title()} Time (6PM)", 
+                                                               available_slots, 
+                                                               key=f"select_{break_type}_6pm_{template_name}")
+                                    if st.button(f"Book {break_type.replace('_', ' ').title()} (6PM)", 
+                                               key=f"book_{break_type}_6pm_{template_name}"):
+                                        slot = selected_slot.split(" ")[0]
+                                        success = add_booking(agent_id, template_name, "6pm", break_type, slot, date_str)
+                                        if success:
+                                            st.success(f"Booked {break_type.replace('_', ' ')} at {slot}")
+                                            st.rerun()
+                                        else:
+                                            st.error("Booking failed. Please try again.")
+                                else:
+                                    st.info("No available slots")
 
 # Admin Interface
 def admin_interface():
@@ -524,122 +420,65 @@ def admin_interface():
         # Load bookings
         bookings = load_bookings()
         
-        # Get current template
-        current_template = get_current_template()
-        
-        # Create dataframes for each shift and break type
         if date_str in bookings:
-            # 2 PM Shift
-            st.markdown("### 2:00 PM Shift")
-            
-            col1, col2, col3 = st.columns(3)
-            
-            with col1:
-                st.markdown("#### Early Tea Break")
-                if "2pm" in bookings[date_str] and "early_tea" in bookings[date_str]["2pm"]:
-                    early_tea_data = []
-                    for slot in current_template["shifts"]["2pm"]["early_tea"]["slots"]:
-                        if slot in bookings[date_str]["2pm"]["early_tea"]:
-                            for agent in bookings[date_str]["2pm"]["early_tea"][slot]:
-                                early_tea_data.append({"Time": slot, "Agent ID": agent})
+            for template_name in bookings[date_str]:
+                st.markdown(f"### Template: {template_name}")
+                
+                # 2 PM Shift
+                st.markdown("#### 2:00 PM Shift")
+                
+                if "2pm" in bookings[date_str][template_name]:
+                    cols = st.columns(len(bookings[date_str][template_name]["2pm"]))
                     
-                    if early_tea_data:
-                        early_tea_df = pd.DataFrame(early_tea_data)
-                        st.dataframe(early_tea_df)
-                    else:
-                        st.info("No bookings for Early Tea Break")
+                    for i, (break_type, slots) in enumerate(bookings[date_str][template_name]["2pm"].items()):
+                        with cols[i]:
+                            st.markdown(f"##### {break_type.replace('_', ' ').title()}")
+                            break_data = []
+                            for slot, agents in slots.items():
+                                for agent in agents:
+                                    break_data.append({
+                                        "Template": template_name,
+                                        "Time": slot,
+                                        "Agent ID": agent,
+                                        "Break Type": break_type.replace('_', ' ').title(),
+                                        "Shift": "2pm"
+                                    })
+                            
+                            if break_data:
+                                df = pd.DataFrame(break_data)
+                                st.dataframe(df)
+                            else:
+                                st.info("No bookings")
                 else:
-                    st.info("No bookings for Early Tea Break")
-            
-            with col2:
-                st.markdown("#### Lunch Break")
-                if "2pm" in bookings[date_str] and "lunch" in bookings[date_str]["2pm"]:
-                    lunch_data = []
-                    for slot in current_template["shifts"]["2pm"]["lunch"]["slots"]:
-                        if slot in bookings[date_str]["2pm"]["lunch"]:
-                            for agent in bookings[date_str]["2pm"]["lunch"][slot]:
-                                lunch_data.append({"Time": slot, "Agent ID": agent})
+                    st.info("No bookings for 2pm shift")
+                
+                # 6 PM Shift
+                st.markdown("#### 6:00 PM Shift")
+                
+                if "6pm" in bookings[date_str][template_name]:
+                    cols = st.columns(len(bookings[date_str][template_name]["6pm"]))
                     
-                    if lunch_data:
-                        lunch_df = pd.DataFrame(lunch_data)
-                        st.dataframe(lunch_df)
-                    else:
-                        st.info("No bookings for Lunch Break")
+                    for i, (break_type, slots) in enumerate(bookings[date_str][template_name]["6pm"].items()):
+                        with cols[i]:
+                            st.markdown(f"##### {break_type.replace('_', ' ').title()}")
+                            break_data = []
+                            for slot, agents in slots.items():
+                                for agent in agents:
+                                    break_data.append({
+                                        "Template": template_name,
+                                        "Time": slot,
+                                        "Agent ID": agent,
+                                        "Break Type": break_type.replace('_', ' ').title(),
+                                        "Shift": "6pm"
+                                    })
+                            
+                            if break_data:
+                                df = pd.DataFrame(break_data)
+                                st.dataframe(df)
+                            else:
+                                st.info("No bookings")
                 else:
-                    st.info("No bookings for Lunch Break")
-            
-            with col3:
-                st.markdown("#### Late Tea Break")
-                if "2pm" in bookings[date_str] and "late_tea" in bookings[date_str]["2pm"]:
-                    late_tea_data = []
-                    for slot in current_template["shifts"]["2pm"]["late_tea"]["slots"]:
-                        if slot in bookings[date_str]["2pm"]["late_tea"]:
-                            for agent in bookings[date_str]["2pm"]["late_tea"][slot]:
-                                late_tea_data.append({"Time": slot, "Agent ID": agent})
-                    
-                    if late_tea_data:
-                        late_tea_df = pd.DataFrame(late_tea_data)
-                        st.dataframe(late_tea_df)
-                    else:
-                        st.info("No bookings for Late Tea Break")
-                else:
-                    st.info("No bookings for Late Tea Break")
-            
-            # 6 PM Shift
-            st.markdown("### 6:00 PM Shift")
-            
-            col1, col2, col3 = st.columns(3)
-            
-            with col1:
-                st.markdown("#### Early Tea Break")
-                if "6pm" in bookings[date_str] and "early_tea" in bookings[date_str]["6pm"]:
-                    early_tea_data = []
-                    for slot in current_template["shifts"]["6pm"]["early_tea"]["slots"]:
-                        if slot in bookings[date_str]["6pm"]["early_tea"]:
-                            for agent in bookings[date_str]["6pm"]["early_tea"][slot]:
-                                early_tea_data.append({"Time": slot, "Agent ID": agent})
-                    
-                    if early_tea_data:
-                        early_tea_df = pd.DataFrame(early_tea_data)
-                        st.dataframe(early_tea_df)
-                    else:
-                        st.info("No bookings for Early Tea Break")
-                else:
-                    st.info("No bookings for Early Tea Break")
-            
-            with col2:
-                st.markdown("#### Lunch Break")
-                if "6pm" in bookings[date_str] and "lunch" in bookings[date_str]["6pm"]:
-                    lunch_data = []
-                    for slot in current_template["shifts"]["6pm"]["lunch"]["slots"]:
-                        if slot in bookings[date_str]["6pm"]["lunch"]:
-                            for agent in bookings[date_str]["6pm"]["lunch"][slot]:
-                                lunch_data.append({"Time": slot, "Agent ID": agent})
-                    
-                    if lunch_data:
-                        lunch_df = pd.DataFrame(lunch_data)
-                        st.dataframe(lunch_df)
-                    else:
-                        st.info("No bookings for Lunch Break")
-                else:
-                    st.info("No bookings for Lunch Break")
-            
-            with col3:
-                st.markdown("#### Late Tea Break")
-                if "6pm" in bookings[date_str] and "late_tea" in bookings[date_str]["6pm"]:
-                    late_tea_data = []
-                    for slot in current_template["shifts"]["6pm"]["late_tea"]["slots"]:
-                        if slot in bookings[date_str]["6pm"]["late_tea"]:
-                            for agent in bookings[date_str]["6pm"]["late_tea"][slot]:
-                                late_tea_data.append({"Time": slot, "Agent ID": agent})
-                    
-                    if late_tea_data:
-                        late_tea_df = pd.DataFrame(late_tea_data)
-                        st.dataframe(late_tea_df)
-                    else:
-                        st.info("No bookings for Late Tea Break")
-                else:
-                    st.info("No bookings for Late Tea Break")
+                    st.info("No bookings for 6pm shift")
         else:
             st.info(f"No bookings found for {date_str}")
     
@@ -647,47 +486,91 @@ def admin_interface():
     with tab2:
         st.subheader("Manage Break Slots")
         
-        current_template = get_current_template()
+        # Template selector
+        template_names = list(templates.keys())
+        selected_template = st.selectbox("Select Template", template_names, key="manage_slots_template")
         
-        shift_option = st.selectbox("Select Shift", ["2pm", "6pm"], key="manage_slots_shift")
-        break_type_option = st.selectbox("Select Break Type", ["early_tea", "lunch", "late_tea"], key="manage_slots_break_type")
-        
-        # Display current slots
-        current_slots = current_template["shifts"][shift_option][break_type_option]["slots"]
-        st.write("Current Slots:")
-        st.write(", ".join(current_slots))
-        
-        # Edit slots
-        new_slots = st.text_area("Edit Slots (comma-separated times in 24-hour format, e.g., 15:00, 15:15)", 
-                                value=", ".join(current_slots), key="manage_slots_textarea")
-        
-        if st.button("Update Slots", key="update_slots_button"):
-            try:
-                # Parse and validate slots
-                slots_list = [slot.strip() for slot in new_slots.split(",")]
+        if selected_template in templates:
+            template = templates[selected_template]
+            
+            shift_option = st.selectbox("Select Shift", ["2pm", "6pm"], key="manage_slots_shift")
+            break_type_option = st.text_input("Break Type Name (e.g., 'early_tea', 'lunch')", key="manage_slots_break_type")
+            
+            # Check if break type exists
+            if break_type_option in template["shifts"][shift_option]:
+                # Display current slots
+                current_slots = template["shifts"][shift_option][break_type_option]["slots"]
+                st.write("Current Slots:")
+                st.write(", ".join(current_slots))
                 
-                # Simple validation of time format
-                for slot in slots_list:
-                    # Check if time format is valid (HH:MM)
-                    parts = slot.split(":")
-                    if len(parts) != 2 or not parts[0].isdigit() or not parts[1].isdigit():
-                        raise ValueError(f"Invalid time format: {slot}")
-                    
-                    hours = int(parts[0])
-                    minutes = int(parts[1])
-                    
-                    if hours < 0 or hours > 23 or minutes < 0 or minutes > 59:
-                        raise ValueError(f"Invalid time: {slot}")
+                # Edit slots
+                new_slots = st.text_area("Edit Slots (comma-separated times in 24-hour format, e.g., 15:00, 15:15)", 
+                                        value=", ".join(current_slots), key="manage_slots_textarea")
                 
-                # Update template
-                templates = load_templates()
-                current_template_name = settings["current_template"]
-                templates[current_template_name]["shifts"][shift_option][break_type_option]["slots"] = slots_list
-                save_templates(templates)
-                st.success(f"Slots updated for {shift_option} shift {break_type_option}!")
-                st.rerun()
-            except Exception as e:
-                st.error(f"Error updating slots: {str(e)}")
+                if st.button("Update Slots", key="update_slots_button"):
+                    try:
+                        # Parse and validate slots
+                        slots_list = [slot.strip() for slot in new_slots.split(",")]
+                        
+                        # Simple validation of time format
+                        for slot in slots_list:
+                            # Check if time format is valid (HH:MM)
+                            parts = slot.split(":")
+                            if len(parts) != 2 or not parts[0].isdigit() or not parts[1].isdigit():
+                                raise ValueError(f"Invalid time format: {slot}")
+                            
+                            hours = int(parts[0])
+                            minutes = int(parts[1])
+                            
+                            if hours < 0 or hours > 23 or minutes < 0 or minutes > 59:
+                                raise ValueError(f"Invalid time: {slot}")
+                        
+                        # Update template
+                        templates[selected_template]["shifts"][shift_option][break_type_option]["slots"] = slots_list
+                        save_templates(templates)
+                        st.success(f"Slots updated for {shift_option} shift {break_type_option}!")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Error updating slots: {str(e)}")
+            
+            # Add new break type
+            st.markdown("### Add New Break Type")
+            new_break_type = st.text_input("New Break Type Name", key="new_break_type")
+            new_break_slots = st.text_area("Slots (comma-separated times)", key="new_break_slots")
+            
+            if st.button("Add Break Type", key="add_break_type"):
+                if new_break_type and new_break_slots:
+                    try:
+                        # Parse and validate slots
+                        slots_list = [slot.strip() for slot in new_break_slots.split(",")]
+                        
+                        # Simple validation of time format
+                        for slot in slots_list:
+                            # Check if time format is valid (HH:MM)
+                            parts = slot.split(":")
+                            if len(parts) != 2 or not parts[0].isdigit() or not parts[1].isdigit():
+                                raise ValueError(f"Invalid time format: {slot}")
+                            
+                            hours = int(parts[0])
+                            minutes = int(parts[1])
+                            
+                            if hours < 0 or hours > 23 or minutes < 0 or minutes > 59:
+                                raise ValueError(f"Invalid time: {slot}")
+                        
+                        # Add to template
+                        if new_break_type not in templates[selected_template]["shifts"][shift_option]:
+                            templates[selected_template]["shifts"][shift_option][new_break_type] = {
+                                "slots": slots_list
+                            }
+                            save_templates(templates)
+                            st.success(f"Added new break type '{new_break_type}'!")
+                            st.rerun()
+                        else:
+                            st.error("Break type already exists!")
+                    except Exception as e:
+                        st.error(f"Error adding break type: {str(e)}")
+                else:
+                    st.error("Please enter both break type name and slots")
     
     # Tab 3: Settings
     with tab3:
@@ -695,10 +578,10 @@ def admin_interface():
         
         # Max bookings per slot
         max_per_slot = st.number_input("Maximum Bookings Per Slot", 
-                                       min_value=1, 
-                                       max_value=20, 
-                                       value=settings["max_per_slot"],
-                                       key="max_per_slot_input")
+                                     min_value=1, 
+                                     max_value=20, 
+                                     value=settings["max_per_slot"],
+                                     key="max_per_slot_input")
         
         if st.button("Update Max Bookings", key="update_max_bookings"):
             settings["max_per_slot"] = int(max_per_slot)
@@ -738,16 +621,14 @@ def admin_interface():
         
         # Display current template
         current_template_name = settings["current_template"]
-        current_template = templates[current_template_name]
         
         st.markdown(f"**Current Template:** {current_template_name}")
-        st.markdown(f"**Description:** {current_template.get('description', 'No description')}")
         
         # Template selector
         template_names = list(templates.keys())
         selected_template = st.selectbox("Select Template", template_names, 
-                                       index=template_names.index(current_template_name),
-                                       key="template_selector")
+                                     index=template_names.index(current_template_name),
+                                     key="template_selector")
         
         if st.button("Set as Active Template", key="set_active_template"):
             settings["current_template"] = selected_template
@@ -778,53 +659,6 @@ def admin_interface():
                 save_templates(templates)
                 st.success(f"Template '{new_template_name}' created!")
                 st.rerun()
-        
-        # Edit existing template
-        st.markdown("### Edit Template Breaks")
-        edit_template = st.selectbox("Select template to edit", template_names, key="edit_template_selector")
-        
-        if edit_template in templates:
-            template_to_edit = templates[edit_template]
-            
-            st.markdown(f"#### Editing: {edit_template}")
-            
-            shift_to_edit = st.selectbox("Select Shift", ["2pm", "6pm"], key="edit_shift_selector")
-            break_to_edit = st.selectbox("Select Break Type", ["early_tea", "lunch", "late_tea"], key="edit_break_selector")
-            
-            # Get current slots for the selected break
-            current_slots = template_to_edit["shifts"][shift_to_edit][break_to_edit]["slots"]
-            st.write("Current Slots:")
-            st.write(", ".join(current_slots))
-            
-            # Edit slots
-            new_slots = st.text_area("Edit Break Slots (comma-separated times)", 
-                                    value=", ".join(current_slots), key="edit_slots_textarea")
-            
-            if st.button("Update Template Breaks", key="update_template_breaks"):
-                try:
-                    # Parse and validate slots
-                    slots_list = [slot.strip() for slot in new_slots.split(",")]
-                    
-                    # Simple validation of time format
-                    for slot in slots_list:
-                        # Check if time format is valid (HH:MM)
-                        parts = slot.split(":")
-                        if len(parts) != 2 or not parts[0].isdigit() or not parts[1].isdigit():
-                            raise ValueError(f"Invalid time format: {slot}")
-                        
-                        hours = int(parts[0])
-                        minutes = int(parts[1])
-                        
-                        if hours < 0 or hours > 23 or minutes < 0 or minutes > 59:
-                            raise ValueError(f"Invalid time: {slot}")
-                    
-                    # Update template
-                    templates[edit_template]["shifts"][shift_to_edit][break_to_edit]["slots"] = slots_list
-                    save_templates(templates)
-                    st.success(f"Slots updated for {edit_template}!")
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"Error updating slots: {str(e)}")
         
         # Delete template
         st.markdown("### Delete Template")
@@ -890,10 +724,6 @@ def admin_interface():
                         save_settings(settings)
                         st.success(f"Template '{template_name}' state updated to {new_state}!")
                         st.rerun()
-        
-        # Warning if current template is in standby
-        if settings["current_template"] not in settings["active_templates"]:
-            st.warning(f"Current template '{settings['current_template']}' is in standby mode and won't be available to agents.")
 
 # Main app
 def main():
