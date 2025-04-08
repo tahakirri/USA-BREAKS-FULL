@@ -22,9 +22,9 @@ def initialize_app():
         default_settings = {
             "max_per_slot": 3,
             "current_template": "default",
-            "active_breaks": {
-                "2pm": ["early_tea", "lunch", "late_tea"],
-                "6pm": ["early_tea", "lunch", "late_tea"]
+            "active_templates": ["default"],
+            "template_states": {
+                "default": "active"
             }
         }
         with open(SETTINGS_FILE, "w") as f:
@@ -74,20 +74,19 @@ def load_settings():
                 settings["current_template"] = "default"
             if "max_per_slot" not in settings:
                 settings["max_per_slot"] = 3
-            if "active_breaks" not in settings:
-                settings["active_breaks"] = {
-                    "2pm": ["early_tea", "lunch", "late_tea"],
-                    "6pm": ["early_tea", "lunch", "late_tea"]
-                }
+            if "active_templates" not in settings:
+                settings["active_templates"] = ["default"]
+            if "template_states" not in settings:
+                settings["template_states"] = {"default": "active"}
             return settings
     except (FileNotFoundError, json.JSONDecodeError):
         # If settings file is corrupted, recreate it
         default_settings = {
             "max_per_slot": 3,
             "current_template": "default",
-            "active_breaks": {
-                "2pm": ["early_tea", "lunch", "late_tea"],
-                "6pm": ["early_tea", "lunch", "late_tea"]
+            "active_templates": ["default"],
+            "template_states": {
+                "default": "active"
             }
         }
         with open(SETTINGS_FILE, "w") as f:
@@ -143,10 +142,25 @@ def get_current_template():
     
     return templates[settings["current_template"]]
 
+# Check if a template is active
+def is_template_active(template_name):
+    settings = load_settings()
+    return template_name in settings["active_templates"]
+
 # Check if a break type is active
 def is_break_active(shift, break_type):
     settings = load_settings()
-    return break_type in settings["active_breaks"].get(shift, [])
+    current_template = get_current_template()
+    
+    # First check if the template is active
+    if not is_template_active(settings["current_template"]):
+        return False
+        
+    # Then check if the break exists in the current template
+    if shift not in current_template["shifts"] or break_type not in current_template["shifts"][shift]:
+        return False
+        
+    return True
 
 # Add a booking
 def add_booking(agent_id, shift, break_type, slot, date):
@@ -270,6 +284,11 @@ def agent_interface():
     
     max_per_slot = settings["max_per_slot"]
     
+    # Check if current template is active
+    if not is_template_active(settings["current_template"]):
+        st.warning("The current break schedule is not active. Please check back later.")
+        return
+    
     # Create tabs for the two shifts
     tab1, tab2 = st.tabs(["2:00 PM Shift", "6:00 PM Shift"])
     
@@ -279,7 +298,7 @@ def agent_interface():
         col1, col2, col3 = st.columns(3)
         
         # Early Tea Break
-        if is_break_active("2pm", "early_tea"):
+        if "early_tea" in current_template["shifts"]["2pm"]:
             with col1:
                 st.markdown("### Early Tea Break")
                 early_tea_booked = "early_tea" in agent_bookings["2pm"]
@@ -311,7 +330,7 @@ def agent_interface():
                         st.info("No available slots for Early Tea Break")
         
         # Lunch Break
-        if is_break_active("2pm", "lunch"):
+        if "lunch" in current_template["shifts"]["2pm"]:
             with col2:
                 st.markdown("### Lunch Break")
                 lunch_booked = "lunch" in agent_bookings["2pm"]
@@ -343,7 +362,7 @@ def agent_interface():
                         st.info("No available slots for Lunch Break")
         
         # Late Tea Break
-        if is_break_active("2pm", "late_tea"):
+        if "late_tea" in current_template["shifts"]["2pm"]:
             with col3:
                 st.markdown("### Late Tea Break")
                 late_tea_booked = "late_tea" in agent_bookings["2pm"]
@@ -380,7 +399,7 @@ def agent_interface():
         col1, col2, col3 = st.columns(3)
         
         # Early Tea Break
-        if is_break_active("6pm", "early_tea"):
+        if "early_tea" in current_template["shifts"]["6pm"]:
             with col1:
                 st.markdown("### Early Tea Break")
                 early_tea_booked = "early_tea" in agent_bookings["6pm"]
@@ -412,7 +431,7 @@ def agent_interface():
                         st.info("No available slots for Early Tea Break")
         
         # Lunch Break
-        if is_break_active("6pm", "lunch"):
+        if "lunch" in current_template["shifts"]["6pm"]:
             with col2:
                 st.markdown("### Lunch Break")
                 lunch_booked = "lunch" in agent_bookings["6pm"]
@@ -444,7 +463,7 @@ def agent_interface():
                         st.info("No available slots for Lunch Break")
         
         # Late Tea Break
-        if is_break_active("6pm", "late_tea"):
+        if "late_tea" in current_template["shifts"]["6pm"]:
             with col3:
                 st.markdown("### Late Tea Break")
                 late_tea_booked = "late_tea" in agent_bookings["6pm"]
@@ -484,7 +503,7 @@ def admin_interface():
     templates = load_templates()
     
     # Create tabs for different admin functions
-    tab1, tab2, tab3, tab4, tab5 = st.tabs(["View Bookings", "Manage Slots", "Settings", "Templates", "Active Breaks"])
+    tab1, tab2, tab3, tab4, tab5 = st.tabs(["View Bookings", "Manage Slots", "Settings", "Templates", "Template Activation"])
     
     # Tab 1: View Bookings
     with tab1:
@@ -817,57 +836,56 @@ def admin_interface():
         else:
             st.info("Cannot delete the only remaining template")
     
-    # Tab 5: Active Breaks
+    # Tab 5: Template Activation
     with tab5:
-        st.subheader("Manage Active Breaks")
-        st.info("Select which breaks should be available for agents to book")
+        st.subheader("Template Activation Management")
+        st.info("Activate or deactivate entire break templates")
         
-        # 2pm Shift
-        st.markdown("### 2:00 PM Shift")
-        early_tea_2pm = st.checkbox("Early Tea Break (2PM)", 
-                                  value="early_tea" in settings["active_breaks"]["2pm"],
-                                  key="early_tea_2pm_active")
-        lunch_2pm = st.checkbox("Lunch Break (2PM)", 
-                              value="lunch" in settings["active_breaks"]["2pm"],
-                              key="lunch_2pm_active")
-        late_tea_2pm = st.checkbox("Late Tea Break (2PM)", 
-                                 value="late_tea" in settings["active_breaks"]["2pm"],
-                                 key="late_tea_2pm_active")
+        # Display current active templates
+        st.markdown("### Current Active Templates")
+        active_templates = settings.get("active_templates", [])
+        if active_templates:
+            st.write(", ".join(active_templates))
+        else:
+            st.warning("No templates are currently active!")
         
-        # 6pm Shift
-        st.markdown("### 6:00 PM Shift")
-        early_tea_6pm = st.checkbox("Early Tea Break (6PM)", 
-                                  value="early_tea" in settings["active_breaks"]["6pm"],
-                                  key="early_tea_6pm_active")
-        lunch_6pm = st.checkbox("Lunch Break (6PM)", 
-                              value="lunch" in settings["active_breaks"]["6pm"],
-                              key="lunch_6pm_active")
-        late_tea_6pm = st.checkbox("Late Tea Break (6PM)", 
-                                 value="late_tea" in settings["active_breaks"]["6pm"],
-                                 key="late_tea_6pm_active")
+        # Template activation controls
+        st.markdown("### Manage Template States")
+        template_names = list(templates.keys())
         
-        if st.button("Save Active Breaks", key="save_active_breaks"):
-            # Update active breaks for 2pm shift
-            settings["active_breaks"]["2pm"] = []
-            if early_tea_2pm:
-                settings["active_breaks"]["2pm"].append("early_tea")
-            if lunch_2pm:
-                settings["active_breaks"]["2pm"].append("lunch")
-            if late_tea_2pm:
-                settings["active_breaks"]["2pm"].append("late_tea")
+        for template_name in template_names:
+            current_state = settings["template_states"].get(template_name, "standby")
+            col1, col2 = st.columns([3, 1])
             
-            # Update active breaks for 6pm shift
-            settings["active_breaks"]["6pm"] = []
-            if early_tea_6pm:
-                settings["active_breaks"]["6pm"].append("early_tea")
-            if lunch_6pm:
-                settings["active_breaks"]["6pm"].append("lunch")
-            if late_tea_6pm:
-                settings["active_breaks"]["6pm"].append("late_tea")
+            with col1:
+                st.markdown(f"**{template_name}**")
+                st.caption(templates[template_name].get("description", "No description"))
             
-            save_settings(settings)
-            st.success("Active breaks configuration saved!")
-            st.rerun()
+            with col2:
+                new_state = st.selectbox(
+                    f"State for {template_name}",
+                    ["active", "standby"],
+                    index=0 if current_state == "active" else 1,
+                    key=f"template_state_{template_name}"
+                )
+                
+                if new_state != current_state:
+                    if st.button(f"Update {template_name}", key=f"update_state_{template_name}"):
+                        settings["template_states"][template_name] = new_state
+                        
+                        # Update active templates list
+                        if new_state == "active" and template_name not in settings["active_templates"]:
+                            settings["active_templates"].append(template_name)
+                        elif new_state == "standby" and template_name in settings["active_templates"]:
+                            settings["active_templates"].remove(template_name)
+                        
+                        save_settings(settings)
+                        st.success(f"Template '{template_name}' state updated to {new_state}!")
+                        st.rerun()
+        
+        # Warning if current template is in standby
+        if settings["current_template"] not in settings["active_templates"]:
+            st.warning(f"Current template '{settings['current_template']}' is in standby mode and won't be available to agents.")
 
 # Main app
 def main():
