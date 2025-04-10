@@ -21,6 +21,15 @@ def get_db_connection():
 def hash_password(password):
     return hashlib.sha256(password.encode()).hexdigest()
 
+def get_requests():
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM requests ORDER BY timestamp DESC")
+        return cursor.fetchall()
+    finally:
+        conn.close()
+        
 def authenticate(username, password):
     conn = get_db_connection()
     try:
