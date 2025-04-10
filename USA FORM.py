@@ -244,7 +244,7 @@ def init_db():
             ("Yassine Elkanouni", "30735")
         ]
         
-          for agent_name, workspace_id in agents:
+        for agent_name, workspace_id in agents:
             try:
                 cursor.execute("""
                     INSERT OR IGNORE INTO users (username, password, role) 
