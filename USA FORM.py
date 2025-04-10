@@ -38,139 +38,117 @@ def init_db():
     try:
         cursor = conn.cursor()
         
-        # Create tables if they don't exist
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS users (
+        # Create tables if they don't exist with proper error handling
+        tables = [
+            """CREATE TABLE IF NOT EXISTS users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 username TEXT UNIQUE,
                 password TEXT,
-                role TEXT CHECK(role IN ('agent', 'admin')))
-        """)
-        
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS requests (
+                role TEXT CHECK(role IN ('agent', 'admin')))""",
+                
+            """CREATE TABLE IF NOT EXISTS requests (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 agent_name TEXT,
                 request_type TEXT,
                 identifier TEXT,
                 comment TEXT,
                 timestamp TEXT,
-                completed INTEGER DEFAULT 0)
-        """)
-        
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS mistakes (
+                completed INTEGER DEFAULT 0)""",
+                
+            """CREATE TABLE IF NOT EXISTS mistakes (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 team_leader TEXT,
                 agent_name TEXT,
                 ticket_id TEXT,
                 error_description TEXT,
-                timestamp TEXT)
-        """)
-        
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS group_messages (
+                timestamp TEXT)""",
+                
+            """CREATE TABLE IF NOT EXISTS group_messages (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 sender TEXT,
                 message TEXT,
                 timestamp TEXT,
-                mentions TEXT)
-        """)
-        
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS hold_images (
+                mentions TEXT)""",
+                
+            """CREATE TABLE IF NOT EXISTS hold_images (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 uploader TEXT,
                 image_data BLOB,
-                timestamp TEXT)
-        """)
-        
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS request_comments (
+                timestamp TEXT)""",
+                
+            """CREATE TABLE IF NOT EXISTS request_comments (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 request_id INTEGER,
                 user TEXT,
                 comment TEXT,
                 timestamp TEXT,
-                FOREIGN KEY(request_id) REFERENCES requests(id))
-        """)
-        
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS late_logins (
+                FOREIGN KEY(request_id) REFERENCES requests(id))""",
+                
+            """CREATE TABLE IF NOT EXISTS late_logins (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 agent_name TEXT,
                 presence_time TEXT,
                 login_time TEXT,
                 reason TEXT,
-                timestamp TEXT)
-        """)
-        
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS quality_issues (
+                timestamp TEXT)""",
+                
+            """CREATE TABLE IF NOT EXISTS quality_issues (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 agent_name TEXT,
                 issue_type TEXT,
                 timing TEXT,
                 mobile_number TEXT,
                 product TEXT,
-                timestamp TEXT)
-        """)
-        
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS midshift_issues (
+                timestamp TEXT)""",
+                
+            """CREATE TABLE IF NOT EXISTS midshift_issues (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 agent_name TEXT,
                 issue_type TEXT,
                 start_time TEXT,
                 end_time TEXT,
-                timestamp TEXT)
-        """)
-        
-        # Create tables for break booking system
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS break_settings (
+                timestamp TEXT)""",
+                
+            """CREATE TABLE IF NOT EXISTS system_settings (
+                id INTEGER PRIMARY KEY DEFAULT 1,
+                killswitch_enabled INTEGER DEFAULT 0,
+                chat_killswitch_enabled INTEGER DEFAULT 0)""",
+                
+            """CREATE TABLE IF NOT EXISTS break_settings (
                 id INTEGER PRIMARY KEY DEFAULT 1,
                 max_per_slot INTEGER DEFAULT 3,
                 current_template TEXT DEFAULT 'default',
                 active_templates TEXT DEFAULT '["default"]',
-                template_states TEXT DEFAULT '{"default": "active"}')
-        """)
-        
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS break_templates (
+                template_states TEXT DEFAULT '{"default": "active"}')""",
+                
+            """CREATE TABLE IF NOT EXISTS break_templates (
                 name TEXT PRIMARY KEY,
                 description TEXT,
-                shifts TEXT)  # JSON structure
-        """)
+                shifts TEXT)"""
+        ]
         
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS break_bookings (
-                date TEXT,
-                shift TEXT,
-                break_type TEXT,
-                slot TEXT,
-                agent_id TEXT,
-                PRIMARY KEY (date, shift, break_type, slot, agent_id))
-        """)
+        for table in tables:
+            try:
+                cursor.execute(table)
+            except sqlite3.OperationalError as e:
+                st.error(f"Error creating table: {str(e)}")
+                conn.rollback()
+                continue
         
-        # Handle system_settings table schema migration
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='system_settings'")
-        if not cursor.fetchone():
-            cursor.execute("""
-                CREATE TABLE system_settings (
-                    id INTEGER PRIMARY KEY DEFAULT 1,
-                    killswitch_enabled INTEGER DEFAULT 0,
-                    chat_killswitch_enabled INTEGER DEFAULT 0)
-            """)
-            cursor.execute("INSERT INTO system_settings (id, killswitch_enabled, chat_killswitch_enabled) VALUES (1, 0, 0)")
-        else:
-            cursor.execute("PRAGMA table_info(system_settings)")
-            columns = [column[1] for column in cursor.fetchall()]
-            if 'chat_killswitch_enabled' not in columns:
+        # Check if system_settings exists and has all columns
+        try:
+            cursor.execute("SELECT killswitch_enabled, chat_killswitch_enabled FROM system_settings WHERE id = 1")
+        except sqlite3.OperationalError:
+            # Table exists but missing columns
+            try:
                 cursor.execute("ALTER TABLE system_settings ADD COLUMN chat_killswitch_enabled INTEGER DEFAULT 0")
-                cursor.execute("UPDATE system_settings SET chat_killswitch_enabled = 0 WHERE id = 1")
+            except sqlite3.OperationalError:
+                pass  # Column already exists
+            
+            # Ensure we have a row in system_settings
+            cursor.execute("INSERT OR IGNORE INTO system_settings (id, killswitch_enabled, chat_killswitch_enabled) VALUES (1, 0, 0)")
         
-        # Initialize break booking system if empty
+        # Initialize break settings if empty
         cursor.execute("SELECT COUNT(*) FROM break_settings")
         if cursor.fetchone()[0] == 0:
             cursor.execute("""
@@ -200,23 +178,22 @@ def init_db():
             """, ("default", default_template["description"], json.dumps(default_template["shifts"])))
         
         # Create default admin account
-        cursor.execute("""
-            INSERT OR IGNORE INTO users (username, password, role) 
-            VALUES (?, ?, ?)
-        """, ("taha kirri", hash_password("arise@99"), "admin"))
         admin_accounts = [
-            ("taha kirri", "arise@99"),
-            ("Issam Samghini", "admin@2025"),
-            ("Loubna Fellah", "admin@99"),
-            ("Youssef Kamal", "admin@006"),
-            ("Fouad Fathi", "admin@55")
+            ("taha kirri", "arise@99", "admin"),
+            ("Issam Samghini", "admin@2025", "admin"),
+            ("Loubna Fellah", "admin@99", "admin"),
+            ("Youssef Kamal", "admin@006", "admin"),
+            ("Fouad Fathi", "admin@55", "admin")
         ]
         
-        for username, password in admin_accounts:
-            cursor.execute("""
-                INSERT OR IGNORE INTO users (username, password, role) 
-                VALUES (?, ?, ?)
-            """, (username, hash_password(password), "admin"))
+        for username, password, role in admin_accounts:
+            try:
+                cursor.execute("""
+                    INSERT OR IGNORE INTO users (username, password, role) 
+                    VALUES (?, ?, ?)
+                """, (username, hash_password(password), role))
+            except sqlite3.IntegrityError:
+                pass 
         
         # Create agent accounts (agent name as username, workspace ID as password)
         agents = [
@@ -267,13 +244,19 @@ def init_db():
             ("Yassine Elkanouni", "30735")
         ]
         
-        for agent_name, workspace_id in agents:
-            cursor.execute("""
-                INSERT OR IGNORE INTO users (username, password, role) 
-                VALUES (?, ?, ?)
-            """, (agent_name, hash_password(workspace_id), "agent"))
+      for agent_name, workspace_id in agents:
+            try:
+                cursor.execute("""
+                    INSERT OR IGNORE INTO users (username, password, role) 
+                    VALUES (?, ?, ?)
+                """, (agent_name, hash_password(workspace_id), "agent"))
+            except sqlite3.IntegrityError:
+                pass  # User already exists
         
         conn.commit()
+    except Exception as e:
+        st.error(f"Database initialization error: {str(e)}")
+        conn.rollback()
     finally:
         conn.close()
 
