@@ -29,6 +29,24 @@ def get_requests():
         return cursor.fetchall()
     finally:
         conn.close()
+
+def get_mistakes():
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM mistakes ORDER BY timestamp DESC")
+        return cursor.fetchall()
+    finally:
+        conn.close()
+
+def get_group_messages():
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM group_messages ORDER BY timestamp DESC LIMIT 50")
+        return cursor.fetchall()
+    finally:
+        conn.close()
         
 def authenticate(username, password):
     conn = get_db_connection()
