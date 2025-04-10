@@ -397,6 +397,15 @@ def is_break_active(shift, break_type):
         return False
         
     return True
+    
+def get_requests():
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM requests ORDER BY timestamp DESC")
+        return cursor.fetchall()
+    finally:
+        conn.close()
 
 def add_break_booking(agent_id, shift, break_type, slot, date):
     if not is_break_active(shift, break_type):
@@ -1281,17 +1290,27 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 if "authenticated" not in st.session_state:
-    st.session_state.update({
-        "authenticated": False,
-        "role": None,
-        "username": None,
-        "current_section": "requests",
-        "last_request_count": 0,
-        "last_mistake_count": 0,
-        "last_message_ids": []
-    })
-
-init_db()
+    try:
+        st.session_state.update({
+            "authenticated": False,
+            "role": None,
+            "username": None,
+            "current_section": "requests",
+            "last_request_count": len(get_requests()) if 'get_requests' in globals() else 0,
+            "last_mistake_count": len(get_mistakes()) if 'get_mistakes' in globals() else 0,
+            "last_message_ids": [msg[0] for msg in get_group_messages()] if 'get_group_messages' in globals() else []
+        })
+    except Exception as e:
+        st.session_state.update({
+            "authenticated": False,
+            "role": None,
+            "username": None,
+            "current_section": "requests",
+            "last_request_count": 0,
+            "last_mistake_count": 0,
+            "last_message_ids": []
+        })
+        st.error(f"Initialization error: {str(e)}")
 
 if not st.session_state.authenticated:
     col1, col2, col3 = st.columns([1, 2, 1])
