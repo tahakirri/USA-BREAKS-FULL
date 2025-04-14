@@ -49,18 +49,42 @@ def get_group_messages():
         conn.close()
         
 def authenticate(username, password):
+    """Authenticate user and return their role"""
+    if not username or not password:
+        return None
+        
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
+        
+        # First check if the users table exists
+        cursor.execute("""
+            SELECT name FROM sqlite_master 
+            WHERE type='table' AND name='users'
+        """)
+        if not cursor.fetchone():
+            st.error("Database not properly initialized. Please contact administrator.")
+            return None
+            
+        # Then try to authenticate
         hashed_password = hash_password(password)
-        cursor.execute("SELECT role FROM users WHERE LOWER(username) = LOWER(?) AND password = ?", 
-                      (username, hashed_password))
+        cursor.execute("""
+            SELECT role 
+            FROM users 
+            WHERE LOWER(username) = LOWER(?) AND password = ?
+        """, (username, hashed_password))
+        
         result = cursor.fetchone()
         return result[0] if result else None
+        
+    except sqlite3.Error as e:
+        st.error("Database error during authentication. Please try again.")
+        return None
     finally:
         conn.close()
 
 def init_db():
+    """Initialize database and create necessary tables"""
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
@@ -162,48 +186,6 @@ def init_db():
                 conn.rollback()
                 continue
         
-        # Check if system_settings exists and has all columns
-        try:
-            cursor.execute("SELECT killswitch_enabled, chat_killswitch_enabled FROM system_settings WHERE id = 1")
-        except sqlite3.OperationalError:
-            # Table exists but missing columns
-            try:
-                cursor.execute("ALTER TABLE system_settings ADD COLUMN chat_killswitch_enabled INTEGER DEFAULT 0")
-            except sqlite3.OperationalError:
-                pass  # Column already exists
-            
-            # Ensure we have a row in system_settings
-            cursor.execute("INSERT OR IGNORE INTO system_settings (id, killswitch_enabled, chat_killswitch_enabled) VALUES (1, 0, 0)")
-        
-        # Initialize break settings if empty
-        cursor.execute("SELECT COUNT(*) FROM break_settings")
-        if cursor.fetchone()[0] == 0:
-            cursor.execute("""
-                INSERT INTO break_settings (id, max_per_slot, current_template, active_templates, template_states)
-                VALUES (1, 3, 'default', '["default"]', '{"default": "active"}')
-            """)
-            
-            default_template = {
-                "description": "Default break schedule",
-                "shifts": {
-                    "2pm": {
-                        "early_tea": {"start": "15:00", "end": "16:30", "slots": ["15:00", "15:15", "15:30", "15:45", "16:00", "16:15", "16:30"]},
-                        "lunch": {"start": "18:30", "end": "20:30", "slots": ["18:30", "19:00", "19:30", "20:00", "20:30"]},
-                        "late_tea": {"start": "20:45", "end": "21:30", "slots": ["20:45", "21:00", "21:15", "21:30"]},
-                    },
-                    "6pm": {
-                        "early_tea": {"start": "19:00", "end": "20:45", "slots": ["19:00", "19:15", "19:30", "19:45", "20:00", "20:15", "20:30", "20:45"]},
-                        "lunch": {"start": "21:00", "end": "22:30", "slots": ["21:00", "21:30", "22:00", "22:30"]},
-                        "late_tea": {"start": "00:00", "end": "01:30", "slots": ["00:00", "00:15", "00:30", "00:45", "01:00", "01:15", "01:30"]},
-                    }
-                }
-            }
-            
-            cursor.execute("""
-                INSERT OR REPLACE INTO break_templates (name, description, shifts)
-                VALUES (?, ?, ?)
-            """, ("default", default_template["description"], json.dumps(default_template["shifts"])))
-        
         # Create default admin account
         admin_accounts = [
             ("taha kirri", "arise@99", "admin"),
@@ -220,70 +202,41 @@ def init_db():
                     VALUES (?, ?, ?)
                 """, (username, hash_password(password), role))
             except sqlite3.IntegrityError:
-                pass 
-        
-        # Create agent accounts (agent name as username, workspace ID as password)
-        agents = [
-            ("Karabila Younes", "30866"),
-            ("Kaoutar Mzara", "30514"),
-            ("Ben Tahar Chahid", "30864"),
-            ("Cherbassi Khadija", "30868"),
-            ("Lekhmouchi Kamal", "30869"),
-            ("Said Kilani", "30626"),
-            ("AGLIF Rachid", "30830"),
-            ("Yacine Adouha", "30577"),
-            ("Manal Elanbi", "30878"),
-            ("Jawad Ouassaddine", "30559"),
-            ("Kamal Elhaouar", "30844"),
-            ("Hoummad Oubella", "30702"),
-            ("Zouheir Essafi", "30703"),
-            ("Anwar Atifi", "30781"),
-            ("Said Elgaouzi", "30782"),
-            ("HAMZA SAOUI", "30716"),
-            ("Ibtissam Mazhari", "30970"),
-            ("Imad Ghazali", "30971"),
-            ("Jamila Lahrech", "30972"),
-            ("Nassim Ouazzani Touhami", "30973"),
-            ("Salaheddine Chaggour", "30974"),
-            ("Omar Tajani", "30711"),
-            ("Nizar Remz", "30728"),
-            ("Abdelouahed Fettah", "30693"),
-            ("Amal Bouramdane", "30675"),
-            ("Fatima Ezzahrae Oubaalla", "30513"),
-            ("Redouane Bertal", "30643"),
-            ("Abdelouahab Chenani", "30789"),
-            ("Imad El Youbi", "30797"),
-            ("Youssef Hammouda", "30791"),
-            ("Anas Ouassifi", "30894"),
-            ("SALSABIL ELMOUSS", "30723"),
-            ("Hicham Khalafa", "30712"),
-            ("Ghita Adib", "30710"),
-            ("Aymane Msikila", "30722"),
-            ("Marouane Boukhadda", "30890"),
-            ("Hamid Boulatouan", "30899"),
-            ("Bouchaib Chafiqi", "30895"),
-            ("Houssam Gouaalla", "30891"),
-            ("Abdellah Rguig", "30963"),
-            ("Abdellatif Chatir", "30964"),
-            ("Abderrahman Oueto", "30965"),
-            ("Fatiha Lkamel", "30967"),
-            ("Abdelhamid Jaber", "30708"),
-            ("Yassine Elkanouni", "30735")
-        ]
-        
-        for agent_name, workspace_id in agents:
-            try:
-                cursor.execute("""
-                    INSERT OR IGNORE INTO users (username, password, role) 
-                    VALUES (?, ?, ?)
-                """, (agent_name, hash_password(workspace_id), "agent"))
-            except sqlite3.IntegrityError:
-                pass  # User already exists
+                pass
         
         conn.commit()
     except Exception as e:
         st.error(f"Database initialization error: {str(e)}")
         conn.rollback()
+    finally:
+        conn.close()
+
+def verify_database_integrity():
+    """Verify that all required tables exist and have correct structure"""
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        required_tables = [
+            'users', 'requests', 'mistakes', 'group_messages', 
+            'hold_images', 'request_comments', 'late_logins', 
+            'quality_issues', 'midshift_issues', 'system_settings',
+            'break_settings', 'break_templates'
+        ]
+        
+        # Check each required table
+        for table in required_tables:
+            cursor.execute(f"""
+                SELECT name FROM sqlite_master 
+                WHERE type='table' AND name=?
+            """, (table,))
+            if not cursor.fetchone():
+                st.error(f"Missing required table: {table}")
+                return False
+                
+        return True
+    except sqlite3.Error as e:
+        st.error(f"Database integrity check failed: {str(e)}")
+        return False
     finally:
         conn.close()
 
@@ -365,7 +318,7 @@ def load_break_templates():
                 }
             }
             cursor.execute("""
-                INSERT INTO break_templates (name, description, shifts)
+                INSERT OR REPLACE INTO break_templates (name, description, shifts)
                 VALUES (?, ?, ?)
             """, ("default", default_template["description"], json.dumps(default_template["shifts"])))
             conn.commit()
@@ -2230,4 +2183,17 @@ def safe_delete_template(template_name):
         conn.close()
 
 if __name__ == "__main__":
-    st.write("Request Management System")
+    try:
+        # Initialize database
+        init_db()
+        
+        # Verify database integrity
+        if not verify_database_integrity():
+            st.error("Database initialization failed. Please contact administrator.")
+            st.stop()
+            
+        # Continue with the rest of the app
+        st.write("Request Management System")
+        
+    except Exception as e:
+        st.error(f"Application startup error: {str(e)}")
