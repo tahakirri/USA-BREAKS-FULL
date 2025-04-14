@@ -1541,11 +1541,9 @@ else:
                 st.info("You have no mid-shift issue records")
 
     elif st.session_state.current_section == "break_booking":
-        break_booking_interface()
 
     elif st.session_state.current_section == "break_admin":
         if st.session_state.role == "admin":
-            break_booking_admin_interface()
         else:
             st.warning("You don't have permission to access this section.")
 
