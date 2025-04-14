@@ -1682,7 +1682,10 @@ else:
                 delete_user(uid)
                 st.rerun()
 
+# --------------------------
 # Break Template Functions
+# --------------------------
+
 def create_break_template(name, max_users_per_slot, created_by):
     if is_killswitch_enabled():
         st.error("System is currently locked. Please contact the developer.")
