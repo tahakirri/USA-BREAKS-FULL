@@ -204,6 +204,16 @@ def init_db():
             except sqlite3.IntegrityError:
                 pass
         
+        # Inside init_db() function, after creating tables:
+        try:
+            cursor.execute("""
+                INSERT OR IGNORE INTO system_settings (id, killswitch_enabled, chat_killswitch_enabled)
+                VALUES (1, 0, 0)
+            """)
+            conn.commit()
+        except sqlite3.Error:
+            pass
+        
         conn.commit()
     except Exception as e:
         st.error(f"Database initialization error: {str(e)}")
@@ -2179,6 +2189,52 @@ def safe_delete_template(template_name):
         return True, "Template deleted successfully"
     except sqlite3.Error as e:
         return False, f"Database error: {str(e)}"
+    finally:
+        conn.close()
+
+def is_killswitch_enabled():
+    """Check if the system killswitch is enabled"""
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT killswitch_enabled FROM system_settings WHERE id = 1")
+        result = cursor.fetchone()
+        return bool(result[0]) if result else False
+    except sqlite3.Error:
+        return False  # Default to disabled if there's an error
+    finally:
+        conn.close()
+
+def is_chat_killswitch_enabled():
+    """Check if the chat killswitch is enabled"""
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT chat_killswitch_enabled FROM system_settings WHERE id = 1")
+        result = cursor.fetchone()
+        return bool(result[0]) if result else False
+    except sqlite3.Error:
+        return False  # Default to disabled if there's an error
+    finally:
+        conn.close()
+
+def toggle_killswitch(state):
+    """Toggle the system killswitch"""
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("UPDATE system_settings SET killswitch_enabled = ? WHERE id = 1", (int(state),))
+        conn.commit()
+    finally:
+        conn.close()
+
+def toggle_chat_killswitch(state):
+    """Toggle the chat killswitch"""
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("UPDATE system_settings SET chat_killswitch_enabled = ? WHERE id = 1", (int(state),))
+        conn.commit()
     finally:
         conn.close()
 
