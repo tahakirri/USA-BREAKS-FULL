@@ -434,21 +434,40 @@ def get_requests():
     finally:
         conn.close()
 
-def add_break_booking(agent_id, shift, break_type, slot, date):
-    if not is_break_active(shift, break_type):
+def safe_db_operation(operation):
+    """Decorator for safe database operations"""
+    def wrapper(*args, **kwargs):
+        max_retries = 3
+        for attempt in range(max_retries):
+            conn = None
+            try:
+                conn = get_db_connection()
+                result = operation(conn, *args, **kwargs)
+                return result
+            except sqlite3.Error as e:
+                if attempt == max_retries - 1:
+                    st.error(f"Database error: {str(e)}")
+                    raise
+            finally:
+                if conn:
+                    conn.close()
+    return wrapper
+
+@safe_db_operation
+def add_break_booking(conn, agent_id, shift, break_type, slot, date):
+    """Safely add a break booking with validation"""
+    is_valid, message = validate_break_booking(agent_id, shift, break_type, slot, date)
+    if not is_valid:
+        st.error(message)
         return False
         
-    conn = get_db_connection()
-    try:
-        cursor = conn.cursor()
-        cursor.execute("""
-            INSERT OR IGNORE INTO break_bookings (date, shift, break_type, slot, agent_id)
-            VALUES (?, ?, ?, ?, ?)
-        """, (date, shift, break_type, slot, agent_id))
-        conn.commit()
-        return cursor.rowcount > 0
-    finally:
-        conn.close()
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT OR IGNORE INTO break_bookings (date, shift, break_type, slot, agent_id)
+        VALUES (?, ?, ?, ?, ?)
+    """, (date, shift, break_type, slot, agent_id))
+    conn.commit()
+    return cursor.rowcount > 0
 
 def remove_break_booking(agent_id, shift, break_type, slot, date):
     conn = get_db_connection()
@@ -515,6 +534,30 @@ def clear_break_bookings_for_date(date):
         conn.commit()
     finally:
         conn.close()
+
+def validate_break_booking(agent_id, shift, break_type, slot, date):
+    """Validate if a break booking is allowed"""
+    # Check if date is not in the past
+    booking_date = datetime.strptime(date, "%Y-%m-%d").date()
+    if booking_date < datetime.now().date():
+        return False, "Cannot book breaks for past dates"
+    
+    # Get agent's existing bookings
+    agent_bookings = get_agent_break_bookings(agent_id, date)
+    
+    # Check for overlapping breaks
+    booking_time = datetime.strptime(slot, "%H:%M").time()
+    for existing_shift, breaks in agent_bookings.items():
+        for existing_break, slots in breaks.items():
+            for existing_slot in slots:
+                existing_time = datetime.strptime(existing_slot, "%H:%M").time()
+                # Check if times are within 30 minutes of each other
+                time_diff = abs((datetime.combine(datetime.today(), booking_time) - 
+                               datetime.combine(datetime.today(), existing_time)).total_seconds() / 60)
+                if time_diff < 30:
+                    return False, "Cannot book breaks within 30 minutes of each other"
+    
+    return True, "Valid booking"
 
 # --------------------------
 # Fancy Number Checker Functions
@@ -1316,6 +1359,45 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+def init_session_state():
+    """Safely initialize session state"""
+    if "authenticated" not in st.session_state:
+        default_state = {
+            "authenticated": False,
+            "role": None,
+            "username": None,
+            "current_section": "requests",
+            "last_request_count": 0,
+            "last_mistake_count": 0,
+            "last_message_ids": [],
+            "break_templates": {},
+            "active_template": None
+        }
+        
+        try:
+            # Try to get counts from database
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            cursor.execute("SELECT COUNT(*) FROM requests")
+            default_state["last_request_count"] = cursor.fetchone()[0]
+            
+            cursor.execute("SELECT COUNT(*) FROM mistakes")
+            default_state["last_mistake_count"] = cursor.fetchone()[0]
+            
+            cursor.execute("SELECT id FROM group_messages ORDER BY timestamp DESC LIMIT 50")
+            default_state["last_message_ids"] = [row[0] for row in cursor.fetchall()]
+            
+        except sqlite3.Error:
+            # Use default values if database access fails
+            pass
+        finally:
+            if 'conn' in locals():
+                conn.close()
+                
+        st.session_state.update(default_state)
+
+init_session_state()
+
 if "authenticated" not in st.session_state:
     try:
         st.session_state.update({
@@ -2082,6 +2164,70 @@ else:
             if cols[2].button("Delete", key=f"del_{uid}") and not is_killswitch_enabled():
                 delete_user(uid)
                 st.rerun()
+
+def validate_break_template(template):
+    """Validate break template structure and timing"""
+    try:
+        for shift in ["2pm", "6pm"]:
+            if shift not in template["shifts"]:
+                return False, f"Missing shift: {shift}"
+                
+            shift_data = template["shifts"][shift]
+            last_end_time = None
+            
+            for break_type in ["early_tea", "lunch", "late_tea"]:
+                if break_type not in shift_data:
+                    continue
+                    
+                break_data = shift_data[break_type]
+                if "slots" not in break_data:
+                    return False, f"Missing slots for {break_type} in {shift}"
+                    
+                # Validate slot times are in order
+                slots = break_data["slots"]
+                for i in range(len(slots)-1):
+                    time1 = datetime.strptime(slots[i], "%H:%M").time()
+                    time2 = datetime.strptime(slots[i+1], "%H:%M").time()
+                    if time1 >= time2:
+                        return False, f"Slots must be in chronological order: {slots[i]} >= {slots[i+1]}"
+                        
+                # Check break periods don't overlap
+                if last_end_time:
+                    first_time = datetime.strptime(slots[0], "%H:%M").time()
+                    if last_end_time >= first_time:
+                        return False, "Break periods overlap"
+                        
+                last_end_time = datetime.strptime(slots[-1], "%H:%M").time()
+                
+        return True, "Template is valid"
+    except Exception as e:
+        return False, f"Template validation error: {str(e)}"
+
+def safe_delete_template(template_name):
+    """Safely delete a template with validation"""
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        
+        # Check for active bookings
+        cursor.execute("""
+            SELECT COUNT(*) FROM break_bookings b
+            JOIN break_templates t ON b.template_name = t.name
+            WHERE t.name = ? AND b.date >= date('now')
+        """, (template_name,))
+        
+        active_bookings = cursor.fetchone()[0]
+        if active_bookings > 0:
+            return False, f"Cannot delete template: {active_bookings} active bookings exist"
+            
+        # Delete template
+        cursor.execute("DELETE FROM break_templates WHERE name = ?", (template_name,))
+        conn.commit()
+        return True, "Template deleted successfully"
+    except sqlite3.Error as e:
+        return False, f"Database error: {str(e)}"
+    finally:
+        conn.close()
 
 if __name__ == "__main__":
     st.write("Request Management System")
