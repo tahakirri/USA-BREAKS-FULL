@@ -1651,58 +1651,57 @@ else:
                                 st.success("Request submitted successfully!")
                                 st.rerun()
         
-        st.subheader("🔍 Search Requests")
-        search_query = st.text_input("Search requests...")
-        requests = search_requests(search_query) if search_query else get_requests()
-        
-        st.subheader("All Requests")
-        for req in requests:
-            req_id, agent, req_type, identifier, comment, timestamp, completed = req
-            with st.container():
-                cols = st.columns([0.1, 0.9])
-                with cols[0]:
-                    if not is_killswitch_enabled():
+            st.subheader("🔍 Search Requests")
+            search_query = st.text_input("Search requests...")
+            requests = search_requests(search_query) if search_query else get_requests()
+            
+            st.subheader("All Requests")
+            for req in requests:
+                req_id, agent, req_type, identifier, comment, timestamp, completed = req
+                with st.container():
+                    cols = st.columns([0.1, 0.9])
+                    with cols[0]:
                         st.checkbox("Done", value=bool(completed), 
                                    key=f"check_{req_id}", 
                                    on_change=update_request_status,
                                    args=(req_id, not completed))
-                    else:
-                        st.checkbox("Done", value=bool(completed), disabled=True)
-                with cols[1]:
-                    st.markdown(f"""
-                    <div class="card">
-                        <div style="display: flex; justify-content: space-between;">
-                            <h4>#{req_id} - {req_type}</h4>
-                            <small>{timestamp}</small>
-                        </div>
-                        <p>Agent: {agent}</p>
-                        <p>Identifier: {identifier}</p>
-                        <div style="margin-top: 1rem;">
-                            <h5>Status Updates:</h5>
-                    """, unsafe_allow_html=True)
-                    
-                    comments = get_request_comments(req_id)
-                    for comment in comments:
-                        cmt_id, _, user, cmt_text, cmt_time = comment
+                    with cols[1]:
                         st.markdown(f"""
-                            <div class="comment-box">
-                                <div class="comment-user">
-                                    <small><strong>{user}</strong></small>
-                                    <small>{cmt_time}</small>
-                                </div>
-                                <div class="comment-text">{cmt_text}</div>
+                        <div class="card">
+                            <div style="display: flex; justify-content: space-between;">
+                                <h4>#{req_id} - {req_type}</h4>
+                                <small>{timestamp}</small>
                             </div>
+                            <p>Agent: {agent}</p>
+                            <p>Identifier: {identifier}</p>
+                            <div style="margin-top: 1rem;">
+                                <h5>Status Updates:</h5>
                         """, unsafe_allow_html=True)
-                    
-                    st.markdown("</div>", unsafe_allow_html=True)
-                    
-                    if st.session_state.role == "admin" and not is_killswitch_enabled():
-                        with st.form(key=f"comment_form_{req_id}"):
-                            new_comment = st.text_input("Add status update/comment")
-                            if st.form_submit_button("Add Comment"):
-                                if new_comment:
-                                    add_request_comment(req_id, st.session_state.username, new_comment)
-                                    st.rerun()
+                        
+                        comments = get_request_comments(req_id)
+                        for comment in comments:
+                            cmt_id, _, user, cmt_text, cmt_time = comment
+                            st.markdown(f"""
+                                <div class="comment-box">
+                                    <div class="comment-user">
+                                        <small><strong>{user}</strong></small>
+                                        <small>{cmt_time}</small>
+                                    </div>
+                                    <div class="comment-text">{cmt_text}</div>
+                                </div>
+                            """, unsafe_allow_html=True)
+                        
+                        st.markdown("</div>", unsafe_allow_html=True)
+                        
+                        if st.session_state.role == "admin":
+                            with st.form(key=f"comment_form_{req_id}"):
+                                new_comment = st.text_input("Add status update/comment")
+                                if st.form_submit_button("Add Comment"):
+                                    if new_comment:
+                                        add_request_comment(req_id, st.session_state.username, new_comment)
+                                        st.rerun()
+        else:
+            st.error("System is currently locked. Access to requests is disabled.")
 
     elif st.session_state.current_section == "mistakes":
         if not is_killswitch_enabled():
@@ -1716,125 +1715,165 @@ else:
                         if agent_name and ticket_id and error_description:
                             add_mistake(st.session_state.username, agent_name, ticket_id, error_description)
         
-        st.subheader("🔍 Search Mistakes")
-        search_query = st.text_input("Search mistakes...")
-        mistakes = search_mistakes(search_query) if search_query else get_mistakes()
-        
-        st.subheader("Mistakes Log")
-        for mistake in mistakes:
-            m_id, tl, agent, ticket, error, ts = mistake
-            st.markdown(f"""
-            <div class="card">
-                <div style="display: flex; justify-content: space-between;">
-                    <h4>#{m_id}</h4>
-                    <small>{ts}</small>
-                </div>
-                <p>Agent: {agent}</p>
-                <p>Ticket: {ticket}</p>
-                <p>Error: {error}</p>
-            </div>
-            """, unsafe_allow_html=True)
-
-    elif st.session_state.current_section == "chat":
-        # Add mode toggle in sidebar
-        with st.sidebar:
-            st.markdown("---")
-            if st.button("🌓 Toggle Light/Dark Mode"):
-                st.session_state.color_mode = 'light' if st.session_state.color_mode == 'dark' else 'dark'
-                st.rerun()
-        
-        if is_chat_killswitch_enabled():
-            st.warning("Chat functionality is currently disabled by the administrator.")
-        else:
-            messages = get_group_messages()
-            st.markdown('<div class="chat-container">', unsafe_allow_html=True)
-            for msg in reversed(messages):
-                msg_id, sender, message, ts, mentions = msg
-                is_sent = sender == st.session_state.username
-                is_mentioned = st.session_state.username in (mentions.split(',') if mentions else [])
-                
+            st.subheader("🔍 Search Mistakes")
+            search_query = st.text_input("Search mistakes...")
+            mistakes = search_mistakes(search_query) if search_query else get_mistakes()
+            
+            st.subheader("Mistakes Log")
+            for mistake in mistakes:
+                m_id, tl, agent, ticket, error, ts = mistake
                 st.markdown(f"""
-                <div class="chat-message {'sent' if is_sent else 'received'}">
-                    <div class="message-avatar">
-                        {sender[0].upper()}
+                <div class="card">
+                    <div style="display: flex; justify-content: space-between;">
+                        <h4>#{m_id}</h4>
+                        <small>{ts}</small>
                     </div>
-                    <div class="message-content">
-                        <div>{message}</div>
-                        <div class="message-meta">{sender} • {ts}</div>
-                    </div>
+                    <p>Agent: {agent}</p>
+                    <p>Ticket: {ticket}</p>
+                    <p>Error: {error}</p>
                 </div>
                 """, unsafe_allow_html=True)
-            st.markdown('</div>', unsafe_allow_html=True)
+        else:
+            st.error("System is currently locked. Access to mistakes is disabled.")
+
+    elif st.session_state.current_section == "chat":
+        if not is_killswitch_enabled():
+            # Add mode toggle in sidebar
+            with st.sidebar:
+                st.markdown("---")
+                if st.button("🌓 Toggle Light/Dark Mode"):
+                    st.session_state.color_mode = 'light' if st.session_state.color_mode == 'dark' else 'dark'
+                    st.rerun()
             
-            if not is_killswitch_enabled():
+            if is_chat_killswitch_enabled():
+                st.warning("Chat functionality is currently disabled by the administrator.")
+            else:
+                messages = get_group_messages()
+                st.markdown('<div class="chat-container">', unsafe_allow_html=True)
+                for msg in reversed(messages):
+                    msg_id, sender, message, ts, mentions = msg
+                    is_sent = sender == st.session_state.username
+                    is_mentioned = st.session_state.username in (mentions.split(',') if mentions else [])
+                    
+                    st.markdown(f"""
+                    <div class="chat-message {'sent' if is_sent else 'received'}">
+                        <div class="message-avatar">
+                            {sender[0].upper()}
+                        </div>
+                        <div class="message-content">
+                            <div>{message}</div>
+                            <div class="message-meta">{sender} • {ts}</div>
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                st.markdown('</div>', unsafe_allow_html=True)
+                
                 with st.form("chat_form", clear_on_submit=True):
                     message = st.text_input("Type your message...", key="chat_input")
                     col1, col2 = st.columns([5,1])
                     with col2:
-                        if st.form_submit_button("Send", use_container_width=True):
+                        if st.form_submit_button("Send"):
                             if message:
                                 send_group_message(st.session_state.username, message)
                                 st.rerun()
+        else:
+            st.error("System is currently locked. Access to chat is disabled.")
 
     elif st.session_state.current_section == "fancy_number":
-        st.title("📱 Fancy Number Checker")
-        
-        with st.form("fancy_number_form"):
-            phone_number = st.text_input("Enter Phone Number", placeholder="Enter a 10-digit phone number")
-            submit = st.form_submit_button("Check Number")
+        if not is_killswitch_enabled():
+            st.title("📱 Fancy Number Checker")
             
-            if submit and phone_number:
-                # Clean the phone number
-                cleaned_number = ''.join(filter(str.isdigit, phone_number))
+            with st.form("fancy_number_form"):
+                phone_number = st.text_input("Enter Phone Number", placeholder="Enter a 10-digit phone number")
+                submit = st.form_submit_button("Check Number")
                 
-                if len(cleaned_number) != 10:
-                    st.error("Please enter a valid 10-digit phone number")
-                else:
-                    # Check for patterns
-                    patterns = []
+                if submit and phone_number:
+                    # Clean the phone number
+                    cleaned_number = ''.join(filter(str.isdigit, phone_number))
                     
-                    # Check for repeating digits
-                    for i in range(10):
-                        if str(i) * 3 in cleaned_number:
-                            patterns.append(f"Contains triple {i}'s")
-                        if str(i) * 4 in cleaned_number:
-                            patterns.append(f"Contains quadruple {i}'s")
-                    
-                    # Check for sequential numbers (ascending and descending)
-                    for i in range(len(cleaned_number)-2):
-                        if (int(cleaned_number[i]) + 1 == int(cleaned_number[i+1]) and 
-                            int(cleaned_number[i+1]) + 1 == int(cleaned_number[i+2])):
-                            patterns.append("Contains ascending sequence")
-                        elif (int(cleaned_number[i]) - 1 == int(cleaned_number[i+1]) and 
-                              int(cleaned_number[i+1]) - 1 == int(cleaned_number[i+2])):
-                            patterns.append("Contains descending sequence")
-                    
-                    # Check for palindrome patterns
-                    for i in range(len(cleaned_number)-3):
-                        segment = cleaned_number[i:i+4]
-                        if segment == segment[::-1]:
-                            patterns.append(f"Contains palindrome pattern: {segment}")
-                    
-                    # Check for repeated pairs
-                    for i in range(len(cleaned_number)-1):
-                        pair = cleaned_number[i:i+2]
-                        if cleaned_number.count(pair) > 1:
-                            patterns.append(f"Contains repeated pair: {pair}")
-                    
-                    # Format number in a readable way
-                    formatted_number = f"({cleaned_number[:3]}) {cleaned_number[3:6]}-{cleaned_number[6:]}"
-                    
-                    # Display results
-                    st.write("### Analysis Results")
-                    st.write(f"Formatted Number: {formatted_number}")
-                    
-                    if patterns:
-                        st.success("This is a fancy number! 🌟")
-                        st.write("Special patterns found:")
-                        for pattern in set(patterns):  # Using set to remove duplicates
-                            st.write(f"- {pattern}")
+                    if len(cleaned_number) != 10:
+                        st.error("Please enter a valid 10-digit phone number")
                     else:
-                        st.info("This appears to be a regular number. No special patterns found.")
+                        # Check for patterns
+                        patterns = []
+                        
+                        # Check for repeating digits
+                        for i in range(10):
+                            if str(i) * 3 in cleaned_number:
+                                patterns.append(f"Contains triple {i}'s")
+                            if str(i) * 4 in cleaned_number:
+                                patterns.append(f"Contains quadruple {i}'s")
+                        
+                        # Check for sequential numbers (ascending and descending)
+                        for i in range(len(cleaned_number)-2):
+                            if (int(cleaned_number[i]) + 1 == int(cleaned_number[i+1]) and 
+                                int(cleaned_number[i+1]) + 1 == int(cleaned_number[i+2])):
+                                patterns.append("Contains ascending sequence")
+                            elif (int(cleaned_number[i]) - 1 == int(cleaned_number[i+1]) and 
+                                  int(cleaned_number[i+1]) - 1 == int(cleaned_number[i+2])):
+                                patterns.append("Contains descending sequence")
+                        
+                        # Check for palindrome patterns
+                        for i in range(len(cleaned_number)-3):
+                            segment = cleaned_number[i:i+4]
+                            if segment == segment[::-1]:
+                                patterns.append(f"Contains palindrome pattern: {segment}")
+                        
+                        # Check for repeated pairs
+                        for i in range(len(cleaned_number)-1):
+                            pair = cleaned_number[i:i+2]
+                            if cleaned_number.count(pair) > 1:
+                                patterns.append(f"Contains repeated pair: {pair}")
+                        
+                        # Format number in a readable way
+                        formatted_number = f"({cleaned_number[:3]}) {cleaned_number[3:6]}-{cleaned_number[6:]}"
+                        
+                        # Display results
+                        st.write("### Analysis Results")
+                        st.write(f"Formatted Number: {formatted_number}")
+                        
+                        if patterns:
+                            st.success("This is a fancy number! 🌟")
+                            st.write("Special patterns found:")
+                            for pattern in set(patterns):  # Using set to remove duplicates
+                                st.write(f"- {pattern}")
+                        else:
+                            st.info("This appears to be a regular number. No special patterns found.")
+        else:
+            st.error("System is currently locked. Access to fancy number checker is disabled.")
+
+    elif st.session_state.current_section == "hold":
+        if not is_killswitch_enabled():
+            st.subheader("🖼️ HOLD Images")
+            
+            uploaded_file = st.file_uploader("Upload HOLD Image", type=['png', 'jpg', 'jpeg'])
+            if uploaded_file is not None:
+                try:
+                    # Convert the file to bytes
+                    img_bytes = uploaded_file.getvalue()
+                    
+                    # Add to database
+                    if add_hold_image(st.session_state.username, img_bytes):
+                        st.success("Image uploaded successfully!")
+                except Exception as e:
+                    st.error(f"Error uploading image: {str(e)}")
+            
+            # Display images
+            images = get_hold_images()
+            if images:
+                for img in images:
+                    img_id, uploader, img_data, timestamp = img
+                    st.markdown(f"**Uploaded by:** {uploader} at {timestamp}")
+                    try:
+                        image = Image.open(io.BytesIO(img_data))
+                        st.image(image, use_column_width=True)
+                    except Exception as e:
+                        st.error(f"Error displaying image: {str(e)}")
+                    st.markdown("---")
+            else:
+                st.info("No HOLD images available")
+        else:
+            st.error("System is currently locked. Access to HOLD images is disabled.")
 
     elif st.session_state.current_section == "late_login":
         st.subheader("⏰ Late Login Report")
@@ -2211,37 +2250,6 @@ else:
             if cols[2].button("Delete", key=f"del_{uid}") and not is_killswitch_enabled():
                 delete_user(uid)
                 st.rerun()
-
-    elif st.session_state.current_section == "hold":
-        st.subheader("🖼️ HOLD Images")
-        
-        if not is_killswitch_enabled():
-            uploaded_file = st.file_uploader("Upload HOLD Image", type=['png', 'jpg', 'jpeg'])
-            if uploaded_file is not None:
-                try:
-                    # Convert the file to bytes
-                    img_bytes = uploaded_file.getvalue()
-                    
-                    # Add to database
-                    if add_hold_image(st.session_state.username, img_bytes):
-                        st.success("Image uploaded successfully!")
-                except Exception as e:
-                    st.error(f"Error uploading image: {str(e)}")
-        
-        # Display images
-        images = get_hold_images()
-        if images:
-            for img in images:
-                img_id, uploader, img_data, timestamp = img
-                st.markdown(f"**Uploaded by:** {uploader} at {timestamp}")
-                try:
-                    image = Image.open(io.BytesIO(img_data))
-                    st.image(image, use_column_width=True)
-                except Exception as e:
-                    st.error(f"Error displaying image: {str(e)}")
-                st.markdown("---")
-        else:
-            st.info("No HOLD images available")
 
     elif st.session_state.current_section == "breaks":
         if st.session_state.role == "admin":
