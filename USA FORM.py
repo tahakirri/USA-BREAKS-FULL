@@ -38,10 +38,9 @@ def init_db():
     try:
         cursor = conn.cursor()
         
-        # Drop and recreate users table with is_vip column
-        cursor.execute("DROP TABLE IF EXISTS users")
+        # Create tables if they don't exist
         cursor.execute("""
-            CREATE TABLE users (
+            CREATE TABLE IF NOT EXISTS users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 username TEXT UNIQUE,
                 password TEXT,
@@ -50,7 +49,6 @@ def init_db():
             )
         """)
         
-        # Create VIP messages table
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS vip_messages (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -136,6 +134,11 @@ def init_db():
                 INSERT OR IGNORE INTO users (username, password, role, is_vip) 
                 VALUES (?, ?, ?, ?)
             """, (agent_name, hash_password(workspace_id), "agent", 0))
+        
+        # Ensure taha kirri has VIP status
+        cursor.execute("""
+            UPDATE users SET is_vip = 1 WHERE LOWER(username) = 'taha kirri'
+        """)
         
         conn.commit()
     finally:
@@ -1942,8 +1945,35 @@ else:
                                         st.rerun()
                 else:
                     # Regular chat only for non-VIP users
+                    st.subheader("Regular Chat")
                     messages = get_group_messages()
-                    # Regular chat display code...
+                    st.markdown('<div class="chat-container">', unsafe_allow_html=True)
+                    for msg in reversed(messages):
+                        msg_id, sender, message, ts, mentions = msg
+                        is_sent = sender == st.session_state.username
+                        is_mentioned = st.session_state.username in (mentions.split(',') if mentions else [])
+                        
+                        st.markdown(f"""
+                        <div class="chat-message {'sent' if is_sent else 'received'}">
+                            <div class="message-avatar">
+                                {sender[0].upper()}
+                            </div>
+                            <div class="message-content">
+                                <div>{message}</div>
+                                <div class="message-meta">{sender} • {ts}</div>
+                            </div>
+                        </div>
+                        """, unsafe_allow_html=True)
+                    st.markdown('</div>', unsafe_allow_html=True)
+                    
+                    with st.form("chat_form", clear_on_submit=True):
+                        message = st.text_input("Type your message...", key="chat_input")
+                        col1, col2 = st.columns([5,1])
+                        with col2:
+                            if st.form_submit_button("Send"):
+                                if message:
+                                    send_group_message(st.session_state.username, message)
+                                    st.rerun()
         else:
             st.error("System is currently locked. Access to chat is disabled.")
 
@@ -2519,6 +2549,16 @@ else:
                 if st.form_submit_button("Update VIP Status"):
                     if set_vip_status(selected_user, make_vip):
                         st.success(f"Updated VIP status for {selected_user}")
+                        # Force database refresh
+                        conn = get_db_connection()
+                        try:
+                            cursor = conn.cursor()
+                            cursor.execute("SELECT is_vip FROM users WHERE username = ?", (selected_user,))
+                            new_status = cursor.fetchone()
+                            if new_status:
+                                st.write(f"New VIP status: {'VIP' if new_status[0] else 'Regular User'}")
+                        finally:
+                            conn.close()
                         st.rerun()
         
         st.markdown("---")
