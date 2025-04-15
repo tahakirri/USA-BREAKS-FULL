@@ -723,23 +723,6 @@ def admin_break_dashboard():
     st.title("Admin Dashboard")
     st.markdown("---")
     
-    # Timezone adjustment
-    st.header("Timezone Adjustment")
-    timezone = st.selectbox(
-        "Select Timezone:", 
-        ["GMT", "GMT+1", "GMT+2", "GMT-1", "GMT-2"],
-        index=0
-    )
-    
-    # Map timezone to offset
-    timezone_offsets = {"GMT": 0, "GMT+1": 1, "GMT+2": 2, "GMT-1": -1, "GMT-2": -2}
-    new_offset = timezone_offsets[timezone]
-    
-    if new_offset != st.session_state.timezone_offset:
-        st.session_state.timezone_offset = new_offset
-        st.success(f"Timezone set to {timezone}. All break times adjusted.")
-        st.rerun()
-    
     # Bulk Time Update
     st.header("Bulk Time Update")
     st.warning("⚠️ This will permanently update all time slots in all templates!")
