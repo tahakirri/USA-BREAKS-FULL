@@ -1134,6 +1134,48 @@ def admin_break_dashboard():
     else:
         st.info("No bookings available")
 
+def time_to_minutes(time_str):
+    """Convert time string (HH:MM) to minutes since midnight"""
+    try:
+        hours, minutes = map(int, time_str.split(':'))
+        return hours * 60 + minutes
+    except:
+        return None
+
+def times_overlap(time1, time2, duration_minutes=15):
+    """Check if two time slots overlap, assuming each break is duration_minutes long"""
+    t1 = time_to_minutes(time1)
+    t2 = time_to_minutes(time2)
+    
+    if t1 is None or t2 is None:
+        return False
+        
+    # Check if the breaks overlap
+    return abs(t1 - t2) < duration_minutes
+
+def check_break_conflicts(selected_breaks):
+    """Check for conflicts between selected breaks"""
+    times = []
+    
+    # Collect all selected break times
+    if selected_breaks.get("lunch"):
+        times.append(("lunch", selected_breaks["lunch"]))
+    if selected_breaks.get("early_tea"):
+        times.append(("early_tea", selected_breaks["early_tea"]))
+    if selected_breaks.get("late_tea"):
+        times.append(("late_tea", selected_breaks["late_tea"]))
+    
+    # Check each pair of breaks for overlap
+    for i in range(len(times)):
+        for j in range(i + 1, len(times)):
+            break1_type, break1_time = times[i]
+            break2_type, break2_time = times[j]
+            
+            if times_overlap(break1_time, break2_time, 30 if "lunch" in (break1_type, break2_type) else 15):
+                return f"Conflict detected between {break1_type.replace('_', ' ')} ({break1_time}) and {break2_type.replace('_', ' ')} ({break2_time})"
+    
+    return None
+
 def agent_break_dashboard():
     st.title("Break Booking")
     st.markdown("---")
@@ -1220,21 +1262,21 @@ def agent_break_dashboard():
     
     # Break selection
     with st.form("break_selection_form"):
-        st.write("**Lunch Break**")
+        st.write("**Lunch Break** (30 minutes)")
         lunch_time = st.selectbox(
             "Select Lunch Break",
             [""] + template["lunch_breaks"],
             format_func=lambda x: "No selection" if x == "" else x
         )
         
-        st.write("**Early Tea Break**")
+        st.write("**Early Tea Break** (15 minutes)")
         early_tea = st.selectbox(
             "Select Early Tea Break",
             [""] + template["tea_breaks"]["early"],
             format_func=lambda x: "No selection" if x == "" else x
         )
         
-        st.write("**Late Tea Break**")
+        st.write("**Late Tea Break** (15 minutes)")
         late_tea = st.selectbox(
             "Select Late Tea Break",
             [""] + template["tea_breaks"]["late"],
@@ -1245,6 +1287,18 @@ def agent_break_dashboard():
         if st.form_submit_button("Confirm Breaks"):
             if not (lunch_time or early_tea or late_tea):
                 st.error("Please select at least one break.")
+                return
+            
+            # Check for time conflicts
+            selected_breaks = {
+                "lunch": lunch_time if lunch_time else None,
+                "early_tea": early_tea if early_tea else None,
+                "late_tea": late_tea if late_tea else None
+            }
+            
+            conflict = check_break_conflicts(selected_breaks)
+            if conflict:
+                st.error(conflict)
                 return
             
             # Check limits for each selected break
