@@ -830,30 +830,79 @@ def admin_break_dashboard():
     # View all bookings
     st.header("All Bookings")
     if st.session_state.agent_bookings:
+        # Add date filter
+        dates = list(st.session_state.agent_bookings.keys())
+        selected_date = st.selectbox("Select Date:", dates, index=len(dates)-1 if dates else 0)
+        
         # Convert to DataFrame for better display
         bookings_list = []
         for date, agents in st.session_state.agent_bookings.items():
-            for agent_id, breaks in agents.items():
-                bookings_list.append({
-                    "Date": date,
-                    "Agent ID": agent_id,
-                    "Lunch Break": breaks.get("lunch", "-"),
-                    "Early Tea": breaks.get("early_tea", "-"),
-                    "Late Tea": breaks.get("late_tea", "-")
-                })
+            if date == selected_date:  # Only show bookings for selected date
+                for agent_id, breaks in agents.items():
+                    booking_entry = {
+                        "Date": date,
+                        "Agent": agent_id
+                    }
+                    
+                    # Add lunch break details
+                    if "lunch" in breaks:
+                        booking_entry.update({
+                            "Lunch Time": breaks["lunch"]["time"],
+                            "Lunch Template": breaks["lunch"]["template"],
+                            "Lunch Booked At": breaks["lunch"].get("booked_at", "N/A")
+                        })
+                    else:
+                        booking_entry.update({
+                            "Lunch Time": "-",
+                            "Lunch Template": "-",
+                            "Lunch Booked At": "-"
+                        })
+                    
+                    # Add early tea break details
+                    if "early_tea" in breaks:
+                        booking_entry.update({
+                            "Early Tea Time": breaks["early_tea"]["time"],
+                            "Early Tea Template": breaks["early_tea"]["template"],
+                            "Early Tea Booked At": breaks["early_tea"].get("booked_at", "N/A")
+                        })
+                    else:
+                        booking_entry.update({
+                            "Early Tea Time": "-",
+                            "Early Tea Template": "-",
+                            "Early Tea Booked At": "-"
+                        })
+                    
+                    # Add late tea break details
+                    if "late_tea" in breaks:
+                        booking_entry.update({
+                            "Late Tea Time": breaks["late_tea"]["time"],
+                            "Late Tea Template": breaks["late_tea"]["template"],
+                            "Late Tea Booked At": breaks["late_tea"].get("booked_at", "N/A")
+                        })
+                    else:
+                        booking_entry.update({
+                            "Late Tea Time": "-",
+                            "Late Tea Template": "-",
+                            "Late Tea Booked At": "-"
+                        })
+                    
+                    bookings_list.append(booking_entry)
         
-        bookings_df = pd.DataFrame(bookings_list)
-        st.dataframe(bookings_df)
-        
-        # Export option
-        if st.button("Export Bookings to CSV"):
-            csv = bookings_df.to_csv(index=False)
-            st.download_button(
-                label="Download CSV",
-                data=csv,
-                file_name="break_bookings.csv",
-                mime="text/csv"
-            )
+        if bookings_list:
+            bookings_df = pd.DataFrame(bookings_list)
+            st.dataframe(bookings_df)
+            
+            # Export option
+            if st.button("Export Bookings to CSV"):
+                csv = bookings_df.to_csv(index=False)
+                st.download_button(
+                    label="Download CSV",
+                    data=csv,
+                    file_name=f"break_bookings_{selected_date}.csv",
+                    mime="text/csv"
+                )
+        else:
+            st.info(f"No bookings found for {selected_date}")
     else:
         st.write("No bookings yet.")
 
@@ -948,7 +997,11 @@ def agent_break_dashboard():
                     if agent_id not in st.session_state.agent_bookings[st.session_state.selected_date]:
                         st.session_state.agent_bookings[st.session_state.selected_date][agent_id] = {}
                     
-                    st.session_state.agent_bookings[st.session_state.selected_date][agent_id]["lunch"] = selected_lunch
+                    st.session_state.agent_bookings[st.session_state.selected_date][agent_id]["lunch"] = {
+                        "time": selected_lunch,
+                        "template": template_name,
+                        "booked_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    }
                     save_break_data()
                     st.success(f"Lunch break booked for {selected_lunch}")
                     st.rerun()
@@ -983,7 +1036,11 @@ def agent_break_dashboard():
                 if agent_id not in st.session_state.agent_bookings[st.session_state.selected_date]:
                     st.session_state.agent_bookings[st.session_state.selected_date][agent_id] = {}
                 
-                st.session_state.agent_bookings[st.session_state.selected_date][agent_id]["early_tea"] = selected_early_tea
+                st.session_state.agent_bookings[st.session_state.selected_date][agent_id]["early_tea"] = {
+                    "time": selected_early_tea,
+                    "template": template_name,
+                    "booked_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                }
                 save_break_data()
                 st.success(f"Early tea break booked for {selected_early_tea}")
                 st.rerun()
@@ -1014,7 +1071,11 @@ def agent_break_dashboard():
                 if agent_id not in st.session_state.agent_bookings[st.session_state.selected_date]:
                     st.session_state.agent_bookings[st.session_state.selected_date][agent_id] = {}
                 
-                st.session_state.agent_bookings[st.session_state.selected_date][agent_id]["late_tea"] = selected_late_tea
+                st.session_state.agent_bookings[st.session_state.selected_date][agent_id]["late_tea"] = {
+                    "time": selected_late_tea,
+                    "template": template_name,
+                    "booked_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                }
                 save_break_data()
                 st.success(f"Late tea break booked for {selected_late_tea}")
                 st.rerun()
@@ -1029,11 +1090,11 @@ def agent_break_dashboard():
                 bookings = st.session_state.agent_bookings[st.session_state.selected_date][agent_id]
                 
                 if "lunch" in bookings:
-                    st.write(f"**Lunch Break:** {bookings['lunch']}")
+                    st.write(f"**Lunch Break:** {bookings['lunch']['time']} (Template: {bookings['lunch']['template']})")
                 if "early_tea" in bookings:
-                    st.write(f"**Early Tea Break:** {bookings['early_tea']}")
+                    st.write(f"**Early Tea Break:** {bookings['early_tea']['time']} (Template: {bookings['early_tea']['template']})")
                 if "late_tea" in bookings:
-                    st.write(f"**Late Tea Break:** {bookings['late_tea']}")
+                    st.write(f"**Late Tea Break:** {bookings['late_tea']['time']} (Template: {bookings['late_tea']['template']})")
                 
                 if st.button("Cancel All Bookings"):
                     if is_killswitch_enabled():
