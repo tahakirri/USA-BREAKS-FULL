@@ -8,65 +8,6 @@ from PIL import Image
 import io
 import pandas as pd
 import json
-import asyncio
-import websockets
-import threading
-from queue import Queue
-
-# WebSocket server setup
-notification_queue = Queue()
-connected_clients = set()
-
-async def notify_clients(message):
-    """Send notification to all connected clients"""
-    if connected_clients:
-        await asyncio.gather(
-            *[client.send(json.dumps(message)) for client in connected_clients]
-        )
-
-async def handle_client(websocket, path):
-    """Handle individual WebSocket client connections"""
-    try:
-        # Register client
-        connected_clients.add(websocket)
-        client_id = id(websocket)
-        print(f"Client {client_id} connected")
-        
-        # Handle incoming messages
-        async for message in websocket:
-            # Process any client messages if needed
-            pass
-            
-    except websockets.exceptions.ConnectionClosed:
-        print(f"Client {client_id} disconnected")
-    finally:
-        connected_clients.remove(websocket)
-
-async def start_websocket_server():
-    """Start the WebSocket server"""
-    server = await websockets.serve(handle_client, "localhost", 8765)
-    await server.wait_closed()
-
-def run_websocket_server():
-    """Run WebSocket server in a separate thread"""
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    loop.run_until_complete(start_websocket_server())
-    loop.run_forever()
-
-# Start WebSocket server in a separate thread
-websocket_thread = threading.Thread(target=run_websocket_server, daemon=True)
-websocket_thread.start()
-
-def send_notification(notification_type, data):
-    """Send notification to all connected clients"""
-    message = {
-        "type": notification_type,
-        "data": data,
-        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    }
-    notification_queue.put(message)
-    asyncio.run(notify_clients(message))
 
 # --------------------------
 # Database Functions
@@ -343,17 +284,6 @@ def add_request(agent_name, request_type, identifier, comment):
         """, (request_id, agent_name, f"Request created: {comment}", timestamp))
         
         conn.commit()
-        
-        # Send WebSocket notification
-        send_notification('new_request', {
-            'request_id': request_id,
-            'agent_name': agent_name,
-            'request_type': request_type,
-            'identifier': identifier,
-            'comment': comment,
-            'timestamp': timestamp
-        })
-        
         return True
     finally:
         conn.close()
@@ -1382,65 +1312,17 @@ if 'color_mode' not in st.session_state:
     st.session_state.color_mode = 'dark'
 
 def inject_custom_css():
-    # Add WebSocket and notification JavaScript
+    # Add notification JavaScript
     st.markdown("""
     <script>
-    let ws;
-    let reconnectAttempts = 0;
-    const maxReconnectAttempts = 5;
-    
-    function connectWebSocket() {
-        ws = new WebSocket('ws://localhost:8765');
-        
-        ws.onopen = function() {
-            console.log('WebSocket connected');
-            reconnectAttempts = 0;
-        };
-        
-        ws.onmessage = function(event) {
-            const notification = JSON.parse(event.data);
-            handleNotification(notification);
-        };
-        
-        ws.onclose = function() {
-            console.log('WebSocket disconnected');
-            if (reconnectAttempts < maxReconnectAttempts) {
-                reconnectAttempts++;
-                setTimeout(connectWebSocket, 2000 * reconnectAttempts);
-            }
-        };
-        
-        ws.onerror = function(error) {
-            console.error('WebSocket error:', error);
-        };
-    }
-    
-    function handleNotification(notification) {
-        // Handle different types of notifications
-        switch(notification.type) {
-            case 'new_request':
-                showNotification('New Request', `New request from ${notification.data.agent_name}`);
-                updateRequestCounter();
-                break;
-            case 'new_message':
-                showNotification('New Message', `${notification.data.sender}: ${notification.data.message}`);
-                updateChatMessages();
-                break;
-            case 'break_update':
-                showNotification('Break Schedule', 'Break schedule has been updated');
-                updateBreakSchedule();
-                break;
-            case 'new_mistake':
-                showNotification('New Mistake', `New mistake reported for ${notification.data.agent_name}`);
-                updateMistakeCounter();
-                break;
-            case 'hold_update':
-                showNotification('HOLD Update', 'New HOLD image has been uploaded');
-                updateHoldImages();
-                break;
+    // Request notification permission on page load
+    document.addEventListener('DOMContentLoaded', function() {
+        if (Notification.permission !== 'granted') {
+            Notification.requestPermission();
         }
-    }
-    
+    });
+
+    // Function to show browser notification
     function showNotification(title, body) {
         if (Notification.permission === 'granted') {
             const notification = new Notification(title, {
@@ -1454,50 +1336,25 @@ def inject_custom_css():
             };
         }
     }
-    
-    function updateRequestCounter() {
-        // Refresh request counter in sidebar
-        const streamlitDoc = window.parent.document;
-        const requestsElement = streamlitDoc.querySelector('[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p:contains("Pending requests")');
-        if (requestsElement) {
-            // Trigger Streamlit rerun to update counters
-            setTimeout(() => window.parent.location.reload(), 100);
+
+    // Function to check for new messages
+    async function checkNewMessages() {
+        try {
+            const response = await fetch('/check_messages');
+            const data = await response.json();
+            
+            if (data.new_messages) {
+                data.messages.forEach(msg => {
+                    showNotification('New Message', `${msg.sender}: ${msg.message}`);
+                });
+            }
+        } catch (error) {
+            console.error('Error checking messages:', error);
         }
     }
-    
-    function updateChatMessages() {
-        // Refresh chat messages if on chat page
-        if (window.location.hash.includes('chat')) {
-            setTimeout(() => window.parent.location.reload(), 100);
-        }
-    }
-    
-    function updateBreakSchedule() {
-        // Refresh break schedule if on breaks page
-        if (window.location.hash.includes('breaks')) {
-            setTimeout(() => window.parent.location.reload(), 100);
-        }
-    }
-    
-    function updateMistakeCounter() {
-        // Refresh mistake counter in sidebar
-        setTimeout(() => window.parent.location.reload(), 100);
-    }
-    
-    function updateHoldImages() {
-        // Refresh HOLD images if on hold page
-        if (window.location.hash.includes('hold')) {
-            setTimeout(() => window.parent.location.reload(), 100);
-        }
-    }
-    
-    // Request notification permission and connect WebSocket on page load
-    document.addEventListener('DOMContentLoaded', function() {
-        if (Notification.permission !== 'granted') {
-            Notification.requestPermission();
-        }
-        connectWebSocket();
-    });
+
+    // Check for new messages every 30 seconds
+    setInterval(checkNewMessages, 30000);
     </script>
     """, unsafe_allow_html=True)
 
