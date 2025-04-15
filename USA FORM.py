@@ -1,27 +1,23 @@
 import streamlit as st
 import sqlite3
 import hashlib
-from datetime import datetime, time
+from datetime import datetime, time, timedelta
 import os
 import re
 from PIL import Image
 import io
 import pandas as pd
+import json
 
 # --------------------------
 # Database Functions
 # --------------------------
 
-def get_db_connection():
-    """Create and return a database connection."""
-    os.makedirs("data", exist_ok=True)
-    return sqlite3.connect("data/requests.db")
-
 def hash_password(password):
     return hashlib.sha256(password.encode()).hexdigest()
 
 def authenticate(username, password):
-    conn = get_db_connection()
+    conn = sqlite3.connect("data/requests.db")
     try:
         cursor = conn.cursor()
         hashed_password = hash_password(password)
@@ -33,7 +29,8 @@ def authenticate(username, password):
         conn.close()
 
 def init_db():
-    conn = get_db_connection()
+    os.makedirs("data", exist_ok=True)
+    conn = sqlite3.connect("data/requests.db")
     try:
         cursor = conn.cursor()
         
@@ -84,82 +81,6 @@ def init_db():
                 timestamp TEXT)
         """)
         
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS request_comments (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                request_id INTEGER,
-                user TEXT,
-                comment TEXT,
-                timestamp TEXT,
-                FOREIGN KEY(request_id) REFERENCES requests(id))
-        """)
-        
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS late_logins (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                agent_name TEXT,
-                presence_time TEXT,
-                login_time TEXT,
-                reason TEXT,
-                timestamp TEXT)
-        """)
-        
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS quality_issues (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                agent_name TEXT,
-                issue_type TEXT,
-                timing TEXT,
-                mobile_number TEXT,
-                product TEXT,
-                timestamp TEXT)
-        """)
-        
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS midshift_issues (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                agent_name TEXT,
-                issue_type TEXT,
-                start_time TEXT,
-                end_time TEXT,
-                timestamp TEXT)
-        """)
-        
-        # Add break template table
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS break_templates (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT UNIQUE,
-                max_users_per_slot INTEGER,
-                is_active INTEGER DEFAULT 1,
-                created_by TEXT,
-                created_at TEXT)
-        """)
-        
-        # Add break slots table
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS break_slots (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                template_id INTEGER,
-                break_type TEXT CHECK(break_type IN ('first_tea', 'lunch', 'second_tea')),
-                start_time TEXT,
-                end_time TEXT,
-                FOREIGN KEY(template_id) REFERENCES break_templates(id))
-        """)
-        
-        # Add break bookings table
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS break_bookings (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                agent_name TEXT,
-                template_id INTEGER,
-                slot_id INTEGER,
-                booking_date TEXT,
-                created_at TEXT,
-                FOREIGN KEY(template_id) REFERENCES break_templates(id),
-                FOREIGN KEY(slot_id) REFERENCES break_slots(id))
-        """)
-        
         # Handle system_settings table schema migration
         cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='system_settings'")
         if not cursor.fetchone():
@@ -176,6 +97,48 @@ def init_db():
             if 'chat_killswitch_enabled' not in columns:
                 cursor.execute("ALTER TABLE system_settings ADD COLUMN chat_killswitch_enabled INTEGER DEFAULT 0")
                 cursor.execute("UPDATE system_settings SET chat_killswitch_enabled = 0 WHERE id = 1")
+        
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS request_comments (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                request_id INTEGER,
+                user TEXT,
+                comment TEXT,
+                timestamp TEXT,
+                FOREIGN KEY(request_id) REFERENCES requests(id))
+        """)
+        
+        # Create break templates table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS break_templates (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT UNIQUE,
+                lunch_breaks TEXT,
+                early_tea_breaks TEXT,
+                late_tea_breaks TEXT)
+        """)
+        
+        # Create break bookings table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS break_bookings (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                date TEXT,
+                agent_name TEXT,
+                template_name TEXT,
+                lunch_break TEXT,
+                early_tea_break TEXT,
+                late_tea_break TEXT)
+        """)
+        
+        # Create break limits table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS break_limits (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                template_name TEXT,
+                break_type TEXT,
+                time_slot TEXT,
+                max_limit INTEGER)
+        """)
         
         # Create default admin account
         cursor.execute("""
@@ -195,7 +158,6 @@ def init_db():
                 INSERT OR IGNORE INTO users (username, password, role) 
                 VALUES (?, ?, ?)
             """, (username, hash_password(password), "admin"))
-        
         # Create agent accounts (agent name as username, workspace ID as password)
         agents = [
             ("Karabila Younes", "30866"),
@@ -251,12 +213,51 @@ def init_db():
                 VALUES (?, ?, ?)
             """, (agent_name, hash_password(workspace_id), "agent"))
         
+        # Create default template if none exists
+        cursor.execute("SELECT COUNT(*) FROM break_templates")
+        if cursor.fetchone()[0] == 0:
+            cursor.execute("""
+                INSERT INTO break_templates (name, lunch_breaks, early_tea_breaks, late_tea_breaks)
+                VALUES (?, ?, ?, ?)
+            """, (
+                "Default Schedule",
+                json.dumps(["19:30", "20:00", "20:30", "21:00", "21:30"]),
+                json.dumps(["16:00", "16:15", "16:30", "16:45", "17:00", "17:15", "17:30"]),
+                json.dumps(["21:45", "22:00", "22:15", "22:30"])
+            ))
+            
+            # Create default limits
+            default_limits = [
+                ("Default Schedule", "lunch", "19:30", 2),
+                ("Default Schedule", "lunch", "20:00", 2),
+                ("Default Schedule", "lunch", "20:30", 2),
+                ("Default Schedule", "lunch", "21:00", 2),
+                ("Default Schedule", "lunch", "21:30", 1),
+                ("Default Schedule", "early_tea", "16:00", 2),
+                ("Default Schedule", "early_tea", "16:15", 2),
+                ("Default Schedule", "early_tea", "16:30", 2),
+                ("Default Schedule", "early_tea", "16:45", 2),
+                ("Default Schedule", "early_tea", "17:00", 2),
+                ("Default Schedule", "early_tea", "17:15", 2),
+                ("Default Schedule", "early_tea", "17:30", 1),
+                ("Default Schedule", "late_tea", "21:45", 3),
+                ("Default Schedule", "late_tea", "22:00", 3),
+                ("Default Schedule", "late_tea", "22:15", 2),
+                ("Default Schedule", "late_tea", "22:30", 2)
+            ]
+            
+            for limit in default_limits:
+                cursor.execute("""
+                    INSERT INTO break_limits (template_name, break_type, time_slot, max_limit)
+                    VALUES (?, ?, ?, ?)
+                """, limit)
+        
         conn.commit()
     finally:
         conn.close()
 
 def is_killswitch_enabled():
-    conn = get_db_connection()
+    conn = sqlite3.connect("data/requests.db")
     try:
         cursor = conn.cursor()
         cursor.execute("SELECT killswitch_enabled FROM system_settings WHERE id = 1")
@@ -266,7 +267,7 @@ def is_killswitch_enabled():
         conn.close()
 
 def is_chat_killswitch_enabled():
-    conn = get_db_connection()
+    conn = sqlite3.connect("data/requests.db")
     try:
         cursor = conn.cursor()
         cursor.execute("SELECT chat_killswitch_enabled FROM system_settings WHERE id = 1")
@@ -276,7 +277,7 @@ def is_chat_killswitch_enabled():
         conn.close()
 
 def toggle_killswitch(enable):
-    conn = get_db_connection()
+    conn = sqlite3.connect("data/requests.db")
     try:
         cursor = conn.cursor()
         cursor.execute("UPDATE system_settings SET killswitch_enabled = ? WHERE id = 1",
@@ -287,7 +288,7 @@ def toggle_killswitch(enable):
         conn.close()
 
 def toggle_chat_killswitch(enable):
-    conn = get_db_connection()
+    conn = sqlite3.connect("data/requests.db")
     try:
         cursor = conn.cursor()
         cursor.execute("UPDATE system_settings SET chat_killswitch_enabled = ? WHERE id = 1",
@@ -302,7 +303,7 @@ def add_request(agent_name, request_type, identifier, comment):
         st.error("System is currently locked. Please contact the developer.")
         return False
         
-    conn = get_db_connection()
+    conn = sqlite3.connect("data/requests.db")
     try:
         cursor = conn.cursor()
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -324,7 +325,7 @@ def add_request(agent_name, request_type, identifier, comment):
         conn.close()
 
 def get_requests():
-    conn = get_db_connection()
+    conn = sqlite3.connect("data/requests.db")
     try:
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM requests ORDER BY timestamp DESC")
@@ -333,7 +334,7 @@ def get_requests():
         conn.close()
 
 def search_requests(query):
-    conn = get_db_connection()
+    conn = sqlite3.connect("data/requests.db")
     try:
         cursor = conn.cursor()
         query = f"%{query.lower()}%"
@@ -354,7 +355,7 @@ def update_request_status(request_id, completed):
         st.error("System is currently locked. Please contact the developer.")
         return False
         
-    conn = get_db_connection()
+    conn = sqlite3.connect("data/requests.db")
     try:
         cursor = conn.cursor()
         cursor.execute("UPDATE requests SET completed = ? WHERE id = ?",
@@ -369,7 +370,7 @@ def add_request_comment(request_id, user, comment):
         st.error("System is currently locked. Please contact the developer.")
         return False
         
-    conn = get_db_connection()
+    conn = sqlite3.connect("data/requests.db")
     try:
         cursor = conn.cursor()
         cursor.execute("""
@@ -382,7 +383,7 @@ def add_request_comment(request_id, user, comment):
         conn.close()
 
 def get_request_comments(request_id):
-    conn = get_db_connection()
+    conn = sqlite3.connect("data/requests.db")
     try:
         cursor = conn.cursor()
         cursor.execute("""
@@ -399,7 +400,7 @@ def add_mistake(team_leader, agent_name, ticket_id, error_description):
         st.error("System is currently locked. Please contact the developer.")
         return False
         
-    conn = get_db_connection()
+    conn = sqlite3.connect("data/requests.db")
     try:
         cursor = conn.cursor()
         cursor.execute("""
@@ -413,7 +414,7 @@ def add_mistake(team_leader, agent_name, ticket_id, error_description):
         conn.close()
 
 def get_mistakes():
-    conn = get_db_connection()
+    conn = sqlite3.connect("data/requests.db")
     try:
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM mistakes ORDER BY timestamp DESC")
@@ -422,7 +423,7 @@ def get_mistakes():
         conn.close()
 
 def search_mistakes(query):
-    conn = get_db_connection()
+    conn = sqlite3.connect("data/requests.db")
     try:
         cursor = conn.cursor()
         query = f"%{query.lower()}%"
@@ -442,7 +443,7 @@ def send_group_message(sender, message):
         st.error("Chat is currently locked. Please contact the developer.")
         return False
         
-    conn = get_db_connection()
+    conn = sqlite3.connect("data/requests.db")
     try:
         cursor = conn.cursor()
         mentions = re.findall(r'@(\w+)', message)
@@ -457,7 +458,7 @@ def send_group_message(sender, message):
         conn.close()
 
 def get_group_messages():
-    conn = get_db_connection()
+    conn = sqlite3.connect("data/requests.db")
     try:
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM group_messages ORDER BY timestamp DESC LIMIT 50")
@@ -466,7 +467,7 @@ def get_group_messages():
         conn.close()
 
 def get_all_users():
-    conn = get_db_connection()
+    conn = sqlite3.connect("data/requests.db")
     try:
         cursor = conn.cursor()
         cursor.execute("SELECT id, username, role FROM users")
@@ -479,7 +480,7 @@ def add_user(username, password, role):
         st.error("System is currently locked. Please contact the developer.")
         return False
         
-    conn = get_db_connection()
+    conn = sqlite3.connect("data/requests.db")
     try:
         cursor = conn.cursor()
         cursor.execute("INSERT INTO users (username, password, role) VALUES (?, ?, ?)",
@@ -494,7 +495,7 @@ def delete_user(user_id):
         st.error("System is currently locked. Please contact the developer.")
         return False
         
-    conn = get_db_connection()
+    conn = sqlite3.connect("data/requests.db")
     try:
         cursor = conn.cursor()
         cursor.execute("DELETE FROM users WHERE id = ?", (user_id,))
@@ -508,7 +509,7 @@ def add_hold_image(uploader, image_data):
         st.error("System is currently locked. Please contact the developer.")
         return False
         
-    conn = get_db_connection()
+    conn = sqlite3.connect("data/requests.db")
     try:
         cursor = conn.cursor()
         cursor.execute("""
@@ -521,7 +522,7 @@ def add_hold_image(uploader, image_data):
         conn.close()
 
 def get_hold_images():
-    conn = get_db_connection()
+    conn = sqlite3.connect("data/requests.db")
     try:
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM hold_images ORDER BY timestamp DESC")
@@ -534,7 +535,7 @@ def clear_hold_images():
         st.error("System is currently locked. Please contact the developer.")
         return False
         
-    conn = get_db_connection()
+    conn = sqlite3.connect("data/requests.db")
     try:
         cursor = conn.cursor()
         cursor.execute("DELETE FROM hold_images")
@@ -548,7 +549,7 @@ def clear_all_requests():
         st.error("System is currently locked. Please contact the developer.")
         return False
         
-    conn = get_db_connection()
+    conn = sqlite3.connect("data/requests.db")
     try:
         cursor = conn.cursor()
         cursor.execute("DELETE FROM requests")
@@ -563,7 +564,7 @@ def clear_all_mistakes():
         st.error("System is currently locked. Please contact the developer.")
         return False
         
-    conn = get_db_connection()
+    conn = sqlite3.connect("data/requests.db")
     try:
         cursor = conn.cursor()
         cursor.execute("DELETE FROM mistakes")
@@ -577,7 +578,7 @@ def clear_all_group_messages():
         st.error("System is currently locked. Please contact the developer.")
         return False
         
-    conn = get_db_connection()
+    conn = sqlite3.connect("data/requests.db")
     try:
         cursor = conn.cursor()
         cursor.execute("DELETE FROM group_messages")
@@ -586,277 +587,681 @@ def clear_all_group_messages():
     finally:
         conn.close()
 
-def add_late_login(agent_name, presence_time, login_time, reason):
-    if is_killswitch_enabled():
-        st.error("System is currently locked. Please contact the developer.")
-        return False
-        
-    conn = get_db_connection()
-    try:
-        cursor = conn.cursor()
-        cursor.execute("""
-            INSERT INTO late_logins (agent_name, presence_time, login_time, reason, timestamp) 
-            VALUES (?, ?, ?, ?, ?)
-        """, (agent_name, presence_time, login_time, reason,
-             datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
-        conn.commit()
-        return True
-    finally:
-        conn.close()
-
-def get_late_logins():
-    conn = get_db_connection()
-    try:
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM late_logins ORDER BY timestamp DESC")
-        return cursor.fetchall()
-    finally:
-        conn.close()
-
-def add_quality_issue(agent_name, issue_type, timing, mobile_number, product):
-    if is_killswitch_enabled():
-        st.error("System is currently locked. Please contact the developer.")
-        return False
-        
-    conn = get_db_connection()
-    try:
-        cursor = conn.cursor()
-        cursor.execute("""
-            INSERT INTO quality_issues (agent_name, issue_type, timing, mobile_number, product, timestamp) 
-            VALUES (?, ?, ?, ?, ?, ?)
-        """, (agent_name, issue_type, timing, mobile_number, product,
-             datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
-        conn.commit()
-        return True
-    finally:
-        conn.close()
-
-def get_quality_issues():
-    conn = get_db_connection()
-    try:
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM quality_issues ORDER BY timestamp DESC")
-        return cursor.fetchall()
-    except Exception as e:
-        st.error(f"Error fetching quality issues: {str(e)}")
-    finally:
-        conn.close()
-
-def add_midshift_issue(agent_name, issue_type, start_time, end_time):
-    if is_killswitch_enabled():
-        st.error("System is currently locked. Please contact the developer.")
-        return False
-        
-    conn = get_db_connection()
-    try:
-        cursor = conn.cursor()
-        cursor.execute("""
-            INSERT INTO midshift_issues (agent_name, issue_type, start_time, end_time, timestamp) 
-            VALUES (?, ?, ?, ?, ?)
-        """, (agent_name, issue_type, start_time, end_time,
-             datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
-        conn.commit()
-        return True
-    except Exception as e:
-        st.error(f"Error adding mid-shift issue: {str(e)}")
-    finally:
-        conn.close()
-
-def get_midshift_issues():
-    conn = get_db_connection()
-    try:
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM midshift_issues ORDER BY timestamp DESC")
-        return cursor.fetchall()
-    except Exception as e:
-        st.error(f"Error fetching mid-shift issues: {str(e)}")
-    finally:
-        conn.close()
-
-def clear_late_logins():
-    if is_killswitch_enabled():
-        st.error("System is currently locked. Please contact the developer.")
-        return False
-        
-    conn = get_db_connection()
-    try:
-        cursor = conn.cursor()
-        cursor.execute("DELETE FROM late_logins")
-        conn.commit()
-        return True
-    except Exception as e:
-        st.error(f"Error clearing late logins: {str(e)}")
-    finally:
-        conn.close()
-
-def clear_quality_issues():
-    if is_killswitch_enabled():
-        st.error("System is currently locked. Please contact the developer.")
-        return False
-        
-    conn = get_db_connection()
-    try:
-        cursor = conn.cursor()
-        cursor.execute("DELETE FROM quality_issues")
-        conn.commit()
-        return True
-    except Exception as e:
-        st.error(f"Error clearing quality issues: {str(e)}")
-    finally:
-        conn.close()
-
-def clear_midshift_issues():
-    if is_killswitch_enabled():
-        st.error("System is currently locked. Please contact the developer.")
-        return False
-        
-    conn = get_db_connection()
-    try:
-        cursor = conn.cursor()
-        cursor.execute("DELETE FROM midshift_issues")
-        conn.commit()
-        return True
-    except Exception as e:
-        st.error(f"Error clearing mid-shift issues: {str(e)}")
-    finally:
-        conn.close()
-
 # --------------------------
-# Fancy Number Checker Functions
+# Break Scheduling Functions
 # --------------------------
 
-def is_sequential(digits, step=1):
-    """Check if digits form a sequential pattern with given step"""
+def get_break_templates():
+    conn = sqlite3.connect("data/requests.db")
     try:
-        return all(int(digits[i]) == int(digits[i-1]) + step for i in range(1, len(digits)))
-    except:
-        return False
+        cursor = conn.cursor()
+        cursor.execute("SELECT name FROM break_templates")
+        return [row[0] for row in cursor.fetchall()]
+    finally:
+        conn.close()
 
-def is_fancy_number(phone_number):
-    clean_number = re.sub(r'\D', '', phone_number)
+def get_template_details(template_name):
+    conn = sqlite3.connect("data/requests.db")
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT lunch_breaks, early_tea_breaks, late_tea_breaks 
+            FROM break_templates 
+            WHERE name = ?
+        """, (template_name,))
+        result = cursor.fetchone()
+        if result:
+            return {
+                "lunch_breaks": json.loads(result[0]),
+                "tea_breaks": {
+                    "early": json.loads(result[1]),
+                    "late": json.loads(result[2])
+                }
+            }
+        return None
+    finally:
+        conn.close()
+
+def get_break_limits(template_name):
+    conn = sqlite3.connect("data/requests.db")
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT break_type, time_slot, max_limit 
+            FROM break_limits 
+            WHERE template_name = ?
+        """, (template_name,))
+        
+        limits = {
+            "lunch": {},
+            "early_tea": {},
+            "late_tea": {}
+        }
+        
+        for break_type, time_slot, max_limit in cursor.fetchall():
+            if break_type == "lunch":
+                limits["lunch"][time_slot] = max_limit
+            elif break_type == "early_tea":
+                limits["early_tea"][time_slot] = max_limit
+            elif break_type == "late_tea":
+                limits["late_tea"][time_slot] = max_limit
+                
+        return limits
+    finally:
+        conn.close()
+
+def save_break_booking(date, agent_name, template_name, lunch_break=None, early_tea_break=None, late_tea_break=None):
+    conn = sqlite3.connect("data/requests.db")
+    try:
+        cursor = conn.cursor()
+        
+        # Check if booking already exists for this agent and date
+        cursor.execute("""
+            SELECT id FROM break_bookings 
+            WHERE date = ? AND agent_name = ?
+        """, (date, agent_name))
+        existing_booking = cursor.fetchone()
+        
+        if existing_booking:
+            # Update existing booking
+            cursor.execute("""
+                UPDATE break_bookings 
+                SET template_name = ?,
+                    lunch_break = ?,
+                    early_tea_break = ?,
+                    late_tea_break = ?
+                WHERE id = ?
+            """, (template_name, lunch_break, early_tea_break, late_tea_break, existing_booking[0]))
+        else:
+            # Create new booking
+            cursor.execute("""
+                INSERT INTO break_bookings (date, agent_name, template_name, lunch_break, early_tea_break, late_tea_break)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (date, agent_name, template_name, lunch_break, early_tea_break, late_tea_break))
+        
+        conn.commit()
+        return True
+    finally:
+        conn.close()
+
+def get_agent_bookings(date, agent_name):
+    conn = sqlite3.connect("data/requests.db")
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT template_name, lunch_break, early_tea_break, late_tea_break 
+            FROM break_bookings 
+            WHERE date = ? AND agent_name = ?
+        """, (date, agent_name))
+        result = cursor.fetchone()
+        if result:
+            return {
+                "template": result[0],
+                "lunch": result[1],
+                "early_tea": result[2],
+                "late_tea": result[3]
+            }
+        return None
+    finally:
+        conn.close()
+
+def get_all_bookings():
+    conn = sqlite3.connect("data/requests.db")
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT date, agent_name, template_name, lunch_break, early_tea_break, late_tea_break 
+            FROM break_bookings 
+            ORDER BY date DESC
+        """)
+        return cursor.fetchall()
+    finally:
+        conn.close()
+
+def count_bookings_for_slot(date, template_name, break_type, time_slot):
+    conn = sqlite3.connect("data/requests.db")
+    try:
+        cursor = conn.cursor()
+        
+        if break_type == "lunch":
+            cursor.execute("""
+                SELECT COUNT(*) FROM break_bookings 
+                WHERE date = ? AND template_name = ? AND lunch_break = ?
+            """, (date, template_name, time_slot))
+        elif break_type == "early_tea":
+            cursor.execute("""
+                SELECT COUNT(*) FROM break_bookings 
+                WHERE date = ? AND template_name = ? AND early_tea_break = ?
+            """, (date, template_name, time_slot))
+        elif break_type == "late_tea":
+            cursor.execute("""
+                SELECT COUNT(*) FROM break_bookings 
+                WHERE date = ? AND template_name = ? AND late_tea_break = ?
+            """, (date, template_name, time_slot))
+        
+        return cursor.fetchone()[0]
+    finally:
+        conn.close()
+
+def delete_agent_booking(date, agent_name):
+    conn = sqlite3.connect("data/requests.db")
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            DELETE FROM break_bookings 
+            WHERE date = ? AND agent_name = ?
+        """, (date, agent_name))
+        conn.commit()
+        return True
+    finally:
+        conn.close()
+
+def create_template(name, lunch_breaks, early_tea_breaks, late_tea_breaks):
+    conn = sqlite3.connect("data/requests.db")
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO break_templates (name, lunch_breaks, early_tea_breaks, late_tea_breaks)
+            VALUES (?, ?, ?, ?)
+        """, (name, json.dumps(lunch_breaks), json.dumps(early_tea_breaks), json.dumps(late_tea_breaks)))
+        conn.commit()
+        return True
+    finally:
+        conn.close()
+def show_break_analytics():
+    st.subheader("Break Analytics")
     
-    # Get last 6 digits according to Lycamobile policy
-    if len(clean_number) >= 6:
-        last_six = clean_number[-6:]
-        last_three = clean_number[-3:]
+    # Get data from database
+    conn = sqlite3.connect("data/requests.db")
+    df = pd.read_sql("""
+        SELECT strftime('%H:%M', time_slot) as time, 
+               COUNT(*) as bookings,
+               break_type
+        FROM break_bookings
+        GROUP BY time_slot, break_type
+    """, conn)
+    conn.close()
+    
+    # Visualization
+    fig = px.bar(df, x='time', y='bookings', color='break_type',
+                 title="Break Utilization by Time Slot")
+    st.plotly_chart(fig)
+def update_template(name, lunch_breaks, early_tea_breaks, late_tea_breaks):
+    conn = sqlite3.connect("data/requests.db")
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            UPDATE break_templates 
+            SET lunch_breaks = ?,
+                early_tea_breaks = ?,
+                late_tea_breaks = ?
+            WHERE name = ?
+        """, (json.dumps(lunch_breaks), json.dumps(early_tea_breaks), json.dumps(late_tea_breaks), name))
+        conn.commit()
+        return True
+    finally:
+        conn.close()
+
+def delete_template(name):
+    conn = sqlite3.connect("data/requests.db")
+    try:
+        cursor = conn.cursor()
+        
+        # First delete all limits for this template
+        cursor.execute("DELETE FROM break_limits WHERE template_name = ?", (name,))
+        
+        # Then delete the template
+        cursor.execute("DELETE FROM break_templates WHERE name = ?", (name,))
+        
+        conn.commit()
+        return True
+    finally:
+        conn.close()
+
+def update_break_limits(template_name, break_type, time_slot, max_limit):
+    conn = sqlite3.connect("data/requests.db")
+    try:
+        cursor = conn.cursor()
+        
+        # Check if limit already exists
+        cursor.execute("""
+            SELECT id FROM break_limits 
+            WHERE template_name = ? AND break_type = ? AND time_slot = ?
+        """, (template_name, break_type, time_slot))
+        existing_limit = cursor.fetchone()
+        
+        if existing_limit:
+            # Update existing limit
+            cursor.execute("""
+                UPDATE break_limits 
+                SET max_limit = ?
+                WHERE id = ?
+            """, (max_limit, existing_limit[0]))
+        else:
+            # Create new limit
+            cursor.execute("""
+                INSERT INTO break_limits (template_name, break_type, time_slot, max_limit)
+                VALUES (?, ?, ?, ?)
+            """, (template_name, break_type, time_slot, max_limit))
+        
+        conn.commit()
+        return True
+    finally:
+        conn.close()
+
+def clear_all_break_bookings():
+    conn = sqlite3.connect("data/requests.db")
+    try:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM break_bookings")
+        conn.commit()
+        return True
+    except Exception as e:
+        conn.rollback()
+        st.error(f"Error clearing break bookings: {str(e)}")
+        return False
+    finally:
+        conn.close()
+
+def clear_all_break_templates():
+    conn = sqlite3.connect("data/requests.db")
+    try:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM break_templates")
+        cursor.execute("DELETE FROM break_limits")
+        conn.commit()
+        return True
+    except Exception as e:
+        conn.rollback()
+        st.error(f"Error clearing break templates: {str(e)}")
+        return False
+    finally:
+        conn.close()
+
+def display_schedule(template):
+    st.header("LM US ENG 3:00 PM shift")
+    
+    # Lunch breaks table
+    st.markdown("### LUNCH BREAKS")
+    lunch_df = pd.DataFrame({
+        "DATE": [st.session_state.selected_date],
+        **{time: [""] for time in template["lunch_breaks"]}
+    })
+    st.table(lunch_df)
+    
+    st.markdown("**KINDLY RESPECT THE RULES BELOW**")
+    st.markdown("**Non Respect Of Break Rules = Incident**")
+    st.markdown("---")
+    
+    # Tea breaks table
+    st.markdown("### TEA BREAK")
+    
+    # Create two columns for tea breaks
+    max_rows = max(len(template["tea_breaks"]["early"]), len(template["tea_breaks"]["late"]))
+    tea_data = {
+        "TEA BREAK": template["tea_breaks"]["early"] + [""] * (max_rows - len(template["tea_breaks"]["early"])),
+        "TEA BREAK": template["tea_breaks"]["late"] + [""] * (max_rows - len(template["tea_breaks"]["late"]))
+    }
+    tea_df = pd.DataFrame(tea_data)
+    st.table(tea_df)
+    
+    # Rules section
+    st.markdown("""
+    **NO BREAK IN THE LAST HOUR WILL BE AUTHORIZED**  
+    **PS: ONLY 5 MINUTES BIO IS AUTHORIZED IN THE LAST HOUR BETWEEN 23:00 TILL 23:30 AND NO BREAK AFTER 23:30 !!!**  
+    **BREAKS SHOULD BE TAKEN AT THE NOTED TIME AND NEED TO BE CONFIRMED FROM RTA OR TEAM LEADERS**
+    """)
+
+def admin_break_dashboard():
+    st.title("Admin Dashboard")
+    st.markdown("---")
+    
+    # Timezone adjustment
+    st.header("Timezone Adjustment")
+    timezone = st.selectbox(
+        "Select Timezone:", 
+        ["GMT", "GMT+1", "GMT+2", "GMT-1", "GMT-2"],
+        index=0
+    )
+    
+    # Map timezone to offset
+    timezone_offsets = {"GMT": 0, "GMT+1": 1, "GMT+2": 2, "GMT-1": -1, "GMT-2": -2}
+    new_offset = timezone_offsets[timezone]
+    
+    if new_offset != st.session_state.timezone_offset:
+        st.session_state.timezone_offset = new_offset
+        st.success(f"Timezone set to {timezone}. All break times adjusted.")
+        st.rerun()
+    
+    # Template management
+    st.header("Template Management")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        template_name = st.text_input("Template Name:")
+    
+    with col2:
+        if st.button("Create New Template"):
+            if template_name:
+                try:
+                    if create_template(
+                        template_name,
+                        ["19:30", "20:00", "20:30", "21:00", "21:30"],
+                        ["16:00", "16:15", "16:30", "16:45", "17:00", "17:15", "17:30"],
+                        ["21:45", "22:00", "22:15", "22:30"]
+                    ):
+                        st.success(f"Template '{template_name}' created!")
+                        st.rerun()
+                except sqlite3.IntegrityError:
+                    st.error("Template with this name already exists")
+            else:
+                st.error("Please enter a template name")
+    
+    # Template selection
+    templates = get_break_templates()
+    if templates:
+        selected_template = st.selectbox(
+            "Select Template to Edit:",
+            templates
+        )
+        
+        # Edit template
+        if selected_template:
+            template = get_template_details(selected_template)
+            
+            st.subheader("Edit Lunch Breaks")
+            lunch_breaks = st.text_area(
+                "Lunch Breaks (one per line):",
+                "\n".join(template["lunch_breaks"]),
+                height=150
+            )
+            
+            st.subheader("Edit Tea Breaks")
+            st.write("Early Tea Breaks:")
+            early_tea_breaks = st.text_area(
+                "Early Tea Breaks (one per line):",
+                "\n".join(template["tea_breaks"]["early"]),
+                height=150,
+                key="early_tea"
+            )
+            
+            st.write("Late Tea Breaks:")
+            late_tea_breaks = st.text_area(
+                "Late Tea Breaks (one per line):",
+                "\n".join(template["tea_breaks"]["late"]),
+                height=150,
+                key="late_tea"
+            )
+            
+            if st.button("Save Changes"):
+                if update_template(
+                    selected_template,
+                    [t.strip() for t in lunch_breaks.split("\n") if t.strip()],
+                    [t.strip() for t in early_tea_breaks.split("\n") if t.strip()],
+                    [t.strip() for t in late_tea_breaks.split("\n") if t.strip()]
+                ):
+                    st.success("Template updated successfully!")
+                    st.rerun()
+            
+            if st.button("Delete Template"):
+                if delete_template(selected_template):
+                    st.success(f"Template '{selected_template}' deleted!")
+                    st.rerun()
+    
+    # Break limits management
+    st.header("Break Limits Management")
+    if templates:
+        selected_template = st.selectbox(
+            "Select Template to Set Limits:",
+            templates,
+            key="limits_template"
+        )
+        
+        if selected_template:
+            template = get_template_details(selected_template)
+            limits = get_break_limits(selected_template)
+            
+            st.subheader("Lunch Break Limits")
+            lunch_cols = st.columns(len(template["lunch_breaks"]))
+            for i, time_slot in enumerate(template["lunch_breaks"]):
+                with lunch_cols[i]:
+                    max_limit = st.number_input(
+                        f"Max at {time_slot}",
+                        min_value=1,
+                        value=limits["lunch"].get(time_slot, 5),
+                        key=f"lunch_limit_{time_slot}"
+                    )
+                    if st.button(f"Save {time_slot}", key=f"save_lunch_{time_slot}"):
+                        if update_break_limits(selected_template, "lunch", time_slot, max_limit):
+                            st.success(f"Limit for {time_slot} saved!")
+            
+            st.subheader("Early Tea Break Limits")
+            early_tea_cols = st.columns(len(template["tea_breaks"]["early"]))
+            for i, time_slot in enumerate(template["tea_breaks"]["early"]):
+                with early_tea_cols[i]:
+                    max_limit = st.number_input(
+                        f"Max at {time_slot}",
+                        min_value=1,
+                        value=limits["early_tea"].get(time_slot, 3),
+                        key=f"early_tea_limit_{time_slot}"
+                    )
+                    if st.button(f"Save {time_slot}", key=f"save_early_tea_{time_slot}"):
+                        if update_break_limits(selected_template, "early_tea", time_slot, max_limit):
+                            st.success(f"Limit for {time_slot} saved!")
+            
+            st.subheader("Late Tea Break Limits")
+            late_tea_cols = st.columns(len(template["tea_breaks"]["late"]))
+            for i, time_slot in enumerate(template["tea_breaks"]["late"]):
+                with late_tea_cols[i]:
+                    max_limit = st.number_input(
+                        f"Max at {time_slot}",
+                        min_value=1,
+                        value=limits["late_tea"].get(time_slot, 3),
+                        key=f"late_tea_limit_{time_slot}"
+                    )
+                    if st.button(f"Save {time_slot}", key=f"save_late_tea_{time_slot}"):
+                        if update_break_limits(selected_template, "late_tea", time_slot, max_limit):
+                            st.success(f"Limit for {time_slot} saved!")
+    
+    # View all bookings
+    st.header("All Bookings")
+    bookings = get_all_bookings()
+    if bookings:
+        # Convert to DataFrame for better display
+        bookings_list = []
+        for booking in bookings:
+            bookings_list.append({
+                "Date": booking[0],
+                "Agent": booking[1],
+                "Template": booking[2],
+                "Lunch Break": booking[3] if booking[3] else "-",
+                "Early Tea": booking[4] if booking[4] else "-",
+                "Late Tea": booking[5] if booking[5] else "-"
+            })
+        
+        bookings_df = pd.DataFrame(bookings_list)
+        st.dataframe(bookings_df)
+        
+        # Export option
+        if st.button("Export Bookings to CSV"):
+            csv = bookings_df.to_csv(index=False)
+            st.download_button(
+                label="Download CSV",
+                data=csv,
+                file_name="break_bookings.csv",
+                mime="text/csv"
+            )
+            
+        # Clear all bookings
+        if st.button("Clear All Bookings"):
+            if clear_all_break_bookings():
+                st.success("All bookings cleared!")
+                st.rerun()
     else:
-        return False, "Number too short (need at least 6 digits)"
-    
-    patterns = []
-    
-    # Special case for 13322866688
-    if clean_number == "13322866688":
-        patterns.append("Special VIP number (13322866688)")
-    
-    # Check for ABBBAA pattern (like 566655)
-    if (len(last_six) == 6 and 
-        last_six[0] == last_six[5] and 
-        last_six[1] == last_six[2] == last_six[3] and 
-        last_six[4] == last_six[0] and 
-        last_six[0] != last_six[1]):
-        patterns.append("ABBBAA pattern (e.g., 566655)")
-    
-    # Check for ABBBA pattern (like 233322)
-    if (len(last_six) >= 5 and 
-        last_six[0] == last_six[4] and 
-        last_six[1] == last_six[2] == last_six[3] and 
-        last_six[0] != last_six[1]):
-        patterns.append("ABBBA pattern (e.g., 233322)")
-    
-    # 1. 6-digit patterns (strict matches only)
-    # All same digits (666666)
-    if len(set(last_six)) == 1:
-        patterns.append("6 identical digits")
-    
-    # Consecutive ascending (123456)
-    if is_sequential(last_six, 1):
-        patterns.append("6-digit ascending sequence")
+        st.write("No bookings yet.")
+
+def agent_break_dashboard():
+    if is_killswitch_enabled():
+        st.error("System is currently locked. Break booking is disabled.")
+        return
         
-    # Consecutive descending (654321)
-    if is_sequential(last_six, -1):
-        patterns.append("6-digit descending sequence")
+    st.title("Break Booking")
+    st.markdown("---")
+    
+    # Use the logged-in username directly
+    agent_name = st.session_state.username
+    st.write(f"Booking breaks for: **{agent_name}**")
+    
+    # Date selection
+    schedule_date = st.date_input("Select Date:", datetime.now())
+    selected_date = schedule_date.strftime('%Y-%m-%d')
+    
+    # Template selection
+    templates = get_break_templates()
+    if not templates:
+        st.error("No break schedules available. Please contact admin.")
+        return
+    
+    selected_template = st.selectbox(
+        "Select Schedule Template:",
+        templates
+    )
+    
+    # Get template details
+    template = get_template_details(selected_template)
+    if not template:
+        st.error("Selected template not found")
+        return
+    
+    # Get agent's existing bookings for this date
+    existing_booking = get_agent_bookings(selected_date, agent_name)
+    
+    # If existing booking is for a different template, clear it
+    if existing_booking and existing_booking["template"] != selected_template:
+        delete_agent_booking(selected_date, agent_name)
+        existing_booking = None
+    
+    # Booking section
+    st.markdown("---")
+    st.header("Available Break Slots")
+    
+    # Get break limits for this template
+    limits = get_break_limits(selected_template)
+    
+    # Lunch break booking
+    st.subheader("Lunch Break")
+    if template["lunch_breaks"]:
+        lunch_cols = st.columns(len(template["lunch_breaks"]))
+        selected_lunch = None
         
-    # Palindrome (100001)
-    if last_six == last_six[::-1]:
-        patterns.append("6-digit palindrome")
+        for i, time_slot in enumerate(template["lunch_breaks"]):
+            with lunch_cols[i]:
+                # Check if time slot is full
+                current_bookings = count_bookings_for_slot(selected_date, selected_template, "lunch", time_slot)
+                max_limit = limits["lunch"].get(time_slot, 5)
+                
+                if existing_booking and existing_booking["lunch"] == time_slot:
+                    st.button(f"{time_slot} (YOURS)", key=f"lunch_{time_slot}", disabled=True)
+                elif current_bookings >= max_limit:
+                    st.button(f"{time_slot} (FULL)", key=f"lunch_{time_slot}", disabled=True)
+                else:
+                    if st.button(time_slot, key=f"lunch_{time_slot}"):
+                        selected_lunch = time_slot
+        
+        if selected_lunch:
+            if save_break_booking(
+                selected_date,
+                agent_name,
+                selected_template,
+                lunch_break=selected_lunch,
+                early_tea_break=existing_booking["early_tea"] if existing_booking and "early_tea" in existing_booking else None,
+                late_tea_break=existing_booking["late_tea"] if existing_booking and "late_tea" in existing_booking else None
+            ):
+                st.success(f"Lunch break booked for {selected_lunch}")
+                st.rerun()
+    else:
+        st.write("No lunch breaks available today.")
     
-    # 2. 3-digit patterns (strict matches from image)
-    first_triple = last_six[:3]
-    second_triple = last_six[3:]
+    # Tea break booking
+    st.subheader("Tea Breaks")
+    st.write("Early Tea Breaks:")
+    early_tea_cols = st.columns(len(template["tea_breaks"]["early"]))
+    selected_early_tea = None
     
-    # Double triplets (444555)
-    if len(set(first_triple)) == 1 and len(set(second_triple)) == 1 and first_triple != second_triple:
-        patterns.append("Double triplets (444555)")
+    for i, time_slot in enumerate(template["tea_breaks"]["early"]):
+        with early_tea_cols[i]:
+            # Check if time slot is full
+            current_bookings = count_bookings_for_slot(selected_date, selected_template, "early_tea", time_slot)
+            max_limit = limits["early_tea"].get(time_slot, 3)
+            
+            if existing_booking and existing_booking["early_tea"] == time_slot:
+                st.button(f"{time_slot} (YOURS)", key=f"early_tea_{time_slot}", disabled=True)
+            elif current_bookings >= max_limit:
+                st.button(f"{time_slot} (FULL)", key=f"early_tea_{time_slot}", disabled=True)
+            else:
+                if st.button(time_slot, key=f"early_tea_{time_slot}"):
+                    selected_early_tea = time_slot
     
-    # Similar triplets (121122)
-    if (first_triple[0] == first_triple[1] and 
-        second_triple[0] == second_triple[1] and 
-        first_triple[2] == second_triple[2]):
-        patterns.append("Similar triplets (121122)")
+    if selected_early_tea:
+        if save_break_booking(
+            selected_date,
+            agent_name,
+            selected_template,
+            lunch_break=existing_booking["lunch"] if existing_booking and "lunch" in existing_booking else None,
+            early_tea_break=selected_early_tea,
+            late_tea_break=existing_booking["late_tea"] if existing_booking and "late_tea" in existing_booking else None
+        ):
+            st.success(f"Early tea break booked for {selected_early_tea}")
+            st.rerun()
     
-    # Repeating triplets (786786)
-    if first_triple == second_triple:
-        patterns.append("Repeating triplets (786786)")
+    st.write("Late Tea Breaks:")
+    late_tea_cols = st.columns(len(template["tea_breaks"]["late"]))
+    selected_late_tea = None
     
-    # Nearly sequential (457456) - exactly 1 digit difference
-    if abs(int(first_triple) - int(second_triple)) == 1:
-        patterns.append("Nearly sequential triplets (457456)")
+    for i, time_slot in enumerate(template["tea_breaks"]["late"]):
+        with late_tea_cols[i]:
+            # Check if time slot is full
+            current_bookings = count_bookings_for_slot(selected_date, selected_template, "late_tea", time_slot)
+            max_limit = limits["late_tea"].get(time_slot, 3)
+            
+            if existing_booking and existing_booking["late_tea"] == time_slot:
+                st.button(f"{time_slot} (YOURS)", key=f"late_tea_{time_slot}", disabled=True)
+            elif current_bookings >= max_limit:
+                st.button(f"{time_slot} (FULL)", key=f"late_tea_{time_slot}", disabled=True)
+            else:
+                if st.button(time_slot, key=f"late_tea_{time_slot}"):
+                    selected_late_tea = time_slot
     
-    # 3. 2-digit patterns (strict matches from image)
-    # Incremental pairs (111213)
-    pairs = [last_six[i:i+2] for i in range(0, 5, 1)]
-    try:
-        if all(int(pairs[i]) == int(pairs[i-1]) + 1 for i in range(1, len(pairs))):
-            patterns.append("Incremental pairs (111213)")
+    if selected_late_tea:
+        if save_break_booking(
+            selected_date,
+            agent_name,
+            selected_template,
+            lunch_break=existing_booking["lunch"] if existing_booking and "lunch" in existing_booking else None,
+            early_tea_break=existing_booking["early_tea"] if existing_booking and "early_tea" in existing_booking else None,
+            late_tea_break=selected_late_tea
+        ):
+            st.success(f"Late tea break booked for {selected_late_tea}")
+            st.rerun()
     
-        # Repeating pairs (202020)
-        if (pairs[0] == pairs[2] == pairs[4] and 
-            pairs[1] == pairs[3] and 
-            pairs[0] != pairs[1]):
-            patterns.append("Repeating pairs (202020)")
-    
-        # Alternating pairs (010101)
-        if (pairs[0] == pairs[2] == pairs[4] and 
-            pairs[1] == pairs[3] and 
-            pairs[0] != pairs[1]):
-            patterns.append("Alternating pairs (010101)")
-    
-        # Stepping pairs (324252) - Fixed this check
-        if (all(int(pairs[i][0]) == int(pairs[i-1][0]) + 1 for i in range(1, len(pairs))) and
-            all(int(pairs[i][1]) == int(pairs[i-1][1]) + 2 for i in range(1, len(pairs)))):
-            patterns.append("Stepping pairs (324252)")
-    except:
-        pass
-    
-    # 4. Exceptional cases (must match exactly)
-    exceptional_triplets = ['123', '555', '777', '999']
-    if last_three in exceptional_triplets:
-        patterns.append(f"Exceptional case ({last_three})")
-    
-    # Strict validation - only allow patterns that exactly match our rules
-    valid_patterns = []
-    for p in patterns:
-        if any(rule in p for rule in [
-            "Special VIP number",
-            "ABBBAA pattern",
-            "ABBBA pattern",
-            "6 identical digits",
-            "6-digit ascending sequence",
-            "6-digit descending sequence",
-            "6-digit palindrome",
-            "Double triplets (444555)",
-            "Similar triplets (121122)",
-            "Repeating triplets (786786)",
-            "Nearly sequential triplets (457456)",
-            "Incremental pairs (111213)",
-            "Repeating pairs (202020)",
-            "Alternating pairs (010101)",
-            "Stepping pairs (324252)",
-            "Exceptional case"
-        ]):
-            valid_patterns.append(p)
-    
-    return bool(valid_patterns), ", ".join(valid_patterns) if valid_patterns else "No qualifying fancy pattern"
+    # Display current bookings
+    if existing_booking:
+        st.markdown("---")
+        st.header("Your Current Bookings")
+        
+        st.write(f"**Template:** {existing_booking['template']}")
+        if existing_booking["lunch"]:
+            st.write(f"**Lunch Break:** {existing_booking['lunch']}")
+        if existing_booking["early_tea"]:
+            st.write(f"**Early Tea Break:** {existing_booking['early_tea']}")
+        if existing_booking["late_tea"]:
+            st.write(f"**Late Tea Break:** {existing_booking['late_tea']}")
+        
+        if st.button("Cancel All Bookings"):
+            if delete_agent_booking(selected_date, agent_name):
+                st.success("All bookings canceled for this date")
+                st.rerun()
 
 # --------------------------
 # Streamlit App
@@ -869,61 +1274,96 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-st.markdown("""
-<style>
-    .stApp { background-color: #121212; color: #E0E0E0; }
-    [data-testid="stSidebar"] { background-color: #1E1E1E; }
-    .stButton>button { background-color: #2563EB; color: white; }
-    .card { background-color: #1F1F1F; border-radius: 12px; padding: 1.5rem; }
-    .metric-card { background-color: #1F2937; border-radius: 10px; padding: 20px; }
-    .killswitch-active {
-        background-color: #4A1E1E;
-        border-left: 5px solid #D32F2F;
-        padding: 1rem;
-        margin-bottom: 1rem;
-        color: #FFCDD2;
-    }
-    .chat-killswitch-active {
-        background-color: #1E3A4A;
-        border-left: 5px solid #1E88E5;
-        padding: 1rem;
-        margin-bottom: 1rem;
-        color: #B3E5FC;
-    }
-    .comment-box {
-        margin: 0.5rem 0;
-        padding: 0.5rem;
-        background: #2D2D2D;
-        border-radius: 8px;
-    }
-    .comment-user {
-        display: flex;
-        justify-content: space-between;
-        margin-bottom: 0.25rem;
-    }
-    .comment-text {
-        margin-top: 0.5rem;
-    }
-    .editable-break {
-        background-color: #2D3748;
-        padding: 1rem;
-        border-radius: 8px;
-        margin-bottom: 1rem;
-    }
-    .stTimeInput > div > div > input {
-        padding: 0.5rem;
-    }
-    .time-input {
-        font-family: monospace;
-    }
-    /* Fancy number checker styles */
-    .fancy-number { color: #00ff00; font-weight: bold; }
-    .normal-number { color: #ffffff; }
-    .result-box { padding: 15px; border-radius: 5px; margin: 10px 0; }
-    .fancy-result { background-color: #1e3d1e; border: 1px solid #00ff00; }
-    .normal-result { background-color: #3d1e1e; border: 1px solid #ff0000; }
-</style>
-""", unsafe_allow_html=True)
+# Custom CSS to match the original styling
+def inject_custom_css():
+    st.markdown("""
+    <style>
+        .stApp {
+            background-color: white;
+        }
+        .stMarkdown h1 {
+            color: black;
+            font-size: 24px;
+            font-weight: bold;
+        }
+        .stMarkdown h2 {
+            color: black;
+            font-size: 20px;
+            font-weight: bold;
+            border-bottom: 1px solid black;
+        }
+        .stDataFrame {
+            width: 100%;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        th, td {
+            border: 1px solid black;
+            padding: 8px;
+            text-align: center;
+        }
+        th {
+            background-color: #f2f2f2;
+            font-weight: bold;
+        }
+        .warning {
+            color: red;
+            font-weight: bold;
+        }
+        .break-option {
+            padding: 5px;
+            margin: 2px;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+        .break-option:hover {
+            background-color: #f0f0f0;
+        }
+        .selected-break {
+            background-color: #4CAF50;
+            color: white;
+        }
+        .full-break {
+            background-color: #FF5252;
+            color: white;
+        }
+        .stApp { background-color: #121212; color: #E0E0E0; }
+        [data-testid="stSidebar"] { background-color: #1E1E1E; }
+        .stButton>button { background-color: #2563EB; color: white; }
+        .card { background-color: #1F1F1F; border-radius: 12px; padding: 1.5rem; }
+        .metric-card { background-color: #1F2937; border-radius: 10px; padding: 20px; }
+        .killswitch-active {
+            background-color: #4A1E1E;
+            border-left: 5px solid #D32F2F;
+            padding: 1rem;
+            margin-bottom: 1rem;
+            color: #FFCDD2;
+        }
+        .chat-killswitch-active {
+            background-color: #1E3A4A;
+            border-left: 5px solid #1E88E5;
+            padding: 1rem;
+            margin-bottom: 1rem;
+            color: #B3E5FC;
+        }
+        .comment-box {
+            margin: 0.5rem 0;
+            padding: 0.5rem;
+            background: #2D2D2D;
+            border-radius: 8px;
+        }
+        .comment-user {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 0.25rem;
+        }
+        .comment-text {
+            margin-top: 0.5rem;
+        }
+    </style>
+    """, unsafe_allow_html=True)
 
 if "authenticated" not in st.session_state:
     st.session_state.update({
@@ -933,7 +1373,8 @@ if "authenticated" not in st.session_state:
         "current_section": "requests",
         "last_request_count": 0,
         "last_mistake_count": 0,
-        "last_message_ids": []
+        "last_message_ids": [],
+        "timezone_offset": 0
     })
 
 init_db()
@@ -1011,18 +1452,14 @@ else:
         
         nav_options = [
             ("📋 Requests", "requests"),
-            ("⏸️ Break Booking", "break_booking"),
+            ("📊 Dashboard", "dashboard"),
+            ("☕ Breaks", "breaks"),
             ("🖼️ HOLD", "hold"),
             ("❌ Mistakes", "mistakes"),
-            ("💬 Chat", "chat"),
-            ("📱 Fancy Number", "fancy_number"),
-            ("⏰ Late Login", "late_login"),
-            ("📞 Quality Issues", "quality_issues"),
-            ("🔄 Mid-shift Issues", "midshift_issues")
+            ("💬 Chat", "chat")
         ]
         if st.session_state.role == "admin":
             nav_options.append(("⚙️ Admin", "admin"))
-            nav_options.append(("⚙️ Break Admin", "break_admin"))
         
         for option, value in nav_options:
             if st.button(option, key=f"nav_{value}"):
@@ -1117,6 +1554,41 @@ else:
                                     add_request_comment(req_id, st.session_state.username, new_comment)
                                     st.rerun()
 
+    elif st.session_state.current_section == "dashboard":
+        st.subheader("📊 Request Completion Dashboard")
+        all_requests = get_requests()
+        total = len(all_requests)
+        completed = sum(1 for r in all_requests if r[6])
+        rate = (completed/total*100) if total > 0 else 0
+        
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Total Requests", total)
+        with col2:
+            st.metric("Completed", completed)
+        with col3:
+            st.metric("Completion Rate", f"{rate:.1f}%")
+        
+        df = pd.DataFrame({
+            'Date': [datetime.strptime(r[5], "%Y-%m-%d %H:%M:%S").date() for r in all_requests],
+            'Status': ['Completed' if r[6] else 'Pending' for r in all_requests],
+            'Type': [r[2] for r in all_requests]
+        })
+        
+        st.subheader("Request Trends")
+        st.bar_chart(df['Date'].value_counts())
+        
+        st.subheader("Request Type Distribution")
+        type_counts = df['Type'].value_counts().reset_index()
+        type_counts.columns = ['Type', 'Count']
+        st.bar_chart(type_counts.set_index('Type'))
+
+    elif st.session_state.current_section == "breaks":
+        if st.session_state.role == "admin":
+            admin_break_dashboard()
+        else:
+            agent_break_dashboard()
+
     elif st.session_state.current_section == "mistakes":
         if not is_killswitch_enabled():
             with st.expander("➕ Report New Mistake"):
@@ -1198,530 +1670,6 @@ else:
         else:
             st.info("No images in HOLD")
 
-    elif st.session_state.current_section == "fancy_number":
-        st.header("📱 Lycamobile Fancy Number Checker")
-        st.subheader("Official Policy: Analyzes last 6 digits only for qualifying patterns")
-
-        phone_input = st.text_input("Enter Phone Number", 
-                                  placeholder="e.g., 1555123456 or 44207123456")
-
-        col1, col2 = st.columns([1, 2])
-        with col1:
-            if st.button("🔍 Check Number"):
-                if not phone_input:
-                    st.warning("Please enter a phone number")
-                else:
-                    is_fancy, pattern = is_fancy_number(phone_input)
-                    clean_number = re.sub(r'\D', '', phone_input)
-                    
-                    # Extract last 6 digits for display
-                    last_six = clean_number[-6:] if len(clean_number) >= 6 else clean_number
-                    formatted_num = f"{last_six[:3]}-{last_six[3:]}" if len(last_six) == 6 else last_six
-
-                    if is_fancy:
-                        st.markdown(f"""
-                        <div class="result-box fancy-result">
-                            <h3><span class="fancy-number">✨ {formatted_num} ✨</span></h3>
-                            <p>FANCY NUMBER DETECTED!</p>
-                            <p><strong>Pattern:</strong> {pattern}</p>
-                        </div>
-                        """, unsafe_allow_html=True)
-                    else:
-                        st.markdown(f"""
-                        <div class="result-box normal-result">
-                            <h3><span class="normal-number">{formatted_num}</span></h3>
-                            <p>Standard phone number</p>
-                            <p><strong>Reason:</strong> {pattern}</p>
-                        </div>
-                        """, unsafe_allow_html=True)
-
-        with col2:
-            st.markdown("""
-            ### Lycamobile Fancy Number Policy
-            **Qualifying Patterns (last 6 digits only):**
-            
-            #### 6-Digit Patterns
-            - 123456 (ascending)
-            - 987654 (descending)
-            - 666666 (repeating)
-            - 100001 (palindrome)
-            
-            #### 3-Digit Patterns  
-            - 444 555 (double triplets)
-            - 121 122 (similar triplets)
-            - 786 786 (repeating triplets)
-            - 457 456 (nearly sequential)
-            
-            #### 2-Digit Patterns
-            - 11 12 13 (incremental)
-            - 20 20 20 (repeating)
-            - 01 01 01 (alternating)
-            - 32 42 52 (stepping)
-            
-            #### Exceptional Cases
-            - Ending with 123/555/777/999
-            """)
-
-        # Test cases
-        debug_mode = st.checkbox("Show test cases", False)
-        if debug_mode:
-            test_numbers = [
-                ("16109055580", False),  # 055580 → No pattern ✗
-                ("123456", True),       # 6-digit ascending ✓
-                ("444555", True),       # Double triplets ✓
-                ("121122", True),       # Similar triplets ✓ 
-                ("111213", True),       # Incremental pairs ✓
-                ("202020", True),       # Repeating pairs ✓
-                ("010101", True),       # Alternating pairs ✓
-                ("324252", True),       # Stepping pairs ✓
-                ("7900000123", True),   # Ends with 123 ✓
-                ("123458", False),      # No pattern ✗
-                ("112233", False),      # Not in our strict rules ✗
-                ("555555", True)        # 6 identical digits ✓
-            ]
-            
-            st.markdown("### Strict Policy Validation")
-            for number, expected in test_numbers:
-                is_fancy, pattern = is_fancy_number(number)
-                result = "PASS" if is_fancy == expected else "FAIL"
-                color = "green" if result == "PASS" else "red"
-                st.write(f"<span style='color:{color}'>{number[-6:]}: {result} ({pattern})</span>", unsafe_allow_html=True)
-
-    elif st.session_state.current_section == "late_login":
-        st.subheader("⏰ Late Login Report")
-        
-        if not is_killswitch_enabled():
-            with st.form("late_login_form"):
-                cols = st.columns(3)
-                presence_time = cols[0].text_input("Time of presence (HH:MM)", placeholder="08:30")
-                login_time = cols[1].text_input("Time of log in (HH:MM)", placeholder="09:15")
-                reason = cols[2].selectbox("Reason", [
-                    "Workspace Issue",
-                    "Avaya Issue",
-                    "Aaad Tool",
-                    "Windows Issue",
-                    "Reset Password"
-                ])
-                
-                if st.form_submit_button("Submit"):
-                    # Validate time formats
-                    try:
-                        datetime.strptime(presence_time, "%H:%M")
-                        datetime.strptime(login_time, "%H:%M")
-                        add_late_login(
-                            st.session_state.username,
-                            presence_time,
-                            login_time,
-                            reason
-                        )
-                        st.success("Late login reported successfully!")
-                    except ValueError:
-                        st.error("Invalid time format. Please use HH:MM format (e.g., 08:30)")
-        
-        st.subheader("Late Login Records")
-        late_logins = get_late_logins()
-        
-        if st.session_state.role == "admin":
-            if late_logins:
-                # Prepare data for download
-                data = []
-                for login in late_logins:
-                    _, agent, presence, login_time, reason, ts = login
-                    data.append({
-                        "Agent's Name": agent,
-                        "Time of presence": presence,
-                        "Time of log in": login_time,
-                        "Reason": reason
-                    })
-                
-                df = pd.DataFrame(data)
-                st.dataframe(df)
-                
-                # Download button
-                csv = df.to_csv(index=False).encode('utf-8')
-                st.download_button(
-                    label="Download as CSV",
-                    data=csv,
-                    file_name="late_logins.csv",
-                    mime="text/csv"
-                )
-                
-                if st.button("Clear All Records"):
-                    clear_late_logins()
-                    st.rerun()
-            else:
-                st.info("No late login records found")
-        else:
-            # For agents, only show their own records
-            user_logins = [login for login in late_logins if login[1] == st.session_state.username]
-            if user_logins:
-                data = []
-                for login in user_logins:
-                    _, agent, presence, login_time, reason, ts = login
-                    data.append({
-                        "Agent's Name": agent,
-                        "Time of presence": presence,
-                        "Time of log in": login_time,
-                        "Reason": reason
-                    })
-                
-                df = pd.DataFrame(data)
-                st.dataframe(df)
-            else:
-                st.info("You have no late login records")
-
-    elif st.session_state.current_section == "quality_issues":
-        st.subheader("📞 Quality Related Technical Issue")
-        
-        if not is_killswitch_enabled():
-            with st.form("quality_issue_form"):
-                cols = st.columns(4)
-                issue_type = cols[0].selectbox("Type of issue", [
-                    "Blocage Physical Avaya",
-                    "Hold Than Call Drop",
-                    "Call Drop From Workspace",
-                    "Wrong Space Frozen"
-                ])
-                timing = cols[1].text_input("Timing (HH:MM)", placeholder="14:30")
-                mobile_number = cols[2].text_input("Mobile number")
-                product = cols[3].selectbox("Product", [
-                    "LM_CS_LMUSA_EN",
-                    "LM_CS_LMUSA_ES"
-                ])
-                
-                if st.form_submit_button("Submit"):
-                    try:
-                        datetime.strptime(timing, "%H:%M")
-                        add_quality_issue(
-                            st.session_state.username,
-                            issue_type,
-                            timing,
-                            mobile_number,
-                            product
-                        )
-                        st.success("Quality issue reported successfully!")
-                    except ValueError:
-                        st.error("Invalid time format. Please use HH:MM format (e.g., 14:30)")
-        
-        st.subheader("Quality Issue Records")
-        quality_issues = get_quality_issues()
-        
-        if st.session_state.role == "admin":
-            if quality_issues:
-                # Prepare data for download
-                data = []
-                for issue in quality_issues:
-                    _, agent, issue_type, timing, mobile, product, ts = issue
-                    data.append({
-                        "Agent's Name": agent,
-                        "Type of issue": issue_type,
-                        "Timing": timing,
-                        "Mobile number": mobile,
-                        "Product": product
-                    })
-                
-                df = pd.DataFrame(data)
-                st.dataframe(df)
-                
-                # Download button
-                csv = df.to_csv(index=False).encode('utf-8')
-                st.download_button(
-                    label="Download as CSV",
-                    data=csv,
-                    file_name="quality_issues.csv",
-                    mime="text/csv"
-                )
-                
-                if st.button("Clear All Records"):
-                    clear_quality_issues()
-                    st.rerun()
-            else:
-                st.info("No quality issue records found")
-        else:
-            # For agents, only show their own records
-            user_issues = [issue for issue in quality_issues if issue[1] == st.session_state.username]
-            if user_issues:
-                data = []
-                for issue in user_issues:
-                    _, agent, issue_type, timing, mobile, product, ts = issue
-                    data.append({
-                        "Agent's Name": agent,
-                        "Type of issue": issue_type,
-                        "Timing": timing,
-                        "Mobile number": mobile,
-                        "Product": product
-                    })
-                
-                df = pd.DataFrame(data)
-                st.dataframe(df)
-            else:
-                st.info("You have no quality issue records")
-
-    elif st.session_state.current_section == "midshift_issues":
-        st.subheader("🔄 Mid-shift Technical Issue")
-        
-        if not is_killswitch_enabled():
-            with st.form("midshift_issue_form"):
-                cols = st.columns(3)
-                issue_type = cols[0].selectbox("Issue Type", [
-                    "Default Not Ready",
-                    "Frozen Workspace",
-                    "Physical Avaya",
-                    "Pc Issue",
-                    "Aaad Tool",
-                    "Disconnected Avaya"
-                ])
-                start_time = cols[1].text_input("Start time (HH:MM)", placeholder="10:00")
-                end_time = cols[2].text_input("End time (HH:MM)", placeholder="10:30")
-                
-                if st.form_submit_button("Submit"):
-                    try:
-                        datetime.strptime(start_time, "%H:%M")
-                        datetime.strptime(end_time, "%H:%M")
-                        add_midshift_issue(
-                            st.session_state.username,
-                            issue_type,
-                            start_time,
-                            end_time
-                        )
-                        st.success("Mid-shift issue reported successfully!")
-                    except ValueError:
-                        st.error("Invalid time format. Please use HH:MM format (e.g., 10:00)")
-        
-        st.subheader("Mid-shift Issue Records")
-        midshift_issues = get_midshift_issues()
-        
-        if st.session_state.role == "admin":
-            if midshift_issues:
-                # Prepare data for download
-                data = []
-                for issue in midshift_issues:
-                    _, agent, issue_type, start_time, end_time, ts = issue
-                    data.append({
-                        "Agent's Name": agent,
-                        "Issue Type": issue_type,
-                        "Start time": start_time,
-                        "End Time": end_time
-                    })
-                
-                df = pd.DataFrame(data)
-                st.dataframe(df)
-                
-                # Download button
-                csv = df.to_csv(index=False).encode('utf-8')
-                st.download_button(
-                    label="Download as CSV",
-                    data=csv,
-                    file_name="midshift_issues.csv",
-                    mime="text/csv"
-                )
-                
-                if st.button("Clear All Records"):
-                    clear_midshift_issues()
-                    st.rerun()
-            else:
-                st.info("No mid-shift issue records found")
-        else:
-            # For agents, only show their own records
-            user_issues = [issue for issue in midshift_issues if issue[1] == st.session_state.username]
-            if user_issues:
-                data = []
-                for issue in user_issues:
-                    _, agent, issue_type, start_time, end_time, ts = issue
-                    data.append({
-                        "Agent's Name": agent,
-                        "Issue Type": issue_type,
-                        "Start time": start_time,
-                        "End Time": end_time
-                    })
-                
-                df = pd.DataFrame(data)
-                st.dataframe(df)
-            else:
-                st.info("You have no mid-shift issue records")
-
-    elif st.session_state.current_section == "break_booking":
-        st.title("⏸️ Break Booking")
-        
-        # Date selection
-        selected_date = st.date_input("Select Date", 
-                                    min_value=datetime.now().date(),
-                                    value=datetime.now().date())
-        
-        # Get available templates
-        templates = get_break_templates()
-        if not templates:
-            st.info("No break templates available. Please contact your administrator.")
-        else:
-            # Show booking form
-            with st.form("break_booking_form"):
-                template_id = st.selectbox("Select Template", 
-                                        options=[t[0] for t in templates],
-                                        format_func=lambda x: next(t[1] for t in templates if t[0] == x))
-                
-                # Get slots for selected template
-                slots = get_break_slots(template_id)
-                if not slots:
-                    st.info("No slots available in this template.")
-                else:
-                    slot_options = []
-                    for slot in slots:
-                        slot_id, _, break_type, start_time, end_time = slot
-                        bookings = get_slot_bookings(slot_id, selected_date.strftime("%Y-%m-%d"))
-                        max_users = next(t[2] for t in templates if t[0] == template_id)
-                        break_name = {
-                            "first_tea": "First Tea Break",
-                            "lunch": "Lunch Break",
-                            "second_tea": "Second Tea Break"
-                        }[break_type]
-                        slot_options.append((slot_id, 
-                                        f"{break_name} ({start_time}-{end_time}) - {bookings}/{max_users} booked"))
-                    
-                    if slot_options:
-                        selected_slot = st.selectbox("Select Break Slot", 
-                                                options=[s[0] for s in slot_options],
-                                                format_func=lambda x: next(s[1] for s in slot_options if s[0] == x))
-                        
-                        if st.form_submit_button("Book Break"):
-                            if book_break(st.session_state.username, template_id, selected_slot, 
-                                        selected_date.strftime("%Y-%m-%d")):
-                                st.success("Break booked successfully!")
-                                st.rerun()
-                    else:
-                        st.info("No slots available for booking.")
-            
-            # Show user's bookings
-            st.subheader("Your Bookings")
-            bookings = get_agent_bookings(st.session_state.username)
-            if bookings:
-                for booking in bookings:
-                    booking_id, _, _, _, booking_date, _, template_name, break_type, start_time, end_time = booking
-                    break_name = {
-                        "first_tea": "First Tea Break",
-                        "lunch": "Lunch Break",
-                        "second_tea": "Second Tea Break"
-                    }[break_type]
-                    
-                    cols = st.columns([3, 1])
-                    cols[0].write(f"""
-                    **{break_name}** ({start_time}-{end_time})  
-                    Template: {template_name}  
-                    Date: {booking_date}
-                    """)
-                    
-                    if cols[1].button("Cancel", key=f"cancel_{booking_id}"):
-                        if cancel_booking(booking_id):
-                            st.success("Booking cancelled!")
-                            st.rerun()
-            else:
-                st.info("You have no break bookings")
-
-    elif st.session_state.current_section == "break_admin":
-        if st.session_state.role == "admin":
-            st.title("⚙️ Break Booking Administration")
-            
-            # Create new template
-            with st.expander("Create New Template"):
-                with st.form("create_template"):
-                    template_name = st.text_input("Template Name")
-                    max_users = st.number_input("Maximum Users per Slot", min_value=1, value=5)
-                    
-                    # First Tea Break
-                    st.subheader("First Tea Break")
-                    first_tea_start = st.text_input("Start Time (HH:MM)", value="10:00", key="first_tea_start")
-                    first_tea_end = st.text_input("End Time (HH:MM)", value="10:15", key="first_tea_end")
-                    
-                    # Lunch Break
-                    st.subheader("Lunch Break")
-                    lunch_start = st.text_input("Start Time (HH:MM)", value="13:00", key="lunch_start")
-                    lunch_end = st.text_input("End Time (HH:MM)", value="14:00", key="lunch_end")
-                    
-                    # Second Tea Break
-                    st.subheader("Second Tea Break")
-                    second_tea_start = st.text_input("Start Time (HH:MM)", value="15:30", key="second_tea_start")
-                    second_tea_end = st.text_input("End Time (HH:MM)", value="15:45", key="second_tea_end")
-                    
-                    if st.form_submit_button("Create Template"):
-                        try:
-                            # Validate time formats
-                            times = [first_tea_start, first_tea_end, lunch_start, lunch_end, 
-                                    second_tea_start, second_tea_end]
-                            for t in times:
-                                datetime.strptime(t, "%H:%M")
-                            
-                            # Create template
-                            template_id = create_break_template(template_name, max_users, st.session_state.username)
-                            if template_id:
-                                # Add slots
-                                add_break_slot(template_id, "first_tea", first_tea_start, first_tea_end)
-                                add_break_slot(template_id, "lunch", lunch_start, lunch_end)
-                                add_break_slot(template_id, "second_tea", second_tea_start, second_tea_end)
-                                st.success("Template created successfully!")
-                                st.rerun()
-                        except ValueError:
-                            st.error("Invalid time format. Please use HH:MM format (e.g., 09:30)")
-            
-            # Manage existing templates
-            st.subheader("Manage Templates")
-            templates = get_break_templates()
-            if templates:
-                for template in templates:
-                    template_id, name, max_users, is_active, created_by, created_at = template
-                    
-                    with st.expander(f"Template: {name}"):
-                        st.write(f"Created by: {created_by}")
-                        st.write(f"Created at: {created_at}")
-                        st.write(f"Max users per slot: {max_users}")
-                        
-                        # Show slots
-                        slots = get_break_slots(template_id)
-                        for slot in slots:
-                            slot_id, _, break_type, start_time, end_time = slot
-                            break_name = {
-                                "first_tea": "First Tea Break",
-                                "lunch": "Lunch Break",
-                                "second_tea": "Second Tea Break"
-                            }[break_type]
-                            st.write(f"- {break_name}: {start_time}-{end_time}")
-                        
-                        cols = st.columns(2)
-                        if is_active:
-                            if cols[0].button("Deactivate", key=f"deact_{template_id}"):
-                                if toggle_template(template_id, False):
-                                    st.success("Template deactivated!")
-                                    st.rerun()
-                        else:
-                            if cols[0].button("Activate", key=f"act_{template_id}"):
-                                if toggle_template(template_id, True):
-                                    st.success("Template activated!")
-                                    st.rerun()
-            
-            # View all bookings
-            st.subheader("View Bookings")
-            selected_date = st.date_input("Select Date", value=datetime.now().date())
-            
-            # Get all users
-            users = get_all_users()
-            for user in users:
-                uid, username, role = user
-                if role == "agent":
-                    bookings = get_agent_bookings(username, selected_date.strftime("%Y-%m-%d"))
-                    if bookings:
-                        st.write(f"**{username}**")
-                        for booking in bookings:
-                            booking_id, _, _, _, _, _, template_name, break_type, start_time, end_time = booking
-                            break_name = {
-                                "first_tea": "First Tea Break",
-                                "lunch": "Lunch Break",
-                                "second_tea": "Second Tea Break"
-                            }[break_type]
-                            st.write(f"- {break_name} ({start_time}-{end_time}) - {template_name}")
-        else:
-            st.error("Access Denied: You don't have permission to view this section.")
-            if st.session_state.current_section == "break_admin":
-                st.session_state.current_section = "requests"
-                st.rerun()
-
     elif st.session_state.current_section == "admin" and st.session_state.role == "admin":
         if st.session_state.username.lower() == "taha kirri":
             st.subheader("🚨 System Killswitch")
@@ -1792,28 +1740,20 @@ else:
                         st.success("All HOLD images deleted!")
                         st.rerun()
 
-        with st.expander("❌ Clear All Late Logins"):
-            with st.form("clear_late_logins_form"):
-                st.warning("This will permanently delete ALL late login records!")
-                if st.form_submit_button("Clear All Late Logins"):
-                    if clear_late_logins():
-                        st.success("All late login records deleted!")
+        with st.expander("❌ Clear All Break Bookings"):
+            with st.form("clear_break_bookings_form"):
+                st.warning("This will permanently delete ALL break bookings!")
+                if st.form_submit_button("Clear All Break Bookings"):
+                    if clear_all_break_bookings():
+                        st.success("All break bookings deleted!")
                         st.rerun()
 
-        with st.expander("❌ Clear All Quality Issues"):
-            with st.form("clear_quality_issues_form"):
-                st.warning("This will permanently delete ALL quality issue records!")
-                if st.form_submit_button("Clear All Quality Issues"):
-                    if clear_quality_issues():
-                        st.success("All quality issue records deleted!")
-                        st.rerun()
-
-        with st.expander("❌ Clear All Mid-shift Issues"):
-            with st.form("clear_midshift_issues_form"):
-                st.warning("This will permanently delete ALL mid-shift issue records!")
-                if st.form_submit_button("Clear All Mid-shift Issues"):
-                    if clear_midshift_issues():
-                        st.success("All mid-shift issue records deleted!")
+        with st.expander("❌ Clear All Break Templates"):
+            with st.form("clear_break_templates_form"):
+                st.warning("This will permanently delete ALL break templates and their limits!")
+                if st.form_submit_button("Clear All Break Templates"):
+                    if clear_all_break_templates():
+                        st.success("All break templates deleted!")
                         st.rerun()
 
         with st.expander("💣 Clear ALL Data"):
@@ -1825,9 +1765,8 @@ else:
                         clear_all_mistakes()
                         clear_all_group_messages()
                         clear_hold_images()
-                        clear_late_logins()
-                        clear_quality_issues()
-                        clear_midshift_issues()
+                        clear_all_break_bookings()
+                        clear_all_break_templates()
                         st.success("All system data deleted!")
                         st.rerun()
                     except Exception as e:
@@ -1855,404 +1794,6 @@ else:
                 delete_user(uid)
                 st.rerun()
 
-# --------------------------
-# Break Template Functions
-# --------------------------
-
-def create_break_template(name, max_users_per_slot, created_by):
-    try:
-        if is_killswitch_enabled():
-            st.error("System is currently locked. Please contact the developer.")
-            return None
-            
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        # Check if template with same name exists
-        cursor.execute("SELECT id FROM break_templates WHERE name = ?", (name,))
-        if cursor.fetchone():
-            st.error("A template with this name already exists")
-            return None
-            
-        # Insert new template
-        cursor.execute("""
-            INSERT INTO break_templates (name, max_users_per_slot, created_by, created_at)
-            VALUES (?, ?, ?, ?)
-        """, (name, max_users_per_slot, created_by, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
-        
-        template_id = cursor.lastrowid
-        conn.commit()
-        return template_id
-    except sqlite3.Error as e:
-        st.error(f"Database error: {str(e)}")
-        return None
-    finally:
-        if 'conn' in locals():
-            conn.close()
-
-def add_break_slot(template_id, break_type, start_time, end_time):
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute("""
-            INSERT INTO break_slots (template_id, break_type, start_time, end_time)
-            VALUES (?, ?, ?, ?)
-        """, (template_id, break_type, start_time, end_time))
-        conn.commit()
-        return True
-    except sqlite3.Error as e:
-        st.error(f"Database error: {str(e)}")
-        return False
-    finally:
-        if 'conn' in locals():
-            conn.close()
-
-def get_break_templates():
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute("""
-            SELECT bt.*, 
-                   GROUP_CONCAT(bs.break_type || ',' || bs.start_time || ',' || bs.end_time) as slots
-            FROM break_templates bt
-            LEFT JOIN break_slots bs ON bt.id = bs.template_id
-            WHERE bt.is_active = 1
-            GROUP BY bt.id
-        """)
-        templates = cursor.fetchall()
-        return templates
-    except sqlite3.Error as e:
-        st.error(f"Database error: {str(e)}")
-        return []
-    finally:
-        if 'conn' in locals():
-            conn.close()
-
-def get_break_slots(template_id):
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute("""
-            SELECT id, template_id, break_type, start_time, end_time
-            FROM break_slots 
-            WHERE template_id = ?
-            ORDER BY CASE break_type 
-                WHEN 'first_tea' THEN 1 
-                WHEN 'lunch' THEN 2 
-                WHEN 'second_tea' THEN 3 
-            END
-        """, (template_id,))
-        return cursor.fetchall()
-    except sqlite3.Error as e:
-        st.error(f"Database error: {str(e)}")
-        return []
-    finally:
-        if 'conn' in locals():
-            conn.close()
-
-def get_slot_bookings(slot_id, date):
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute("""
-            SELECT COUNT(*) 
-            FROM break_bookings 
-            WHERE slot_id = ? AND booking_date = ?
-        """, (slot_id, date))
-        return cursor.fetchone()[0]
-    except sqlite3.Error as e:
-        st.error(f"Database error: {str(e)}")
-        return 0
-    finally:
-        if 'conn' in locals():
-            conn.close()
-
-def book_break(agent_name, template_id, slot_id, date):
-    try:
-        if is_killswitch_enabled():
-            st.error("System is currently locked. Please contact the developer.")
-            return False
-            
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        # Check if agent already has a booking for this break type on this date
-        cursor.execute("""
-            SELECT bs.break_type 
-            FROM break_bookings bb 
-            JOIN break_slots bs ON bb.slot_id = bs.id 
-            WHERE bb.agent_name = ? AND bb.booking_date = ?
-        """, (agent_name, date))
-        existing_bookings = cursor.fetchall()
-        existing_break_types = [b[0] for b in existing_bookings]
-        
-        # Get break type for requested slot
-        cursor.execute("SELECT break_type FROM break_slots WHERE id = ?", (slot_id,))
-        requested_break_type = cursor.fetchone()[0]
-        
-        if requested_break_type in existing_break_types:
-            st.error(f"You already have a booking for this break type on {date}")
-            return False
-        
-        # Check if slot is full
-        current_bookings = get_slot_bookings(slot_id, date)
-        cursor.execute("SELECT max_users_per_slot FROM break_templates WHERE id = ?", (template_id,))
-        max_users = cursor.fetchone()[0]
-        
-        if current_bookings >= max_users:
-            st.error("This slot is full")
-            return False
-        
-        # Create the booking
-        cursor.execute("""
-            INSERT INTO break_bookings (agent_name, template_id, slot_id, booking_date, created_at)
-            VALUES (?, ?, ?, ?, ?)
-        """, (agent_name, template_id, slot_id, date, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
-        conn.commit()
-        return True
-    except sqlite3.Error as e:
-        st.error(f"Database error: {str(e)}")
-        return False
-    finally:
-        if 'conn' in locals():
-            conn.close()
-
-def get_agent_bookings(agent_name, date=None):
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        if date:
-            cursor.execute("""
-                SELECT bb.*, bt.name, bs.break_type, bs.start_time, bs.end_time
-                FROM break_bookings bb
-                JOIN break_templates bt ON bb.template_id = bt.id
-                JOIN break_slots bs ON bb.slot_id = bs.id
-                WHERE bb.agent_name = ? AND bb.booking_date = ?
-                ORDER BY bs.start_time
-            """, (agent_name, date))
-        else:
-            cursor.execute("""
-                SELECT bb.*, bt.name, bs.break_type, bs.start_time, bs.end_time
-                FROM break_bookings bb
-                JOIN break_templates bt ON bb.template_id = bt.id
-                JOIN break_slots bs ON bb.slot_id = bs.id
-                WHERE bb.agent_name = ?
-                ORDER BY bb.booking_date, bs.start_time
-            """, (agent_name,))
-        return cursor.fetchall()
-    except sqlite3.Error as e:
-        st.error(f"Database error: {str(e)}")
-        return []
-    finally:
-        if 'conn' in locals():
-            conn.close()
-
-def cancel_booking(booking_id):
-    try:
-        if is_killswitch_enabled():
-            st.error("System is currently locked. Please contact the developer.")
-            return False
-            
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute("DELETE FROM break_bookings WHERE id = ?", (booking_id,))
-        conn.commit()
-        return True
-    except sqlite3.Error as e:
-        st.error(f"Database error: {str(e)}")
-        return False
-    finally:
-        if 'conn' in locals():
-            conn.close()
-
-def toggle_template(template_id, active):
-    try:
-        if is_killswitch_enabled():
-            st.error("System is currently locked. Please contact the developer.")
-            return False
-            
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute("UPDATE break_templates SET is_active = ? WHERE id = ?", 
-                      (1 if active else 0, template_id))
-        conn.commit()
-        return True
-    except sqlite3.Error as e:
-        st.error(f"Database error: {str(e)}")
-        return False
-    finally:
-        if 'conn' in locals():
-            conn.close()
-
-def break_booking_interface():
-    st.title("⏸️ Break Booking")
-    
-    # Date selection
-    selected_date = st.date_input("Select Date", 
-                                 min_value=datetime.now().date(),
-                                 value=datetime.now().date())
-    
-    # Get available templates
-    templates = get_break_templates()
-    if not templates:
-        st.info("No break templates available. Please contact your administrator.")
-        return
-    
-    # Show booking form
-    with st.form("break_booking_form"):
-        template_id = st.selectbox("Select Template", 
-                                 options=[t[0] for t in templates],
-                                 format_func=lambda x: next(t[1] for t in templates if t[0] == x))
-        
-        # Get slots for selected template
-        slots = get_break_slots(template_id)
-        slot_options = []
-        for slot in slots:
-            slot_id, _, break_type, start_time, end_time = slot
-            bookings = get_slot_bookings(slot_id, selected_date.strftime("%Y-%m-%d"))
-            max_users = next(t[2] for t in templates if t[0] == template_id)
-            break_name = {
-                "first_tea": "First Tea Break",
-                "lunch": "Lunch Break",
-                "second_tea": "Second Tea Break"
-            }[break_type]
-            slot_options.append((slot_id, 
-                               f"{break_name} ({start_time}-{end_time}) - {bookings}/{max_users} booked"))
-        
-        selected_slot = st.selectbox("Select Break Slot", 
-                                   options=[s[0] for s in slot_options],
-                                   format_func=lambda x: next(s[1] for s in slot_options if s[0] == x))
-        
-        if st.form_submit_button("Book Break"):
-            if book_break(st.session_state.username, template_id, selected_slot, 
-                         selected_date.strftime("%Y-%m-%d")):
-                st.success("Break booked successfully!")
-                st.rerun()
-    
-    # Show user's bookings
-    st.subheader("Your Bookings")
-    bookings = get_agent_bookings(st.session_state.username)
-    if bookings:
-        for booking in bookings:
-            booking_id, _, _, _, booking_date, _, template_name, break_type, start_time, end_time = booking
-            break_name = {
-                "first_tea": "First Tea Break",
-                "lunch": "Lunch Break",
-                "second_tea": "Second Tea Break"
-            }[break_type]
-            
-            cols = st.columns([3, 1])
-            cols[0].write(f"""
-            **{break_name}** ({start_time}-{end_time})  
-            Template: {template_name}  
-            Date: {booking_date}
-            """)
-            
-            if cols[1].button("Cancel", key=f"cancel_{booking_id}"):
-                if cancel_booking(booking_id):
-                    st.success("Booking cancelled!")
-                    st.rerun()
-    else:
-        st.info("You have no break bookings")
-
-def break_booking_admin_interface():
-    st.title("⚙️ Break Booking Administration")
-    
-    # Create new template
-    with st.expander("Create New Template"):
-        with st.form("create_template"):
-            template_name = st.text_input("Template Name")
-            max_users = st.number_input("Maximum Users per Slot", min_value=1, value=5)
-            
-            # First Tea Break
-            st.subheader("First Tea Break")
-            first_tea_start = st.text_input("Start Time (HH:MM)", value="10:00", key="first_tea_start")
-            first_tea_end = st.text_input("End Time (HH:MM)", value="10:15", key="first_tea_end")
-            
-            # Lunch Break
-            st.subheader("Lunch Break")
-            lunch_start = st.text_input("Start Time (HH:MM)", value="13:00", key="lunch_start")
-            lunch_end = st.text_input("End Time (HH:MM)", value="14:00", key="lunch_end")
-            
-            # Second Tea Break
-            st.subheader("Second Tea Break")
-            second_tea_start = st.text_input("Start Time (HH:MM)", value="15:30", key="second_tea_start")
-            second_tea_end = st.text_input("End Time (HH:MM)", value="15:45", key="second_tea_end")
-            
-            if st.form_submit_button("Create Template"):
-                try:
-                    # Validate time formats
-                    times = [first_tea_start, first_tea_end, lunch_start, lunch_end, 
-                            second_tea_start, second_tea_end]
-                    for t in times:
-                        datetime.strptime(t, "%H:%M")
-                    
-                    # Create template
-                    template_id = create_break_template(template_name, max_users, st.session_state.username)
-                    if template_id:
-                        # Add slots
-                        add_break_slot(template_id, "first_tea", first_tea_start, first_tea_end)
-                        add_break_slot(template_id, "lunch", lunch_start, lunch_end)
-                        add_break_slot(template_id, "second_tea", second_tea_start, second_tea_end)
-                        st.success("Template created successfully!")
-                        st.rerun()
-                except ValueError:
-                    st.error("Invalid time format. Please use HH:MM format (e.g., 09:30)")
-    
-    # Manage existing templates
-    st.subheader("Manage Templates")
-    templates = get_break_templates()
-    for template in templates:
-        template_id, name, max_users, is_active, created_by, created_at = template
-        
-        with st.expander(f"Template: {name}"):
-            st.write(f"Created by: {created_by}")
-            st.write(f"Created at: {created_at}")
-            st.write(f"Max users per slot: {max_users}")
-            
-            # Show slots
-            slots = get_break_slots(template_id)
-            for slot in slots:
-                slot_id, _, break_type, start_time, end_time = slot
-                break_name = {
-                    "first_tea": "First Tea Break",
-                    "lunch": "Lunch Break",
-                    "second_tea": "Second Tea Break"
-                }[break_type]
-                st.write(f"- {break_name}: {start_time}-{end_time}")
-            
-            cols = st.columns(2)
-            if is_active:
-                if cols[0].button("Deactivate", key=f"deact_{template_id}"):
-                    if toggle_template(template_id, False):
-                        st.success("Template deactivated!")
-                        st.rerun()
-            else:
-                if cols[0].button("Activate", key=f"act_{template_id}"):
-                    if toggle_template(template_id, True):
-                        st.success("Template activated!")
-                        st.rerun()
-    
-    # View all bookings
-    st.subheader("View Bookings")
-    selected_date = st.date_input("Select Date", value=datetime.now().date())
-    
-    # Get all users
-    users = get_all_users()
-    for user in users:
-        uid, username, role = user
-        if role == "agent":
-            bookings = get_agent_bookings(username, selected_date.strftime("%Y-%m-%d"))
-            if bookings:
-                st.write(f"**{username}**")
-                for booking in bookings:
-                    booking_id, _, _, _, _, _, template_name, break_type, start_time, end_time = booking
-                    break_name = {
-                        "first_tea": "First Tea Break",
-                        "lunch": "Lunch Break",
-                        "second_tea": "Second Tea Break"
-                    }[break_type]
-                    st.write(f"- {break_name} ({start_time}-{end_time}) - {template_name}")
-
 if __name__ == "__main__":
+    inject_custom_css()
     st.write("Request Management System")
