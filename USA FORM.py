@@ -941,24 +941,24 @@ def admin_break_dashboard():
     with col2:
         if st.button("Create Template", use_container_width=True):
             if template_name and template_name not in st.session_state.templates:
-                st.session_state.templates[template_name] = {
-                    "lunch_breaks": ["19:30", "20:00", "20:30", "21:00", "21:30"],
-                    "tea_breaks": {
-                        "early": ["16:00", "16:15", "16:30", "16:45", "17:00", "17:15", "17:30"],
-                        "late": ["21:45", "22:00", "22:15", "22:30"]
+                    st.session_state.templates[template_name] = {
+                        "lunch_breaks": ["19:30", "20:00", "20:30", "21:00", "21:30"],
+                        "tea_breaks": {
+                            "early": ["16:00", "16:15", "16:30", "16:45", "17:00", "17:15", "17:30"],
+                            "late": ["21:45", "22:00", "22:15", "22:30"]
+                        }
                     }
-                }
                 st.session_state.active_templates.append(template_name)
-                save_break_data()
-                st.success(f"Template '{template_name}' created!")
+                    save_break_data()
+                    st.success(f"Template '{template_name}' created!")
                 st.rerun()
     
     # Template Selection and Editing
-    selected_template = st.selectbox(
-        "Select Template to Edit:",
+        selected_template = st.selectbox(
+            "Select Template to Edit:",
         list(st.session_state.templates.keys())
-    )
-    
+        )
+        
     if selected_template:
         template = st.session_state.templates[selected_template]
         
@@ -978,7 +978,7 @@ def admin_break_dashboard():
             st.write("Early Tea Breaks")
             early_tea = st.text_area(
                 "Enter early tea break times (one per line):",
-                "\n".join(template["tea_breaks"]["early"]),
+            "\n".join(template["tea_breaks"]["early"]),
                 height=200
             )
         
@@ -986,42 +986,18 @@ def admin_break_dashboard():
             st.write("Late Tea Breaks")
             late_tea = st.text_area(
                 "Enter late tea break times (one per line):",
-                "\n".join(template["tea_breaks"]["late"]),
+            "\n".join(template["tea_breaks"]["late"]),
                 height=200
-            )
+        )
         
         template_col1, template_col2, template_col3 = st.columns([2, 1, 1])
         with template_col2:
             if st.button("Save Template Changes", use_container_width=True):
-                # Save template changes
-                template["lunch_breaks"] = [t.strip() for t in lunch_breaks.split("\n") if t.strip()]
+            template["lunch_breaks"] = [t.strip() for t in lunch_breaks.split("\n") if t.strip()]
                 template["tea_breaks"]["early"] = [t.strip() for t in early_tea.split("\n") if t.strip()]
                 template["tea_breaks"]["late"] = [t.strip() for t in late_tea.split("\n") if t.strip()]
-                
-                # Update break limits for new times
-                if selected_template not in st.session_state.break_limits:
-                    st.session_state.break_limits[selected_template] = {}
-                
-                # Update lunch break limits
-                new_lunch_limits = {}
-                for time in template["lunch_breaks"]:
-                    new_lunch_limits[time] = st.session_state.break_limits.get(selected_template, {}).get("lunch", {}).get(time, 5)
-                st.session_state.break_limits[selected_template]["lunch"] = new_lunch_limits
-                
-                # Update early tea break limits
-                new_early_tea_limits = {}
-                for time in template["tea_breaks"]["early"]:
-                    new_early_tea_limits[time] = st.session_state.break_limits.get(selected_template, {}).get("early_tea", {}).get(time, 3)
-                st.session_state.break_limits[selected_template]["early_tea"] = new_early_tea_limits
-                
-                # Update late tea break limits
-                new_late_tea_limits = {}
-                for time in template["tea_breaks"]["late"]:
-                    new_late_tea_limits[time] = st.session_state.break_limits.get(selected_template, {}).get("late_tea", {}).get(time, 3)
-                st.session_state.break_limits[selected_template]["late_tea"] = new_late_tea_limits
-                
-                save_break_data()
-                st.success("Template and break limits updated successfully!")
+            save_break_data()
+            st.success("Template updated successfully!")
                 st.rerun()
         
         with template_col3:
@@ -1124,7 +1100,7 @@ def agent_break_dashboard():
     if is_killswitch_enabled():
         st.error("System is currently locked. Break booking is disabled.")
         return
-    
+        
     # Initialize session state
     if 'agent_bookings' not in st.session_state:
         st.session_state.agent_bookings = {}
@@ -1142,33 +1118,58 @@ def agent_break_dashboard():
     current_template = None
     if current_date in st.session_state.agent_bookings and agent_id in st.session_state.agent_bookings[current_date]:
         bookings = st.session_state.agent_bookings[current_date][agent_id]
-        for break_type in ['lunch', 'early_tea', 'late_tea']:
-            if break_type in bookings and isinstance(bookings[break_type], dict):
+            for break_type in ['lunch', 'early_tea', 'late_tea']:
+                if break_type in bookings and isinstance(bookings[break_type], dict):
                 current_template = bookings[break_type]['template']
-                break
-    
+                    break
+        
     # Template selection
     if current_template:
         st.info(f"You are using the **{current_template}** template today")
         template = st.session_state.templates[current_template]
-    else:
+        else:
         selected_template = st.selectbox(
             "Select your break schedule:",
             available_templates,
-            index=None,
-            placeholder="Choose a template..."
-        )
+                index=None,
+                placeholder="Choose a template..."
+            )
         if not selected_template:
             st.warning("Please select a break schedule to continue")
             return
         template = st.session_state.templates[selected_template]
         current_template = selected_template
     
+    # Display current bookings
+    if current_date in st.session_state.agent_bookings and agent_id in st.session_state.agent_bookings[current_date]:
+        st.subheader("Your Current Bookings")
+        bookings = st.session_state.agent_bookings[current_date][agent_id]
+        
+        for break_type, display_name in [
+            ("lunch", "Lunch Break"),
+            ("early_tea", "Early Tea Break"),
+            ("late_tea", "Late Tea Break")
+        ]:
+            if break_type in bookings:
+                if isinstance(bookings[break_type], dict):
+                    st.write(f"**{display_name}:** {bookings[break_type]['time']}")
+                else:
+                    st.write(f"**{display_name}:** {bookings[break_type]}")
+        
+        if st.button("Cancel All Bookings"):
+            del st.session_state.agent_bookings[current_date][agent_id]
+            save_break_data()
+            st.success("All bookings cancelled")
+            st.rerun()
+    
+    # Book breaks
+    st.subheader("Available Break Slots")
+    
     # Lunch breaks
     st.write("**Lunch Breaks**")
-    lunch_cols = st.columns(len(template["lunch_breaks"]))
+            lunch_cols = st.columns(len(template["lunch_breaks"]))
     for i, time in enumerate(template["lunch_breaks"]):
-        with lunch_cols[i]:
+                with lunch_cols[i]:
             count = sum(1 for bookings in st.session_state.agent_bookings.get(current_date, {}).values()
                        if isinstance(bookings.get("lunch"), dict) and bookings["lunch"]["time"] == time)
             limit = st.session_state.break_limits.get(current_template, {}).get("lunch", {}).get(time, 5)
@@ -1184,17 +1185,17 @@ def agent_break_dashboard():
                 st.session_state.agent_bookings[current_date][agent_id]["lunch"] = {
                     "time": time,
                     "template": current_template,
-                    "booked_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                }
-                save_break_data()
+                        "booked_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    }
+                    save_break_data()
                 st.success(f"Lunch break booked for {time}")
-                st.rerun()
-    
+                    st.rerun()
+        
     # Early tea breaks
     st.write("**Early Tea Breaks**")
-    early_tea_cols = st.columns(len(template["tea_breaks"]["early"]))
+        early_tea_cols = st.columns(len(template["tea_breaks"]["early"]))
     for i, time in enumerate(template["tea_breaks"]["early"]):
-        with early_tea_cols[i]:
+            with early_tea_cols[i]:
             count = sum(1 for bookings in st.session_state.agent_bookings.get(current_date, {}).values()
                        if isinstance(bookings.get("early_tea"), dict) and bookings["early_tea"]["time"] == time)
             limit = st.session_state.break_limits.get(current_template, {}).get("early_tea", {}).get(time, 3)
@@ -1215,12 +1216,12 @@ def agent_break_dashboard():
                 save_break_data()
                 st.success(f"Early tea break booked for {time}")
                 st.rerun()
-    
+        
     # Late tea breaks
     st.write("**Late Tea Breaks**")
-    late_tea_cols = st.columns(len(template["tea_breaks"]["late"]))
+        late_tea_cols = st.columns(len(template["tea_breaks"]["late"]))
     for i, time in enumerate(template["tea_breaks"]["late"]):
-        with late_tea_cols[i]:
+            with late_tea_cols[i]:
             count = sum(1 for bookings in st.session_state.agent_bookings.get(current_date, {}).values()
                        if isinstance(bookings.get("late_tea"), dict) and bookings["late_tea"]["time"] == time)
             limit = st.session_state.break_limits.get(current_template, {}).get("late_tea", {}).get(time, 3)
@@ -1241,7 +1242,7 @@ def agent_break_dashboard():
                 save_break_data()
                 st.success(f"Late tea break booked for {time}")
                 st.rerun()
-
+        
 # --------------------------
 # Streamlit App
 # --------------------------
@@ -1467,9 +1468,9 @@ if not st.session_state.authenticated:
             <h1 style="text-align: center; margin-bottom: 2rem;">🏢 Request Management System</h1>
     """, unsafe_allow_html=True)
     
-    with st.form("login_form"):
-        username = st.text_input("Username")
-        password = st.text_input("Password", type="password")
+        with st.form("login_form"):
+            username = st.text_input("Username")
+            password = st.text_input("Password", type="password")
         submit_col1, submit_col2, submit_col3 = st.columns([1, 2, 1])
         with submit_col2:
             if st.form_submit_button("Login", use_container_width=True):
@@ -1730,9 +1731,9 @@ else:
                     col1, col2 = st.columns([5,1])
                     with col2:
                         if st.form_submit_button("Send", use_container_width=True):
-                            if message:
-                                send_group_message(st.session_state.username, message)
-                                st.rerun()
+                        if message:
+                            send_group_message(st.session_state.username, message)
+                            st.rerun()
 
     elif st.session_state.current_section == "fancy_number":
         st.title("📱 Fancy Number Checker")
@@ -1747,7 +1748,7 @@ else:
                 
                 if len(cleaned_number) != 10:
                     st.error("Please enter a valid 10-digit phone number")
-                else:
+        else:
                     # Check for patterns
                     patterns = []
                     
