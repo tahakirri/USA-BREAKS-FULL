@@ -885,9 +885,27 @@ def clear_all_bookings():
         st.error("System is currently locked. Please contact the developer.")
         return False
     
-    st.session_state.agent_bookings = {}
-    save_break_data()
-    return True
+    try:
+        # Clear session state bookings
+        st.session_state.agent_bookings = {}
+        
+        # Clear the bookings file
+        if os.path.exists('all_bookings.json'):
+            with open('all_bookings.json', 'w') as f:
+                json.dump({}, f)
+        
+        # Save empty state to ensure it's propagated
+        save_break_data()
+        
+        # Force session state refresh
+        st.session_state.last_request_count = 0
+        st.session_state.last_mistake_count = 0
+        st.session_state.last_message_ids = []
+        
+        return True
+    except Exception as e:
+        st.error(f"Error clearing bookings: {str(e)}")
+        return False
 
 def admin_break_dashboard():
     st.title("Break Schedule Management")
@@ -1055,12 +1073,29 @@ def admin_break_dashboard():
     if dates:
         selected_date = st.selectbox("Select Date:", dates, index=len(dates)-1)
         
-        # Add clear bookings button
-        if st.button("Clear All Bookings"):
-            if st.button("⚠️ Confirm Clear All Bookings"):
-                clear_all_bookings()
-                st.success("All bookings have been cleared!")
-                st.rerun()
+        # Add clear bookings button with proper confirmation
+        if 'confirm_clear' not in st.session_state:
+            st.session_state.confirm_clear = False
+            
+        col1, col2 = st.columns([1, 3])
+        with col1:
+            if not st.session_state.confirm_clear:
+                if st.button("Clear All Bookings"):
+                    st.session_state.confirm_clear = True
+            
+        if st.session_state.confirm_clear:
+            st.warning("⚠️ Are you sure you want to clear all bookings? This cannot be undone!")
+            col1, col2 = st.columns([1, 1])
+            with col1:
+                if st.button("Yes, Clear All"):
+                    if clear_all_bookings():
+                        st.success("All bookings have been cleared!")
+                        st.session_state.confirm_clear = False
+                        st.rerun()
+            with col2:
+                if st.button("Cancel"):
+                    st.session_state.confirm_clear = False
+                    st.rerun()
         
         if selected_date in st.session_state.agent_bookings:
             bookings_data = []
