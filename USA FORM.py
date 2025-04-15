@@ -1613,9 +1613,109 @@ else:
 
     elif st.session_state.current_section == "break_admin":
         if st.session_state.role == "admin":
-            break_booking_admin_interface()
+            st.title("⚙️ Break Booking Administration")
+            
+            # Create new template
+            with st.expander("Create New Template"):
+                with st.form("create_template"):
+                    template_name = st.text_input("Template Name")
+                    max_users = st.number_input("Maximum Users per Slot", min_value=1, value=5)
+                    
+                    # First Tea Break
+                    st.subheader("First Tea Break")
+                    first_tea_start = st.text_input("Start Time (HH:MM)", value="10:00", key="first_tea_start")
+                    first_tea_end = st.text_input("End Time (HH:MM)", value="10:15", key="first_tea_end")
+                    
+                    # Lunch Break
+                    st.subheader("Lunch Break")
+                    lunch_start = st.text_input("Start Time (HH:MM)", value="13:00", key="lunch_start")
+                    lunch_end = st.text_input("End Time (HH:MM)", value="14:00", key="lunch_end")
+                    
+                    # Second Tea Break
+                    st.subheader("Second Tea Break")
+                    second_tea_start = st.text_input("Start Time (HH:MM)", value="15:30", key="second_tea_start")
+                    second_tea_end = st.text_input("End Time (HH:MM)", value="15:45", key="second_tea_end")
+                    
+                    if st.form_submit_button("Create Template"):
+                        try:
+                            # Validate time formats
+                            times = [first_tea_start, first_tea_end, lunch_start, lunch_end, 
+                                    second_tea_start, second_tea_end]
+                            for t in times:
+                                datetime.strptime(t, "%H:%M")
+                            
+                            # Create template
+                            template_id = create_break_template(template_name, max_users, st.session_state.username)
+                            if template_id:
+                                # Add slots
+                                add_break_slot(template_id, "first_tea", first_tea_start, first_tea_end)
+                                add_break_slot(template_id, "lunch", lunch_start, lunch_end)
+                                add_break_slot(template_id, "second_tea", second_tea_start, second_tea_end)
+                                st.success("Template created successfully!")
+                                st.rerun()
+                        except ValueError:
+                            st.error("Invalid time format. Please use HH:MM format (e.g., 09:30)")
+            
+            # Manage existing templates
+            st.subheader("Manage Templates")
+            templates = get_break_templates()
+            if templates:
+                for template in templates:
+                    template_id, name, max_users, is_active, created_by, created_at = template
+                    
+                    with st.expander(f"Template: {name}"):
+                        st.write(f"Created by: {created_by}")
+                        st.write(f"Created at: {created_at}")
+                        st.write(f"Max users per slot: {max_users}")
+                        
+                        # Show slots
+                        slots = get_break_slots(template_id)
+                        for slot in slots:
+                            slot_id, _, break_type, start_time, end_time = slot
+                            break_name = {
+                                "first_tea": "First Tea Break",
+                                "lunch": "Lunch Break",
+                                "second_tea": "Second Tea Break"
+                            }[break_type]
+                            st.write(f"- {break_name}: {start_time}-{end_time}")
+                        
+                        cols = st.columns(2)
+                        if is_active:
+                            if cols[0].button("Deactivate", key=f"deact_{template_id}"):
+                                if toggle_template(template_id, False):
+                                    st.success("Template deactivated!")
+                                    st.rerun()
+                        else:
+                            if cols[0].button("Activate", key=f"act_{template_id}"):
+                                if toggle_template(template_id, True):
+                                    st.success("Template activated!")
+                                    st.rerun()
+            
+            # View all bookings
+            st.subheader("View Bookings")
+            selected_date = st.date_input("Select Date", value=datetime.now().date())
+            
+            # Get all users
+            users = get_all_users()
+            for user in users:
+                uid, username, role = user
+                if role == "agent":
+                    bookings = get_agent_bookings(username, selected_date.strftime("%Y-%m-%d"))
+                    if bookings:
+                        st.write(f"**{username}**")
+                        for booking in bookings:
+                            booking_id, _, _, _, _, _, template_name, break_type, start_time, end_time = booking
+                            break_name = {
+                                "first_tea": "First Tea Break",
+                                "lunch": "Lunch Break",
+                                "second_tea": "Second Tea Break"
+                            }[break_type]
+                            st.write(f"- {break_name} ({start_time}-{end_time}) - {template_name}")
         else:
-            st.warning("You don't have permission to access this section.")
+            st.error("Access Denied: You don't have permission to view this section.")
+            if st.session_state.current_section == "break_admin":
+                st.session_state.current_section = "requests"
+                st.rerun()
 
     elif st.session_state.current_section == "admin" and st.session_state.role == "admin":
         if st.session_state.username.lower() == "taha kirri":
@@ -1786,13 +1886,17 @@ def add_break_slot(template_id, break_type, start_time, end_time):
         conn.close()
 
 def get_break_templates():
-    conn = get_db_connection()
     try:
+        conn = get_db_connection()
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM break_templates WHERE is_active = 1")
         return cursor.fetchall()
+    except sqlite3.Error as e:
+        st.error(f"Database error: {str(e)}")
+        return []
     finally:
-        conn.close()
+        if 'conn' in locals():
+            conn.close()
 
 def get_break_slots(template_id):
     conn = get_db_connection()
