@@ -1552,75 +1552,98 @@ else:
             
             os.makedirs("data", exist_ok=True)
             
-            # Initialize default settings if not exists
-            if not os.path.exists(SETTINGS_FILE):
-                default_settings = {
-                    "max_per_slot": 3,
-                    "current_template": "2pm_english",
-                }
-                with open(SETTINGS_FILE, "w") as f:
-                    json.dump(default_settings, f)
-            
             # Initialize default templates if not exists
-            if not os.path.exists(TEMPLATES_FILE):
-                default_templates = {
-                    "2pm_english": {
-                        "description": "2 PM Shift - English 🇺🇸",
-                        "language": "english",
-                        "shift": "2pm",
-                        "shifts": {
-                            "2pm": {
-                                "early_tea": {"start": "15:00", "end": "16:30", "slots": ["15:00", "15:15", "15:30", "15:45", "16:00", "16:15", "16:30"]},
-                                "lunch": {"start": "18:30", "end": "20:30", "slots": ["18:30", "19:00", "19:30", "20:00", "20:30"]},
-                                "late_tea": {"start": "20:45", "end": "21:30", "slots": ["20:45", "21:00", "21:15", "21:30"]},
-                            }
+            default_templates = {
+                "2pm_english": {
+                    "description": "2 PM Shift - English 🇺🇸",
+                    "language": "english",
+                    "shift": "2pm",
+                    "shifts": {
+                        "2pm": {
+                            "early_tea": {"start": "15:00", "end": "16:30", "slots": ["15:00", "15:15", "15:30", "15:45", "16:00", "16:15", "16:30"]},
+                            "lunch": {"start": "18:30", "end": "20:30", "slots": ["18:30", "19:00", "19:30", "20:00", "20:30"]},
+                            "late_tea": {"start": "20:45", "end": "21:30", "slots": ["20:45", "21:00", "21:15", "21:30"]},
                         }
-                    },
-                    "6pm_english": {
-                        "description": "6 PM Shift - English 🇺🇸",
-                        "language": "english",
-                        "shift": "6pm",
-                        "shifts": {
-                            "6pm": {
-                                "early_tea": {"start": "19:00", "end": "20:45", "slots": ["19:00", "19:15", "19:30", "19:45", "20:00", "20:15", "20:30", "20:45"]},
-                                "lunch": {"start": "21:00", "end": "22:30", "slots": ["21:00", "21:30", "22:00", "22:30"]},
-                                "late_tea": {"start": "00:00", "end": "01:30", "slots": ["00:00", "00:15", "00:30", "00:45", "01:00", "01:15", "01:30"]},
-                            }
+                    }
+                },
+                "6pm_english": {
+                    "description": "6 PM Shift - English 🇺🇸",
+                    "language": "english",
+                    "shift": "6pm",
+                    "shifts": {
+                        "6pm": {
+                            "early_tea": {"start": "19:00", "end": "20:45", "slots": ["19:00", "19:15", "19:30", "19:45", "20:00", "20:15", "20:30", "20:45"]},
+                            "lunch": {"start": "21:00", "end": "22:30", "slots": ["21:00", "21:30", "22:00", "22:30"]},
+                            "late_tea": {"start": "00:00", "end": "01:30", "slots": ["00:00", "00:15", "00:30", "00:45", "01:00", "01:15", "01:30"]},
                         }
-                    },
-                    "2pm_spanish": {
-                        "description": "2 PM Shift - Spanish 🇪🇸",
-                        "language": "spanish",
-                        "shift": "2pm",
-                        "shifts": {
-                            "2pm": {
-                                "early_tea": {"start": "15:00", "end": "16:30", "slots": ["15:00", "15:15", "15:30", "15:45", "16:00", "16:15", "16:30"]},
-                                "lunch": {"start": "18:30", "end": "20:30", "slots": ["18:30", "19:00", "19:30", "20:00", "20:30"]},
-                                "late_tea": {"start": "20:45", "end": "21:30", "slots": ["20:45", "21:00", "21:15", "21:30"]},
-                            }
+                    }
+                },
+                "2pm_spanish": {
+                    "description": "2 PM Shift - Spanish 🇪🇸",
+                    "language": "spanish",
+                    "shift": "2pm",
+                    "shifts": {
+                        "2pm": {
+                            "early_tea": {"start": "15:00", "end": "16:30", "slots": ["15:00", "15:15", "15:30", "15:45", "16:00", "16:15", "16:30"]},
+                            "lunch": {"start": "18:30", "end": "20:30", "slots": ["18:30", "19:00", "19:30", "20:00", "20:30"]},
+                            "late_tea": {"start": "20:45", "end": "21:30", "slots": ["20:45", "21:00", "21:15", "21:30"]},
                         }
-                    },
-                    "6pm_spanish": {
-                        "description": "6 PM Shift - Spanish 🇪🇸",
-                        "language": "spanish",
-                        "shift": "6pm",
-                        "shifts": {
-                            "6pm": {
-                                "early_tea": {"start": "19:00", "end": "20:45", "slots": ["19:00", "19:15", "19:30", "19:45", "20:00", "20:15", "20:30", "20:45"]},
-                                "lunch": {"start": "21:00", "end": "22:30", "slots": ["21:00", "21:30", "22:00", "22:30"]},
-                                "late_tea": {"start": "00:00", "end": "01:30", "slots": ["00:00", "00:15", "00:30", "00:45", "01:00", "01:15", "01:30"]},
-                            }
+                    }
+                },
+                "6pm_spanish": {
+                    "description": "6 PM Shift - Spanish 🇪🇸",
+                    "language": "spanish",
+                    "shift": "6pm",
+                    "shifts": {
+                        "6pm": {
+                            "early_tea": {"start": "19:00", "end": "20:45", "slots": ["19:00", "19:15", "19:30", "19:45", "20:00", "20:15", "20:30", "20:45"]},
+                            "lunch": {"start": "21:00", "end": "22:30", "slots": ["21:00", "21:30", "22:00", "22:30"]},
+                            "late_tea": {"start": "00:00", "end": "01:30", "slots": ["00:00", "00:15", "00:30", "00:45", "01:00", "01:15", "01:30"]},
                         }
                     }
                 }
+            }
+
+            # Initialize or validate templates file
+            if not os.path.exists(TEMPLATES_FILE):
                 with open(TEMPLATES_FILE, "w") as f:
                     json.dump(default_templates, f)
+            else:
+                with open(TEMPLATES_FILE, "r") as f:
+                    templates = json.load(f)
+                # Ensure all default templates exist
+                templates_updated = False
+                for template_key, template_data in default_templates.items():
+                    if template_key not in templates:
+                        templates[template_key] = template_data
+                        templates_updated = True
+                if templates_updated:
+                    with open(TEMPLATES_FILE, "w") as f:
+                        json.dump(templates, f)
+
+            # Initialize or validate settings file
+            default_settings = {
+                "max_per_slot": 3,
+                "current_template": "2pm_english"  # Default template
+            }
             
+            if not os.path.exists(SETTINGS_FILE):
+                with open(SETTINGS_FILE, "w") as f:
+                    json.dump(default_settings, f)
+            else:
+                with open(SETTINGS_FILE, "r") as f:
+                    settings = json.load(f)
+                # Validate current_template exists
+                if "current_template" not in settings or settings["current_template"] not in templates:
+                    settings["current_template"] = "2pm_english"
+                    with open(SETTINGS_FILE, "w") as f:
+                        json.dump(settings, f)
+
             # Initialize empty bookings file if not exists
             if not os.path.exists(BOOKINGS_FILE):
                 with open(BOOKINGS_FILE, "w") as f:
                     json.dump({}, f)
-            
+
             # Load settings and templates
             with open(SETTINGS_FILE, "r") as f:
                 settings = json.load(f)
@@ -1628,7 +1651,7 @@ else:
                 templates = json.load(f)
             with open(BOOKINGS_FILE, "r") as f:
                 bookings = json.load(f)
-            
+
             st.title("⏸️ Break Booking")
             
             # Language and shift selection
