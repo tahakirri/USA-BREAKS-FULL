@@ -1917,17 +1917,16 @@ else:
                 is_taha = st.session_state.username.lower() == "taha kirri"
                 
                 if is_vip or is_taha:
-                    tab1, tab2 = st.tabs(["💬 Regular Chat", "⭐ VIP Chat"])
+                    tab1, tab2, tab3 = st.tabs(["💬 Regular Chat", "⭐ VIP Chat", "🔒 Private Chat"])
                     
                     with tab1:
-                        st.subheader("Regular Chat")
+                        # ... existing Regular Chat code ...
                         messages = get_group_messages()
                         st.markdown('<div class="chat-container">', unsafe_allow_html=True)
                         for msg in reversed(messages):
                             msg_id, sender, message, ts, mentions = msg
                             is_sent = sender == st.session_state.username
                             is_mentioned = st.session_state.username in (mentions.split(',') if mentions else [])
-                            
                             st.markdown(f"""
                             <div class="chat-message {'sent' if is_sent else 'received'}">
                                 <div class="message-avatar">
@@ -1940,7 +1939,6 @@ else:
                             </div>
                             """, unsafe_allow_html=True)
                         st.markdown('</div>', unsafe_allow_html=True)
-                        
                         with st.form("regular_chat_form", clear_on_submit=True):
                             message = st.text_input("Type your message...", key="regular_chat_input")
                             col1, col2 = st.columns([5,1])
@@ -1951,20 +1949,19 @@ else:
                                         st.rerun()
                     
                     with tab2:
+                        # ... existing VIP Chat code ...
                         st.markdown("""
                         <div style='padding: 1rem; background-color: #2d3748; border-radius: 0.5rem; margin-bottom: 1rem;'>
                             <h3 style='color: gold; margin: 0;'>⭐ VIP Chat</h3>
                             <p style='color: #e2e8f0; margin: 0;'>Exclusive chat for VIP members</p>
                         </div>
                         """, unsafe_allow_html=True)
-                        
                         vip_messages = get_vip_messages()
                         st.markdown('<div class="chat-container">', unsafe_allow_html=True)
                         for msg in reversed(vip_messages):
                             msg_id, sender, message, ts, mentions = msg
                             is_sent = sender == st.session_state.username
                             is_mentioned = st.session_state.username in (mentions.split(',') if mentions else [])
-                            
                             st.markdown(f"""
                             <div class="chat-message {'sent' if is_sent else 'received'}">
                                 <div class="message-avatar" style="background-color: gold;">
@@ -1977,7 +1974,6 @@ else:
                             </div>
                             """, unsafe_allow_html=True)
                         st.markdown('</div>', unsafe_allow_html=True)
-                        
                         with st.form("vip_chat_form", clear_on_submit=True):
                             message = st.text_input("Type your message...", key="vip_chat_input")
                             col1, col2 = st.columns([5,1])
@@ -1986,6 +1982,54 @@ else:
                                     if message:
                                         send_vip_message(st.session_state.username, message)
                                         st.rerun()
+                    
+                    with tab3:
+                        st.markdown("""
+                        <div style='padding: 1rem; background-color: #2d3748; border-radius: 0.5rem; margin-bottom: 1rem;'>
+                            <h3 style='color: #e2e8f0; margin: 0;'>🔒 Private Chat</h3>
+                            <p style='color: #e2e8f0; margin: 0;'>Private chat between VIP members</p>
+                        </div>
+                        """, unsafe_allow_html=True)
+                        users = get_all_users()
+                        vip_users = [u[1] for u in users if is_vip_user(u[1]) and u[1] != st.session_state.username]
+                        if is_taha:
+                            # Admin view: see all pairs
+                            all_pairs = get_all_vip_private_pairs()
+                            pair_labels = [f"{a} ↔ {b}" for a, b in all_pairs]
+                            selected_pair = st.selectbox("Select VIP pair to view:", pair_labels, index=0 if pair_labels else None)
+                            if selected_pair:
+                                a, b = all_pairs[pair_labels.index(selected_pair)]
+                                chat_user1, chat_user2 = a, b
+                        else:
+                            # VIP view: select another VIP
+                            chat_user1 = st.session_state.username
+                            chat_user2 = st.selectbox("Select VIP to chat with:", vip_users, index=0 if vip_users else None)
+                        if (is_taha and selected_pair) or (not is_taha and chat_user2):
+                            messages = get_vip_private_messages(chat_user1, chat_user2)
+                            st.markdown('<div class="chat-container">', unsafe_allow_html=True)
+                            for sender, receiver, message, ts in messages:
+                                is_sent = sender == st.session_state.username
+                                st.markdown(f"""
+                                <div class="chat-message {'sent' if is_sent else 'received'}">
+                                    <div class="message-avatar" style="background-color: #60a5fa;">
+                                        {sender[0].upper()}
+                                    </div>
+                                    <div class="message-content" style="background-color: #334155;">
+                                        <div>{message}</div>
+                                        <div class="message-meta">{sender} • {ts}</div>
+                                    </div>
+                                </div>
+                                """, unsafe_allow_html=True)
+                            st.markdown('</div>', unsafe_allow_html=True)
+                            if not is_taha:
+                                with st.form("vip_private_chat_form", clear_on_submit=True):
+                                    message = st.text_input("Type your message...", key="vip_private_chat_input")
+                                    col1, col2 = st.columns([5,1])
+                                    with col2:
+                                        if st.form_submit_button("Send"):
+                                            if message:
+                                                send_vip_private_message(st.session_state.username, chat_user2, message)
+                                                st.rerun()
                 else:
                     # Regular chat only for non-VIP users
                     st.subheader("Regular Chat")
