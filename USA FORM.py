@@ -806,7 +806,7 @@ def display_schedule(template):
     # Rules section
     st.markdown("""
     **NO BREAK IN THE LAST HOUR WILL BE AUTHORIZED**  
-    **PS: ONLY 5 MINUTES BIO IS AUTHORIZED IN THE LAST HOUR BETWEEN 23:00 TILL 23:30 AND NO BREAK AFTER 23:30 !!!**  
+    **PS: ONLY 5 MINUTES BIO IS AUTHORIZED IN THE LAST HHOUR BETWEEN 23:00 TILL 23:30 AND NO BREAK AFTER 23:30 !!!**  
     **BREAKS SHOULD BE TAKEN AT THE NOTED TIME AND NEED TO BE CONFIRMED FROM RTA OR TEAM LEADERS**
     """)
 
@@ -1154,6 +1154,8 @@ def agent_break_dashboard():
     # Initialize session state
     if 'agent_bookings' not in st.session_state:
         st.session_state.agent_bookings = {}
+    if 'temp_bookings' not in st.session_state:
+        st.session_state.temp_bookings = {}
     
     agent_id = st.session_state.username
     current_date = datetime.now().strftime('%Y-%m-%d')
@@ -1164,7 +1166,7 @@ def agent_break_dashboard():
         st.error("No break schedules available. Please contact admin.")
         return
     
-    # Get current template
+    # Get current template and check existing bookings
     current_template = None
     has_bookings = False
     if current_date in st.session_state.agent_bookings and agent_id in st.session_state.agent_bookings[current_date]:
@@ -1192,7 +1194,7 @@ def agent_break_dashboard():
                     st.write(f"**{display_name}:** {bookings[break_type]}")
         
         st.info("⚠️ To modify or cancel your bookings, please contact your admin.")
-        return  # Stop here if agent already has bookings
+        return
     
     # Template selection for new bookings
     if not current_template:
@@ -1208,12 +1210,20 @@ def agent_break_dashboard():
         template = st.session_state.templates[selected_template]
         current_template = selected_template
     
-    # Book breaks (only shown if no existing bookings)
-    st.subheader("Available Break Slots")
-    st.info("Note: Once you book your breaks, you cannot modify them without admin approval.")
+    # Book breaks
+    st.subheader("Book Your Breaks")
+    st.info("Note: You must select all three breaks (lunch and two tea breaks) before confirming. Once booked, you cannot modify them without admin approval.")
+    
+    # Initialize temporary bookings if needed
+    if 'temp_bookings' not in st.session_state:
+        st.session_state.temp_bookings = {
+            'lunch': None,
+            'early_tea': None,
+            'late_tea': None
+        }
     
     # Lunch breaks
-    st.write("**Lunch Breaks**")
+    st.write("**1. Select Lunch Break**")
     lunch_cols = st.columns(len(template["lunch_breaks"]))
     for i, time in enumerate(template["lunch_breaks"]):
         with lunch_cols[i]:
@@ -1221,25 +1231,15 @@ def agent_break_dashboard():
                        if isinstance(bookings.get("lunch"), dict) and bookings["lunch"]["time"] == time)
             limit = st.session_state.break_limits.get(current_template, {}).get("lunch", {}).get(time, 5)
             
-            if count >= limit:
+            button_label = f"{time}\n{'(Selected)' if st.session_state.temp_bookings['lunch'] == time else ''}"
+            if count >= limit and st.session_state.temp_bookings['lunch'] != time:
                 st.button(f"{time}\n(FULL)", key=f"lunch_{time}", disabled=True)
-            elif st.button(time, key=f"lunch_{time}"):
-                if current_date not in st.session_state.agent_bookings:
-                    st.session_state.agent_bookings[current_date] = {}
-                if agent_id not in st.session_state.agent_bookings[current_date]:
-                    st.session_state.agent_bookings[current_date][agent_id] = {}
-                
-                st.session_state.agent_bookings[current_date][agent_id]["lunch"] = {
-                    "time": time,
-                    "template": current_template,
-                    "booked_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                }
-                save_break_data()
-                st.success(f"Lunch break booked for {time}")
+            elif st.button(button_label, key=f"lunch_{time}"):
+                st.session_state.temp_bookings['lunch'] = time
                 st.rerun()
     
     # Early tea breaks
-    st.write("**Early Tea Breaks**")
+    st.write("**2. Select Early Tea Break**")
     early_tea_cols = st.columns(len(template["tea_breaks"]["early"]))
     for i, time in enumerate(template["tea_breaks"]["early"]):
         with early_tea_cols[i]:
@@ -1247,25 +1247,15 @@ def agent_break_dashboard():
                        if isinstance(bookings.get("early_tea"), dict) and bookings["early_tea"]["time"] == time)
             limit = st.session_state.break_limits.get(current_template, {}).get("early_tea", {}).get(time, 3)
             
-            if count >= limit:
+            button_label = f"{time}\n{'(Selected)' if st.session_state.temp_bookings['early_tea'] == time else ''}"
+            if count >= limit and st.session_state.temp_bookings['early_tea'] != time:
                 st.button(f"{time}\n(FULL)", key=f"early_tea_{time}", disabled=True)
-            elif st.button(time, key=f"early_tea_{time}"):
-                if current_date not in st.session_state.agent_bookings:
-                    st.session_state.agent_bookings[current_date] = {}
-                if agent_id not in st.session_state.agent_bookings[current_date]:
-                    st.session_state.agent_bookings[current_date][agent_id] = {}
-                
-                st.session_state.agent_bookings[current_date][agent_id]["early_tea"] = {
-                    "time": time,
-                    "template": current_template,
-                    "booked_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                }
-                save_break_data()
-                st.success(f"Early tea break booked for {time}")
+            elif st.button(button_label, key=f"early_tea_{time}"):
+                st.session_state.temp_bookings['early_tea'] = time
                 st.rerun()
     
     # Late tea breaks
-    st.write("**Late Tea Breaks**")
+    st.write("**3. Select Late Tea Break**")
     late_tea_cols = st.columns(len(template["tea_breaks"]["late"]))
     for i, time in enumerate(template["tea_breaks"]["late"]):
         with late_tea_cols[i]:
@@ -1273,22 +1263,63 @@ def agent_break_dashboard():
                        if isinstance(bookings.get("late_tea"), dict) and bookings["late_tea"]["time"] == time)
             limit = st.session_state.break_limits.get(current_template, {}).get("late_tea", {}).get(time, 3)
             
-            if count >= limit:
+            button_label = f"{time}\n{'(Selected)' if st.session_state.temp_bookings['late_tea'] == time else ''}"
+            if count >= limit and st.session_state.temp_bookings['late_tea'] != time:
                 st.button(f"{time}\n(FULL)", key=f"late_tea_{time}", disabled=True)
-            elif st.button(time, key=f"late_tea_{time}"):
-                if current_date not in st.session_state.agent_bookings:
-                    st.session_state.agent_bookings[current_date] = {}
-                if agent_id not in st.session_state.agent_bookings[current_date]:
-                    st.session_state.agent_bookings[current_date][agent_id] = {}
-                
-                st.session_state.agent_bookings[current_date][agent_id]["late_tea"] = {
-                    "time": time,
-                    "template": current_template,
-                    "booked_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                }
-                save_break_data()
-                st.success(f"Late tea break booked for {time}")
+            elif st.button(button_label, key=f"late_tea_{time}"):
+                st.session_state.temp_bookings['late_tea'] = time
                 st.rerun()
+    
+    # Show current selections
+    st.markdown("---")
+    st.subheader("Your Selected Breaks")
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.write(f"**Lunch Break:** {st.session_state.temp_bookings['lunch'] or 'Not selected'}")
+    with col2:
+        st.write(f"**Early Tea:** {st.session_state.temp_bookings['early_tea'] or 'Not selected'}")
+    with col3:
+        st.write(f"**Late Tea:** {st.session_state.temp_bookings['late_tea'] or 'Not selected'}")
+    
+    # Confirm bookings button
+    if all(st.session_state.temp_bookings.values()):
+        if st.button("✅ Confirm All Break Bookings", use_container_width=True):
+            # Save all bookings at once
+            if current_date not in st.session_state.agent_bookings:
+                st.session_state.agent_bookings[current_date] = {}
+            if agent_id not in st.session_state.agent_bookings[current_date]:
+                st.session_state.agent_bookings[current_date][agent_id] = {}
+            
+            booking_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            st.session_state.agent_bookings[current_date][agent_id] = {
+                "lunch": {
+                    "time": st.session_state.temp_bookings['lunch'],
+                    "template": current_template,
+                    "booked_at": booking_time
+                },
+                "early_tea": {
+                    "time": st.session_state.temp_bookings['early_tea'],
+                    "template": current_template,
+                    "booked_at": booking_time
+                },
+                "late_tea": {
+                    "time": st.session_state.temp_bookings['late_tea'],
+                    "template": current_template,
+                    "booked_at": booking_time
+                }
+            }
+            save_break_data()
+            st.session_state.temp_bookings = {'lunch': None, 'early_tea': None, 'late_tea': None}
+            st.success("All breaks booked successfully!")
+            st.rerun()
+    else:
+        st.warning("Please select all three breaks to continue")
+    
+    # Clear selections button
+    if any(st.session_state.temp_bookings.values()):
+        if st.button("🔄 Clear Selections", use_container_width=True):
+            st.session_state.temp_bookings = {'lunch': None, 'early_tea': None, 'late_tea': None}
+            st.rerun()
 
 # --------------------------
 # Streamlit App
