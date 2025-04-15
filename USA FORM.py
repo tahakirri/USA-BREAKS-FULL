@@ -533,6 +533,8 @@ def init_break_session_state():
         st.session_state.timezone_offset = 0  # GMT by default
     if 'break_limits' not in st.session_state:
         st.session_state.break_limits = {}
+    if 'active_templates' not in st.session_state:
+        st.session_state.active_templates = []
     
     # Load data from files if exists
     if os.path.exists('templates.json'):
@@ -544,6 +546,9 @@ def init_break_session_state():
     if os.path.exists('all_bookings.json'):
         with open('all_bookings.json', 'r') as f:
             st.session_state.agent_bookings = json.load(f)
+    if os.path.exists('active_templates.json'):
+        with open('active_templates.json', 'r') as f:
+            st.session_state.active_templates = json.load(f)
 
 def save_break_data():
     with open('templates.json', 'w') as f:
@@ -552,6 +557,8 @@ def save_break_data():
         json.dump(st.session_state.break_limits, f)
     with open('all_bookings.json', 'w') as f:
         json.dump(st.session_state.agent_bookings, f)
+    with open('active_templates.json', 'w') as f:
+        json.dump(st.session_state.active_templates, f)
 
 def adjust_time(time_str, offset):
     try:
@@ -672,7 +679,26 @@ def admin_break_dashboard():
         }
         st.session_state.templates["Default Template"] = default_template
         st.session_state.current_template = "Default Template"
+        if "Default Template" not in st.session_state.active_templates:
+            st.session_state.active_templates.append("Default Template")
         save_break_data()
+    
+    # Active Templates Management
+    st.subheader("Active Templates")
+    st.write("Select which templates agents can book from:")
+    
+    for template_name in st.session_state.templates.keys():
+        is_active = template_name in st.session_state.active_templates
+        if st.checkbox(f"Active: {template_name}", value=is_active, key=f"active_{template_name}"):
+            if template_name not in st.session_state.active_templates:
+                st.session_state.active_templates.append(template_name)
+                save_break_data()
+        else:
+            if template_name in st.session_state.active_templates:
+                st.session_state.active_templates.remove(template_name)
+                save_break_data()
+    
+    st.markdown("---")
     
     col1, col2 = st.columns(2)
     
@@ -712,6 +738,8 @@ def admin_break_dashboard():
         if st.button("Delete Template"):
             if len(st.session_state.templates) > 1:  # Prevent deleting the last template
                 del st.session_state.templates[selected_template]
+                if selected_template in st.session_state.active_templates:
+                    st.session_state.active_templates.remove(selected_template)
                 st.session_state.current_template = list(st.session_state.templates.keys())[0]
                 save_break_data()
                 st.success(f"Template '{selected_template}' deleted!")
@@ -854,6 +882,8 @@ def agent_break_dashboard():
             }
         }
         st.session_state.templates["Default Template"] = default_template
+        if "Default Template" not in st.session_state.active_templates:
+            st.session_state.active_templates.append("Default Template")
     
     # Use the logged-in username directly
     agent_id = st.session_state.username
@@ -864,13 +894,19 @@ def agent_break_dashboard():
     st.session_state.selected_date = current_date.strftime('%Y-%m-%d')
     st.write(f"**Current Date:** {st.session_state.selected_date}")
     
-    # Safely get the first template
-    if not st.session_state.templates:
-        st.error("No break schedules available. Please contact admin.")
+    # Check if there are any active templates
+    if not st.session_state.active_templates:
+        st.error("No active break schedules available. Please contact admin.")
         return
     
     try:
-        template_name = list(st.session_state.templates.keys())[0]
+        # Let agent select from active templates
+        template_name = st.selectbox(
+            "Select Break Schedule:",
+            st.session_state.active_templates,
+            index=0
+        )
+        
         template = adjust_template_times(st.session_state.templates[template_name], st.session_state.timezone_offset)
         
         if not template["lunch_breaks"] and not template["tea_breaks"]["early"] and not template["tea_breaks"]["late"]:
