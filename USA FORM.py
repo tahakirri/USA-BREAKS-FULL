@@ -38,127 +38,36 @@ def init_db():
     try:
         cursor = conn.cursor()
         
-        # Create tables if they don't exist
+        # Drop and recreate users table with is_vip column
+        cursor.execute("DROP TABLE IF EXISTS users")
         cursor.execute("""
-            CREATE TABLE IF NOT EXISTS users (
+            CREATE TABLE users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 username TEXT UNIQUE,
                 password TEXT,
                 role TEXT CHECK(role IN ('agent', 'admin')),
-                is_vip INTEGER DEFAULT 0)
+                is_vip INTEGER DEFAULT 0
+            )
         """)
         
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS requests (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                agent_name TEXT,
-                request_type TEXT,
-                identifier TEXT,
-                comment TEXT,
-                timestamp TEXT,
-                completed INTEGER DEFAULT 0)
-        """)
-        
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS mistakes (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                team_leader TEXT,
-                agent_name TEXT,
-                ticket_id TEXT,
-                error_description TEXT,
-                timestamp TEXT)
-        """)
-        
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS group_messages (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                sender TEXT,
-                message TEXT,
-                timestamp TEXT,
-                mentions TEXT)
-        """)
-        
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS hold_images (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                uploader TEXT,
-                image_data BLOB,
-                timestamp TEXT)
-        """)
-        
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS request_comments (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                request_id INTEGER,
-                user TEXT,
-                comment TEXT,
-                timestamp TEXT,
-                FOREIGN KEY(request_id) REFERENCES requests(id))
-        """)
-        
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS late_logins (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                agent_name TEXT,
-                presence_time TEXT,
-                login_time TEXT,
-                reason TEXT,
-                timestamp TEXT)
-        """)
-        
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS quality_issues (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                agent_name TEXT,
-                issue_type TEXT,
-                timing TEXT,
-                mobile_number TEXT,
-                product TEXT,
-                timestamp TEXT)
-        """)
-        
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS midshift_issues (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                agent_name TEXT,
-                issue_type TEXT,
-                start_time TEXT,
-                end_time TEXT,
-                timestamp TEXT)
-        """)
-        
-        # Add VIP messages table
+        # Create VIP messages table
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS vip_messages (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 sender TEXT,
                 message TEXT,
                 timestamp TEXT,
-                mentions TEXT)
+                mentions TEXT
+            )
         """)
         
-        # Handle system_settings table schema migration
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='system_settings'")
-        if not cursor.fetchone():
-            cursor.execute("""
-                CREATE TABLE system_settings (
-                    id INTEGER PRIMARY KEY DEFAULT 1,
-                    killswitch_enabled INTEGER DEFAULT 0,
-                    chat_killswitch_enabled INTEGER DEFAULT 0)
-            """)
-            cursor.execute("INSERT INTO system_settings (id, killswitch_enabled, chat_killswitch_enabled) VALUES (1, 0, 0)")
-        else:
-            cursor.execute("PRAGMA table_info(system_settings)")
-            columns = [column[1] for column in cursor.fetchall()]
-            if 'chat_killswitch_enabled' not in columns:
-                cursor.execute("ALTER TABLE system_settings ADD COLUMN chat_killswitch_enabled INTEGER DEFAULT 0")
-                cursor.execute("UPDATE system_settings SET chat_killswitch_enabled = 0 WHERE id = 1")
-
         # Create default admin account
         cursor.execute("""
-            INSERT OR IGNORE INTO users (username, password, role) 
-            VALUES (?, ?, ?)
-        """, ("taha kirri", hash_password("arise@99"), "admin"))
+            INSERT OR IGNORE INTO users (username, password, role, is_vip) 
+            VALUES (?, ?, ?, ?)
+        """, ("taha kirri", hash_password("arise@99"), "admin", 1))
+        
+        # Create other admin accounts
         admin_accounts = [
             ("taha kirri", "arise@99"),
             ("Issam Samghini", "admin@2025"),
@@ -169,10 +78,11 @@ def init_db():
         
         for username, password in admin_accounts:
             cursor.execute("""
-                INSERT OR IGNORE INTO users (username, password, role) 
-                VALUES (?, ?, ?)
-            """, (username, hash_password(password), "admin"))
-        # Create agent accounts (agent name as username, workspace ID as password)
+                INSERT OR IGNORE INTO users (username, password, role, is_vip) 
+                VALUES (?, ?, ?, ?)
+            """, (username, hash_password(password), "admin", 0))
+        
+        # Create agent accounts
         agents = [
             ("Karabila Younes", "30866"),
             ("Kaoutar Mzara", "30514"),
@@ -223,9 +133,9 @@ def init_db():
         
         for agent_name, workspace_id in agents:
             cursor.execute("""
-                INSERT OR IGNORE INTO users (username, password, role) 
-                VALUES (?, ?, ?)
-            """, (agent_name, hash_password(workspace_id), "agent"))
+                INSERT OR IGNORE INTO users (username, password, role, is_vip) 
+                VALUES (?, ?, ?, ?)
+            """, (agent_name, hash_password(workspace_id), "agent", 0))
         
         conn.commit()
     finally:
@@ -1780,8 +1690,14 @@ else:
             ("📞 Quality Issues", "quality_issues"),
             ("🔄 Mid-shift Issues", "midshift_issues")
         ]
+        
+        # Add admin option for admin users
         if st.session_state.role == "admin":
             nav_options.append(("⚙️ Admin", "admin"))
+        
+        # Add VIP Management for taha kirri
+        if st.session_state.username.lower() == "taha kirri":
+            nav_options.append(("⭐ VIP Management", "vip_management"))
         
         for option, value in nav_options:
             if st.button(option, key=f"nav_{value}", use_container_width=True):
@@ -2612,6 +2528,81 @@ else:
             admin_break_dashboard()
         else:
             agent_break_dashboard()
+
+    elif st.session_state.current_section == "vip_management" and st.session_state.username.lower() == "taha kirri":
+        st.title("⭐ VIP Management")
+        
+        # Get all users
+        users = get_all_users()
+        
+        # Create columns for better layout
+        col1, col2 = st.columns([3, 1])
+        
+        with col1:
+            # Show all users with their current VIP status
+            st.markdown("### Current VIP Status")
+            user_data = []
+            for user_id, username, role in users:
+                is_vip = is_vip_user(username)
+                user_data.append({
+                    "Username": username,
+                    "Role": role,
+                    "Status": "⭐ VIP" if is_vip else "Regular User"
+                })
+            
+            df = pd.DataFrame(user_data)
+            st.dataframe(df, use_container_width=True)
+        
+        with col2:
+            # VIP management form
+            with st.form("vip_management_form"):
+                st.write("### Update VIP Status")
+                selected_user = st.selectbox(
+                    "Select User",
+                    [user[1] for user in users if user[1].lower() != "taha kirri"],
+                    format_func=lambda x: f"{x} {'⭐' if is_vip_user(x) else ''}"
+                )
+                
+                if selected_user:
+                    current_vip = is_vip_user(selected_user)
+                    make_vip = st.checkbox("Grant VIP Access", value=current_vip)
+                    
+                    if st.form_submit_button("Update"):
+                        if set_vip_status(selected_user, make_vip):
+                            st.success(f"Updated VIP status for {selected_user}")
+                            st.rerun()
+        
+        # Add VIP Statistics
+        st.markdown("---")
+        st.subheader("VIP Statistics")
+        
+        total_users = len(users)
+        vip_users = sum(1 for user in users if is_vip_user(user[1]))
+        
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Total Users", total_users)
+        with col2:
+            st.metric("VIP Users", vip_users)
+        with col3:
+            st.metric("Regular Users", total_users - vip_users)
+        
+        # VIP Chat Overview
+        st.markdown("---")
+        st.subheader("VIP Chat Overview")
+        vip_messages = get_vip_messages()
+        if vip_messages:
+            message_data = []
+            for msg in vip_messages[:10]:  # Show last 10 messages
+                msg_id, sender, message, ts, mentions = msg
+                message_data.append({
+                    "Time": ts,
+                    "Sender": sender,
+                    "Message": message
+                })
+            st.dataframe(pd.DataFrame(message_data))
+        else:
+            st.info("No VIP messages yet")
 
 def get_new_messages(last_check_time):
     """Get new messages since last check"""
