@@ -999,14 +999,29 @@ def agent_break_dashboard():
         return
     
     try:
-        # Let agent select from active templates
-        template_name = st.selectbox(
-            "Select Break Schedule:",
-            st.session_state.active_templates,
-            index=0
-        )
+        # Get the agent's current template for today (if any)
+        current_agent_template = None
+        if (st.session_state.selected_date in st.session_state.agent_bookings and 
+            agent_id in st.session_state.agent_bookings[st.session_state.selected_date]):
+            bookings = st.session_state.agent_bookings[st.session_state.selected_date][agent_id]
+            for break_type in ['lunch', 'early_tea', 'late_tea']:
+                if break_type in bookings and isinstance(bookings[break_type], dict):
+                    current_agent_template = bookings[break_type]['template']
+                    break
         
-        template = adjust_template_times(st.session_state.templates[template_name], st.session_state.timezone_offset)
+        # If agent has existing bookings, show which template they're using
+        if current_agent_template:
+            st.info(f"You are currently using the **{current_agent_template}** template for today's breaks. All breaks must be booked from this template.")
+            template_name = current_agent_template
+            template = adjust_template_times(st.session_state.templates[template_name], st.session_state.timezone_offset)
+        else:
+            # Let agent select from active templates if they haven't booked any breaks yet
+            template_name = st.selectbox(
+                "Select Break Schedule:",
+                st.session_state.active_templates,
+                index=0
+            )
+            template = adjust_template_times(st.session_state.templates[template_name], st.session_state.timezone_offset)
         
         if not template["lunch_breaks"] and not template["tea_breaks"]["early"] and not template["tea_breaks"]["late"]:
             st.error("Template appears to be empty or invalid. Please contact admin.")
