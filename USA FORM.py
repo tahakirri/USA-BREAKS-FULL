@@ -1054,17 +1054,19 @@ def admin_break_dashboard():
     st.markdown("---")
     st.subheader("View All Bookings")
     
-        dates = list(st.session_state.agent_bookings.keys())
+    dates = list(st.session_state.agent_bookings.keys())
     if dates:
         selected_date = st.selectbox("Select Date:", dates, index=len(dates)-1)
         
         if selected_date in st.session_state.agent_bookings:
             bookings_data = []
             for agent, breaks in st.session_state.agent_bookings[selected_date].items():
-                # Get template from any of the breaks since they're all from the same template
-                template_name = (breaks.get("lunch", {}).get("template", "-") or 
-                              breaks.get("early_tea", {}).get("template", "-") or 
-                              breaks.get("late_tea", {}).get("template", "-"))
+                # Get template name from any of the breaks (they'll all be from the same template)
+                template_name = "-"
+                for break_type in ["lunch", "early_tea", "late_tea"]:
+                    if break_type in breaks and isinstance(breaks[break_type], dict):
+                        template_name = breaks[break_type].get("template", "-")
+                        break
                 
                 booking = {
                     "Agent": agent,
@@ -1078,17 +1080,17 @@ def admin_break_dashboard():
             if bookings_data:
                 df = pd.DataFrame(bookings_data)
                 st.dataframe(df)
-            
-            # Export option
+                
+                # Export option
                 if st.button("Export to CSV"):
                     csv = df.to_csv(index=False).encode('utf-8')
-                st.download_button(
+                    st.download_button(
                         "Download CSV",
                         csv,
                         f"break_bookings_{selected_date}.csv",
                         "text/csv"
-                )
-        else:
+                    )
+            else:
                 st.info("No bookings found for this date")
     else:
         st.info("No bookings available")
