@@ -2439,7 +2439,7 @@ if __name__ == "__main__":
     inject_custom_css()
     
     # Add route for message checking
-    if st.experimental_get_query_params().get("check_messages"):
+    if st.query_params.get("check_messages"):
         st.json(handle_message_check())
         st.stop()
     
