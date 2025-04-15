@@ -893,6 +893,25 @@ def admin_break_dashboard():
     st.title("Break Schedule Management")
     st.markdown("---")
     
+    # Bulk Time Update Section
+    st.subheader("⏰ Bulk Time Update")
+    st.warning("⚠️ This will update all time slots in all templates!")
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("➕ Add 1 Hour to All Times", use_container_width=True):
+            if bulk_update_template_times(1):
+                st.success("Successfully added 1 hour to all template times!")
+                st.rerun()
+    
+    with col2:
+        if st.button("➖ Subtract 1 Hour from All Times", use_container_width=True):
+            if bulk_update_template_times(-1):
+                st.success("Successfully subtracted 1 hour from all template times!")
+                st.rerun()
+    
+    st.markdown("---")
+    
     # Initialize templates if empty
     if 'templates' not in st.session_state:
         st.session_state.templates = {}
