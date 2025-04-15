@@ -2232,16 +2232,21 @@ else:
         st.markdown("---")
         st.subheader("User Management")
         if not is_killswitch_enabled():
-            # Only show the add user form to taha kirri
-            if st.session_state.username.lower() == "taha kirri":
-                with st.form("add_user"):
-                    user = st.text_input("Username")
-                    pwd = st.text_input("Password", type="password")
+            # Show add user form to all admins, but with different options
+            with st.form("add_user"):
+                user = st.text_input("Username")
+                pwd = st.text_input("Password", type="password")
+                # Only show role selection to taha kirri, others can only create agent accounts
+                if st.session_state.username.lower() == "taha kirri":
                     role = st.selectbox("Role", ["agent", "admin"])
-                    if st.form_submit_button("Add User"):
-                        if user and pwd:
-                            add_user(user, pwd, role)
-                            st.rerun()
+                else:
+                    role = "agent"  # Default role for accounts created by other admins
+                    st.info("Note: New accounts will be created as agent accounts.")
+                
+                if st.form_submit_button("Add User"):
+                    if user and pwd:
+                        add_user(user, pwd, role)
+                        st.rerun()
         
         st.subheader("Existing Users")
         users = get_all_users()
