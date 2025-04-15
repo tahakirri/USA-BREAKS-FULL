@@ -1426,7 +1426,8 @@ def inject_custom_css():
             'muted': '#94a3b8',
             'input_bg': '#1e293b',
             'my_message_bg': '#2563eb',
-            'other_message_bg': '#334155'
+            'other_message_bg': '#334155',
+            'hover_bg': '#334155'
         },
         'light': {
             'bg': '#f8fafc',
@@ -1439,7 +1440,8 @@ def inject_custom_css():
             'muted': '#64748b',
             'input_bg': '#ffffff',
             'my_message_bg': '#2563eb',
-            'other_message_bg': '#f1f5f9'
+            'other_message_bg': '#f1f5f9',
+            'hover_bg': '#f1f5f9'
         }
     }
     
@@ -1447,6 +1449,55 @@ def inject_custom_css():
     
     st.markdown(f"""
     <style>
+        /* Sidebar Button Hover Animation */
+        [data-testid="stSidebar"] .stButton > button {{
+            width: 100%;
+            text-align: left;
+            padding: 0.75rem 1rem;
+            background-color: transparent;
+            color: {c['text']};
+            border: none;
+            border-radius: 0.5rem;
+            margin-bottom: 0.5rem;
+            transition: all 0.2s ease-in-out;
+            border: 1px solid transparent;
+        }}
+        
+        [data-testid="stSidebar"] .stButton > button:hover {{
+            background-color: {c['hover_bg']};
+            transform: translateX(5px);
+            border-color: {c['accent']};
+        }}
+        
+        /* Regular Button Hover Animation */
+        .stButton > button {{
+            transition: all 0.2s ease-in-out;
+        }}
+        
+        .stButton > button:hover {{
+            transform: translateY(-2px);
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+        }}
+        
+        /* Card Hover Animation */
+        .card {{
+            transition: all 0.2s ease-in-out;
+        }}
+        
+        .card:hover {{
+            transform: translateY(-2px);
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+        }}
+        
+        /* Input Focus Animation */
+        .stTextInput > div > div {{
+            transition: all 0.2s ease-in-out;
+        }}
+        
+        .stTextInput > div > div:focus-within {{
+            transform: translateY(-1px);
+        }}
+        
         /* Global Styles */
         .stApp {{
             background-color: {c['bg']};
@@ -1627,9 +1678,20 @@ else:
         st.title(f"👋 Welcome, {st.session_state.username}")
         st.markdown("---")
         
+        # Add light/dark mode toggle at the top
+        mode_col1, mode_col2 = st.columns([1, 3])
+        with mode_col1:
+            current_mode = "🌙" if st.session_state.color_mode == 'dark' else "☀️"
+            st.write(f"### {current_mode}")
+        with mode_col2:
+            if st.button("Toggle Theme", use_container_width=True):
+                st.session_state.color_mode = 'light' if st.session_state.color_mode == 'dark' else 'dark'
+                st.rerun()
+        
+        st.markdown("---")
+        
         nav_options = [
             ("📋 Requests", "requests"),
-            ("📊 Dashboard", "dashboard"),
             ("☕ Breaks", "breaks"),
             ("🖼️ HOLD", "hold"),
             ("❌ Mistakes", "mistakes"),
@@ -1643,7 +1705,7 @@ else:
             nav_options.append(("⚙️ Admin", "admin"))
         
         for option, value in nav_options:
-            if st.button(option, key=f"nav_{value}"):
+            if st.button(option, key=f"nav_{value}", use_container_width=True):
                 st.session_state.current_section = value
                 
         st.markdown("---")
@@ -1662,7 +1724,7 @@ else:
         </div>
         """, unsafe_allow_html=True)
         
-        if st.button("🚪 Logout"):
+        if st.button("🚪 Logout", use_container_width=True):
             st.session_state.authenticated = False
             st.rerun()
 
