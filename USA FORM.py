@@ -1865,8 +1865,6 @@ else:
                             st.rerun()
                     except Exception as e:
                         st.error(f"Error uploading image: {str(e)}")
-            else:
-                st.info("Only admin users can upload HOLD images.")
             
             # Display images (visible to all users)
             images = get_hold_images()
