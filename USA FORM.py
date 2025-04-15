@@ -1958,16 +1958,6 @@ else:
                         </div>
                         """, unsafe_allow_html=True)
                         
-                        # --- Emoji Row ---
-                        emoji_list = ["😀", "😂", "😍", "😎", "👍", "🙏", "🎉", "😢", "😮", "🔥", "💯", "😡", "🥳", "🤔", "🙌"]
-                        emoji_cols = st.columns(len(emoji_list))
-                        for i, emoji in enumerate(emoji_list):
-                            if emoji_cols[i].button(emoji, key=f"vip_emoji_{emoji}"):
-                                if 'vip_chat_input' not in st.session_state:
-                                    st.session_state['vip_chat_input'] = ''
-                                st.session_state['vip_chat_input'] += emoji
-                                st.experimental_rerun()
-                        
                         vip_messages = get_vip_messages()
                         st.markdown('<div class="chat-container">', unsafe_allow_html=True)
                         for msg in reversed(vip_messages):
@@ -1989,14 +1979,12 @@ else:
                         st.markdown('</div>', unsafe_allow_html=True)
                         
                         with st.form("vip_chat_form", clear_on_submit=True):
-                            # Use session_state for input persistence
                             message = st.text_input("Type your message...", key="vip_chat_input")
                             col1, col2 = st.columns([5,1])
                             with col2:
                                 if st.form_submit_button("Send"):
                                     if message:
                                         send_vip_message(st.session_state.username, message)
-                                        st.session_state.vip_chat_input = ''
                                         st.rerun()
                 else:
                     # Regular chat only for non-VIP users
