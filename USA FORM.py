@@ -44,7 +44,8 @@ def init_db():
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 username TEXT UNIQUE,
                 password TEXT,
-                role TEXT CHECK(role IN ('agent', 'admin')))
+                role TEXT CHECK(role IN ('agent', 'admin')),
+                is_vip INTEGER DEFAULT 0)
         """)
         
         cursor.execute("""
@@ -124,6 +125,16 @@ def init_db():
                 start_time TEXT,
                 end_time TEXT,
                 timestamp TEXT)
+        """)
+        
+        # Add VIP messages table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS vip_messages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                sender TEXT,
+                message TEXT,
+                timestamp TEXT,
+                mentions TEXT)
         """)
         
         # Handle system_settings table schema migration
@@ -683,6 +694,36 @@ def clear_midshift_issues():
         return True
     except Exception as e:
         st.error(f"Error clearing mid-shift issues: {str(e)}")
+    finally:
+        conn.close()
+
+def send_vip_message(sender, message):
+    """Send a message in the VIP-only chat"""
+    if is_killswitch_enabled() or is_chat_killswitch_enabled():
+        st.error("Chat is currently locked. Please contact the developer.")
+        return False
+        
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        mentions = re.findall(r'@(\w+)', message)
+        cursor.execute("""
+            INSERT INTO vip_messages (sender, message, timestamp, mentions) 
+            VALUES (?, ?, ?, ?)
+        """, (sender, message, datetime.now().strftime("%Y-%m-%d %H:%M:%S"), 
+             ','.join(mentions)))
+        conn.commit()
+        return True
+    finally:
+        conn.close()
+
+def get_vip_messages():
+    """Get messages from the VIP-only chat"""
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM vip_messages ORDER BY timestamp DESC LIMIT 50")
+        return cursor.fetchall()
     finally:
         conn.close()
 
@@ -1357,6 +1398,29 @@ def agent_break_dashboard():
                 st.success("Your breaks have been confirmed!")
                 st.rerun()
 
+def is_vip_user(username):
+    """Check if a user has VIP status"""
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT is_vip FROM users WHERE username = ?", (username,))
+        result = cursor.fetchone()
+        return bool(result[0]) if result else False
+    finally:
+        conn.close()
+
+def set_vip_status(username, is_vip):
+    """Set or remove VIP status for a user"""
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("UPDATE users SET is_vip = ? WHERE username = ?", 
+                      (1 if is_vip else 0, username))
+        conn.commit()
+        return True
+    finally:
+        conn.close()
+
 # --------------------------
 # Streamlit App
 # --------------------------
@@ -1862,72 +1926,81 @@ else:
 
     elif st.session_state.current_section == "chat":
         if not is_killswitch_enabled():
-            # Add notification permission request
-            st.markdown("""
-            <div id="notification-container"></div>
-            <script>
-            // Check if notifications are supported
-            if ('Notification' in window) {
-                const container = document.getElementById('notification-container');
-                if (Notification.permission === 'default') {
-                    container.innerHTML = `
-                        <div style="padding: 1rem; margin-bottom: 1rem; border-radius: 0.5rem; background-color: #1e293b; border: 1px solid #334155;">
-                            <p style="margin: 0; color: #e2e8f0;">Would you like to receive notifications for new messages?</p>
-                            <button onclick="requestNotificationPermission()" style="margin-top: 0.5rem; padding: 0.5rem 1rem; background-color: #2563eb; color: white; border: none; border-radius: 0.25rem; cursor: pointer;">
-                                Enable Notifications
-                            </button>
+            # Add tabs for regular and VIP chat
+            if is_vip_user(st.session_state.username) or st.session_state.username.lower() == "taha kirri":
+                chat_type = st.tabs(["💬 Regular Chat", "⭐ VIP Chat"])
+                
+                with chat_type[0]:
+                    # Regular chat code here
+                    messages = get_group_messages()
+                    st.markdown('<div class="chat-container">', unsafe_allow_html=True)
+                    for msg in reversed(messages):
+                        msg_id, sender, message, ts, mentions = msg
+                        is_sent = sender == st.session_state.username
+                        is_mentioned = st.session_state.username in (mentions.split(',') if mentions else [])
+                        
+                        st.markdown(f"""
+                        <div class="chat-message {'sent' if is_sent else 'received'}">
+                            <div class="message-avatar">
+                                {sender[0].upper()}
+                            </div>
+                            <div class="message-content">
+                                <div>{message}</div>
+                                <div class="message-meta">{sender} • {ts}</div>
+                            </div>
                         </div>
-                    `;
-                }
-            }
-
-            async function requestNotificationPermission() {
-                const permission = await Notification.requestPermission();
-                if (permission === 'granted') {
-                    document.getElementById('notification-container').style.display = 'none';
-                }
-            }
-            </script>
-            """, unsafe_allow_html=True)
-            
-            # Add mode toggle in sidebar
-            with st.sidebar:
-                st.markdown("---")
-                if st.button("🌓 Toggle Light/Dark Mode"):
-                    st.session_state.color_mode = 'light' if st.session_state.color_mode == 'dark' else 'dark'
-                    st.rerun()
-            
-            if is_chat_killswitch_enabled():
-                st.warning("Chat functionality is currently disabled by the administrator.")
-            else:
-                messages = get_group_messages()
-                st.markdown('<div class="chat-container">', unsafe_allow_html=True)
-                for msg in reversed(messages):
-                    msg_id, sender, message, ts, mentions = msg
-                    is_sent = sender == st.session_state.username
-                    is_mentioned = st.session_state.username in (mentions.split(',') if mentions else [])
+                        """, unsafe_allow_html=True)
+                    st.markdown('</div>', unsafe_allow_html=True)
                     
-                    st.markdown(f"""
-                    <div class="chat-message {'sent' if is_sent else 'received'}">
-                        <div class="message-avatar">
-                            {sender[0].upper()}
-                        </div>
-                        <div class="message-content">
-                            <div>{message}</div>
-                            <div class="message-meta">{sender} • {ts}</div>
-                        </div>
+                    with st.form("regular_chat_form", clear_on_submit=True):
+                        message = st.text_input("Type your message...", key="regular_chat_input")
+                        col1, col2 = st.columns([5,1])
+                        with col2:
+                            if st.form_submit_button("Send"):
+                                if message:
+                                    send_group_message(st.session_state.username, message)
+                                    st.rerun()
+                
+                with chat_type[1]:
+                    st.markdown("""
+                    <div style='padding: 1rem; background-color: #2d3748; border-radius: 0.5rem; margin-bottom: 1rem;'>
+                        <h3 style='color: gold; margin: 0;'>⭐ VIP Chat</h3>
+                        <p style='color: #e2e8f0; margin: 0;'>Exclusive chat for VIP members</p>
                     </div>
                     """, unsafe_allow_html=True)
-                st.markdown('</div>', unsafe_allow_html=True)
-                
-                with st.form("chat_form", clear_on_submit=True):
-                    message = st.text_input("Type your message...", key="chat_input")
-                    col1, col2 = st.columns([5,1])
-                    with col2:
-                        if st.form_submit_button("Send"):
-                            if message:
-                                send_group_message(st.session_state.username, message)
-                                st.rerun()
+                    
+                    vip_messages = get_vip_messages()
+                    st.markdown('<div class="chat-container">', unsafe_allow_html=True)
+                    for msg in reversed(vip_messages):
+                        msg_id, sender, message, ts, mentions = msg
+                        is_sent = sender == st.session_state.username
+                        is_mentioned = st.session_state.username in (mentions.split(',') if mentions else [])
+                        
+                        st.markdown(f"""
+                        <div class="chat-message {'sent' if is_sent else 'received'}">
+                            <div class="message-avatar" style="background-color: gold;">
+                                {sender[0].upper()}
+                            </div>
+                            <div class="message-content" style="background-color: #4a5568;">
+                                <div>{message}</div>
+                                <div class="message-meta">{sender} • {ts}</div>
+                            </div>
+                        </div>
+                        """, unsafe_allow_html=True)
+                    st.markdown('</div>', unsafe_allow_html=True)
+                    
+                    with st.form("vip_chat_form", clear_on_submit=True):
+                        message = st.text_input("Type your message...", key="vip_chat_input")
+                        col1, col2 = st.columns([5,1])
+                        with col2:
+                            if st.form_submit_button("Send"):
+                                if message:
+                                    send_vip_message(st.session_state.username, message)
+                                    st.rerun()
+            else:
+                # Regular chat only for non-VIP users
+                messages = get_group_messages()
+                # ... rest of regular chat code ...
         else:
             st.error("System is currently locked. Access to chat is disabled.")
 
@@ -2441,6 +2514,29 @@ else:
                 if cols[1].button("Delete", key=f"del_{uid}") and not is_killswitch_enabled():
                     delete_user(uid)
                     st.rerun()
+
+        st.subheader("⭐ VIP User Management")
+        
+        # Get all users
+        users = get_all_users()
+        
+        with st.form("vip_management"):
+            selected_user = st.selectbox(
+                "Select User",
+                [user[1] for user in users],
+                format_func=lambda x: f"{x} {'⭐' if is_vip_user(x) else ''}"
+            )
+            
+            if selected_user:
+                current_vip = is_vip_user(selected_user)
+                make_vip = st.checkbox("VIP Status", value=current_vip)
+                
+                if st.form_submit_button("Update VIP Status"):
+                    if set_vip_status(selected_user, make_vip):
+                        st.success(f"Updated VIP status for {selected_user}")
+                        st.rerun()
+        
+        st.markdown("---")
 
     elif st.session_state.current_section == "breaks":
         if st.session_state.role == "admin":
