@@ -2372,48 +2372,6 @@ else:
 
     elif st.session_state.current_section == "admin" and st.session_state.role == "admin":
         if st.session_state.username.lower() == "taha kirri":
-            # Add VIP Management section at the top
-            st.header("⭐ VIP Management")
-            st.markdown("---")
-            
-            # VIP User Management
-            st.subheader("VIP User Management")
-            
-            # Get all users
-            users = get_all_users()
-            
-            # Create columns for better layout
-            col1, col2 = st.columns([3, 1])
-            
-            with col1:
-                # Show all users with their current VIP status
-                st.markdown("### Current VIP Status")
-                for user_id, username, role in users:
-                    is_vip = is_vip_user(username)
-                    status = "⭐ VIP" if is_vip else "Regular User"
-                    st.write(f"{username}: {status}")
-            
-            with col2:
-                # VIP management form
-                with st.form("vip_management_form"):
-                    st.write("### Update VIP Status")
-                    selected_user = st.selectbox(
-                        "Select User",
-                        [user[1] for user in users if user[1].lower() != "taha kirri"],
-                        format_func=lambda x: f"{x} {'⭐' if is_vip_user(x) else ''}"
-                    )
-                    
-                    if selected_user:
-                        current_vip = is_vip_user(selected_user)
-                        make_vip = st.checkbox("Grant VIP Access", value=current_vip)
-                        
-                        if st.form_submit_button("Update"):
-                            if set_vip_status(selected_user, make_vip):
-                                st.success(f"Updated VIP status for {selected_user}")
-                                st.rerun()
-            
-            st.markdown("---")
-            
             st.subheader("🚨 System Killswitch")
             current = is_killswitch_enabled()
             status = "🔴 ACTIVE" if current else "🟢 INACTIVE"
