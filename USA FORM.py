@@ -1468,10 +1468,6 @@ def inject_custom_css():
             color: {c['button_text']} !important;
         }}
         
-        .stForm [data-testid="stFormSubmitButton"] button:hover {{
-            background-color: {c['button_hover']} !important;
-        }}
-        
         /* Dropdown/Select Styling */
         .stSelectbox > div > div {{
             background-color: {c['dropdown_bg']} !important;
@@ -1530,6 +1526,76 @@ def inject_custom_css():
             padding: 1rem;
             border-radius: 0.5rem;
             margin-bottom: 1rem;
+        }}
+        
+        /* Chat Message Styling */
+        .chat-message {{
+            display: flex;
+            margin-bottom: 1rem;
+            max-width: 80%;
+            animation: fadeIn 0.3s ease-in-out;
+        }}
+        
+        .chat-message.received {{
+            margin-right: auto;
+        }}
+        
+        .chat-message.sent {{
+            margin-left: auto;
+            flex-direction: row-reverse;
+        }}
+        
+        .message-content {{
+            padding: 0.75rem 1rem;
+            border-radius: 1rem;
+            position: relative;
+        }}
+        
+        .received .message-content {{
+            background-color: {c['other_message_bg']};
+            color: {c['text']};
+            border-bottom-left-radius: 0.25rem;
+            margin-right: 1rem;
+        }}
+        
+        .sent .message-content {{
+            background-color: {c['my_message_bg']};
+            color: white;
+            border-bottom-right-radius: 0.25rem;
+            margin-left: 1rem;
+        }}
+        
+        .message-meta {{
+            font-size: 0.75rem;
+            color: {c['muted']};
+            margin-top: 0.25rem;
+        }}
+        
+        .message-avatar {{
+            width: 2.5rem;
+            height: 2.5rem;
+            border-radius: 50%;
+            background-color: {c['accent']};
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            font-size: 1rem;
+        }}
+        
+        /* Table Styling */
+        .stDataFrame {{
+            background-color: {c['card']} !important;
+        }}
+        
+        .stDataFrame td {{
+            color: {c['text']} !important;
+        }}
+        
+        .stDataFrame th {{
+            color: {c['text']} !important;
+            background-color: {c['dropdown_bg']} !important;
         }}
     </style>
     """, unsafe_allow_html=True)
@@ -2263,6 +2329,37 @@ else:
             if cols[2].button("Delete", key=f"del_{uid}") and not is_killswitch_enabled():
                 delete_user(uid)
                 st.rerun()
+
+    elif st.session_state.current_section == "hold":
+        st.subheader("🖼️ HOLD Images")
+        
+        if not is_killswitch_enabled():
+            uploaded_file = st.file_uploader("Upload HOLD Image", type=['png', 'jpg', 'jpeg'])
+            if uploaded_file is not None:
+                try:
+                    # Convert the file to bytes
+                    img_bytes = uploaded_file.getvalue()
+                    
+                    # Add to database
+                    if add_hold_image(st.session_state.username, img_bytes):
+                        st.success("Image uploaded successfully!")
+                except Exception as e:
+                    st.error(f"Error uploading image: {str(e)}")
+        
+        # Display images
+        images = get_hold_images()
+        if images:
+            for img in images:
+                img_id, uploader, img_data, timestamp = img
+                st.markdown(f"**Uploaded by:** {uploader} at {timestamp}")
+                try:
+                    image = Image.open(io.BytesIO(img_data))
+                    st.image(image, use_column_width=True)
+                except Exception as e:
+                    st.error(f"Error displaying image: {str(e)}")
+                st.markdown("---")
+        else:
+            st.info("No HOLD images available")
 
 if __name__ == "__main__":
     inject_custom_css()
