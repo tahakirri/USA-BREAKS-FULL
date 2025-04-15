@@ -1312,6 +1312,52 @@ if 'color_mode' not in st.session_state:
     st.session_state.color_mode = 'dark'
 
 def inject_custom_css():
+    # Add notification JavaScript
+    st.markdown("""
+    <script>
+    // Request notification permission on page load
+    document.addEventListener('DOMContentLoaded', function() {
+        if (Notification.permission !== 'granted') {
+            Notification.requestPermission();
+        }
+    });
+
+    // Function to show browser notification
+    function showNotification(title, body) {
+        if (Notification.permission === 'granted') {
+            const notification = new Notification(title, {
+                body: body,
+                icon: '🔔'
+            });
+            
+            notification.onclick = function() {
+                window.focus();
+                notification.close();
+            };
+        }
+    }
+
+    // Function to check for new messages
+    async function checkNewMessages() {
+        try {
+            const response = await fetch('/check_messages');
+            const data = await response.json();
+            
+            if (data.new_messages) {
+                data.messages.forEach(msg => {
+                    showNotification('New Message', `${msg.sender}: ${msg.message}`);
+                });
+            }
+        } catch (error) {
+            console.error('Error checking messages:', error);
+        }
+    }
+
+    // Check for new messages every 30 seconds
+    setInterval(checkNewMessages, 30000);
+    </script>
+    """, unsafe_allow_html=True)
+
     # Always use dark mode colors
     c = {
         'bg': '#0f172a',
@@ -1762,6 +1808,34 @@ else:
 
     elif st.session_state.current_section == "chat":
         if not is_killswitch_enabled():
+            # Add notification permission request
+            st.markdown("""
+            <div id="notification-container"></div>
+            <script>
+            // Check if notifications are supported
+            if ('Notification' in window) {
+                const container = document.getElementById('notification-container');
+                if (Notification.permission === 'default') {
+                    container.innerHTML = `
+                        <div style="padding: 1rem; margin-bottom: 1rem; border-radius: 0.5rem; background-color: #1e293b; border: 1px solid #334155;">
+                            <p style="margin: 0; color: #e2e8f0;">Would you like to receive notifications for new messages?</p>
+                            <button onclick="requestNotificationPermission()" style="margin-top: 0.5rem; padding: 0.5rem 1rem; background-color: #2563eb; color: white; border: none; border-radius: 0.25rem; cursor: pointer;">
+                                Enable Notifications
+                            </button>
+                        </div>
+                    `;
+                }
+            }
+
+            async function requestNotificationPermission() {
+                const permission = await Notification.requestPermission();
+                if (permission === 'granted') {
+                    document.getElementById('notification-container').style.display = 'none';
+                }
+            }
+            </script>
+            """, unsafe_allow_html=True)
+            
             # Add mode toggle in sidebar
             with st.sidebar:
                 st.markdown("---")
@@ -2320,6 +2394,53 @@ else:
         else:
             agent_break_dashboard()
 
+def get_new_messages(last_check_time):
+    """Get new messages since last check"""
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT id, sender, message, timestamp, mentions 
+            FROM group_messages 
+            WHERE timestamp > ?
+            ORDER BY timestamp DESC
+        """, (last_check_time,))
+        return cursor.fetchall()
+    finally:
+        conn.close()
+
+def handle_message_check():
+    if not st.session_state.authenticated:
+        return {"new_messages": False, "messages": []}
+    
+    current_time = datetime.now()
+    if 'last_message_check' not in st.session_state:
+        st.session_state.last_message_check = current_time
+    
+    new_messages = get_new_messages(st.session_state.last_message_check.strftime("%Y-%m-%d %H:%M:%S"))
+    st.session_state.last_message_check = current_time
+    
+    if new_messages:
+        messages_data = []
+        for msg in new_messages:
+            msg_id, sender, message, ts, mentions = msg
+            if sender != st.session_state.username:  # Don't notify about own messages
+                mentions_list = mentions.split(',') if mentions else []
+                if st.session_state.username in mentions_list:
+                    message = f"@{st.session_state.username} {message}"
+                messages_data.append({
+                    "sender": sender,
+                    "message": message
+                })
+        return {"new_messages": bool(messages_data), "messages": messages_data}
+    return {"new_messages": False, "messages": []}
+
 if __name__ == "__main__":
     inject_custom_css()
+    
+    # Add route for message checking
+    if st.experimental_get_query_params().get("check_messages"):
+        st.json(handle_message_check())
+        st.stop()
+    
     st.write("Request Management System")
