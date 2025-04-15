@@ -809,8 +809,6 @@ def agent_break_dashboard():
     st.markdown("---")
     
     # Initialize session state variables if they don't exist
-    if 'selected_date' not in st.session_state:
-        st.session_state.selected_date = datetime.now().strftime('%Y-%m-%d')
     if 'agent_bookings' not in st.session_state:
         st.session_state.agent_bookings = {}
     
@@ -818,9 +816,10 @@ def agent_break_dashboard():
     agent_id = st.session_state.username
     st.write(f"Booking breaks for: **{agent_id}**")
     
-    # Date selection
-    schedule_date = st.date_input("Select Date:", datetime.now())
-    st.session_state.selected_date = schedule_date.strftime('%Y-%m-%d')
+    # Set date to current date only
+    current_date = datetime.now()
+    st.session_state.selected_date = current_date.strftime('%Y-%m-%d')
+    st.write(f"**Current Date:** {st.session_state.selected_date}")
     
     # Use the first template (or create a default if none exists)
     if not st.session_state.templates:
