@@ -666,6 +666,15 @@ def migrate_booking_data():
         
         save_break_data()
 
+def clear_all_bookings():
+    if is_killswitch_enabled():
+        st.error("System is currently locked. Please contact the developer.")
+        return False
+    
+    st.session_state.agent_bookings = {}
+    save_break_data()
+    return True
+
 def admin_break_dashboard():
     st.title("Admin Dashboard")
     st.markdown("---")
@@ -686,6 +695,13 @@ def admin_break_dashboard():
         st.session_state.timezone_offset = new_offset
         st.success(f"Timezone set to {timezone}. All break times adjusted.")
         st.rerun()
+    
+    # Clear All Bookings button
+    st.header("Clear All Bookings")
+    if st.button("Clear All Break Bookings"):
+        if clear_all_bookings():
+            st.success("All break bookings have been cleared!")
+            st.rerun()
     
     # Template management
     st.header("Template Management")
@@ -868,73 +884,46 @@ def admin_break_dashboard():
         for date, agents in st.session_state.agent_bookings.items():
             if date == selected_date:  # Only show bookings for selected date
                 for agent_id, breaks in agents.items():
+                    # Find which template this agent is using
+                    agent_template = None
+                    for break_type in ['lunch', 'early_tea', 'late_tea']:
+                        if break_type in breaks and isinstance(breaks[break_type], dict):
+                            agent_template = breaks[break_type].get('template', 'Default Template')
+                            break
+                    
                     booking_entry = {
                         "Date": date,
-                        "Agent": agent_id
+                        "Agent": agent_id,
+                        "Template": agent_template or "Default Template",
+                        "Lunch": "-",
+                        "Early Tea": "-",
+                        "Late Tea": "-",
+                        "Booked At": "-"
                     }
                     
-                    # Add lunch break details
+                    # Add break times without template info
                     if "lunch" in breaks:
                         if isinstance(breaks["lunch"], dict):
-                            booking_entry.update({
-                                "Lunch Time": breaks["lunch"].get("time", "-"),
-                                "Lunch Template": breaks["lunch"].get("template", "Default Template"),
-                                "Lunch Booked At": breaks["lunch"].get("booked_at", "N/A")
-                            })
+                            booking_entry["Lunch"] = breaks["lunch"].get("time", "-")
+                            booking_entry["Booked At"] = breaks["lunch"].get("booked_at", "N/A")
                         else:
-                            booking_entry.update({
-                                "Lunch Time": str(breaks["lunch"]),
-                                "Lunch Template": "Default Template",
-                                "Lunch Booked At": "N/A"
-                            })
-                    else:
-                        booking_entry.update({
-                            "Lunch Time": "-",
-                            "Lunch Template": "-",
-                            "Lunch Booked At": "-"
-                        })
+                            booking_entry["Lunch"] = str(breaks["lunch"])
                     
-                    # Add early tea break details
                     if "early_tea" in breaks:
                         if isinstance(breaks["early_tea"], dict):
-                            booking_entry.update({
-                                "Early Tea Time": breaks["early_tea"].get("time", "-"),
-                                "Early Tea Template": breaks["early_tea"].get("template", "Default Template"),
-                                "Early Tea Booked At": breaks["early_tea"].get("booked_at", "N/A")
-                            })
+                            booking_entry["Early Tea"] = breaks["early_tea"].get("time", "-")
+                            if booking_entry["Booked At"] == "-":
+                                booking_entry["Booked At"] = breaks["early_tea"].get("booked_at", "N/A")
                         else:
-                            booking_entry.update({
-                                "Early Tea Time": str(breaks["early_tea"]),
-                                "Early Tea Template": "Default Template",
-                                "Early Tea Booked At": "N/A"
-                            })
-                    else:
-                        booking_entry.update({
-                            "Early Tea Time": "-",
-                            "Early Tea Template": "-",
-                            "Early Tea Booked At": "-"
-                        })
+                            booking_entry["Early Tea"] = str(breaks["early_tea"])
                     
-                    # Add late tea break details
                     if "late_tea" in breaks:
                         if isinstance(breaks["late_tea"], dict):
-                            booking_entry.update({
-                                "Late Tea Time": breaks["late_tea"].get("time", "-"),
-                                "Late Tea Template": breaks["late_tea"].get("template", "Default Template"),
-                                "Late Tea Booked At": breaks["late_tea"].get("booked_at", "N/A")
-                            })
+                            booking_entry["Late Tea"] = breaks["late_tea"].get("time", "-")
+                            if booking_entry["Booked At"] == "-":
+                                booking_entry["Booked At"] = breaks["late_tea"].get("booked_at", "N/A")
                         else:
-                            booking_entry.update({
-                                "Late Tea Time": str(breaks["late_tea"]),
-                                "Late Tea Template": "Default Template",
-                                "Late Tea Booked At": "N/A"
-                            })
-                    else:
-                        booking_entry.update({
-                            "Late Tea Time": "-",
-                            "Late Tea Template": "-",
-                            "Late Tea Booked At": "-"
-                        })
+                            booking_entry["Late Tea"] = str(breaks["late_tea"])
                     
                     bookings_list.append(booking_entry)
         
