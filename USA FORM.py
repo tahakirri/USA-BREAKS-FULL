@@ -468,18 +468,43 @@ def delete_user(user_id):
     finally:
         conn.close()
 
+def optimize_image(image_bytes):
+    """Optimize image for storage and display"""
+    try:
+        # Open the image
+        img = Image.open(io.BytesIO(image_bytes))
+        
+        # Convert to RGB if necessary (handles PNG transparency)
+        if img.mode in ('RGBA', 'P'):
+            img = img.convert('RGB')
+        
+        # Calculate new dimensions while maintaining aspect ratio
+        max_size = (800, 800)  # Maximum width and height
+        img.thumbnail(max_size, Image.Resampling.LANCZOS)
+        
+        # Save the optimized image to bytes with JPEG compression
+        output_buffer = io.BytesIO()
+        img.save(output_buffer, format='JPEG', quality=85, optimize=True)
+        return output_buffer.getvalue()
+    except Exception as e:
+        st.error(f"Error optimizing image: {str(e)}")
+        return image_bytes
+
 def add_hold_image(uploader, image_data):
     if is_killswitch_enabled():
         st.error("System is currently locked. Please contact the developer.")
         return False
         
+    # Optimize the image before storing
+    optimized_image = optimize_image(image_data)
+    
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
         cursor.execute("""
             INSERT INTO hold_images (uploader, image_data, timestamp) 
             VALUES (?, ?, ?)
-        """, (uploader, image_data, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+        """, (uploader, optimized_image, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
         conn.commit()
         return True
     finally:
@@ -1949,16 +1974,18 @@ else:
                 uploaded_file = st.file_uploader("Upload HOLD Image", type=['png', 'jpg', 'jpeg'])
                 if uploaded_file is not None:
                     try:
-                        # Convert the file to bytes
-                        img_bytes = uploaded_file.getvalue()
-                        
-                        # Clear existing images before adding new one
-                        clear_hold_images()
-                        
-                        # Add to database
-                        if add_hold_image(st.session_state.username, img_bytes):
-                            st.success("Image uploaded successfully!")
-                            st.rerun()
+                        # Show a spinner while processing
+                        with st.spinner('Optimizing and uploading image...'):
+                            # Convert the file to bytes
+                            img_bytes = uploaded_file.getvalue()
+                            
+                            # Clear existing images before adding new one
+                            clear_hold_images()
+                            
+                            # Add to database
+                            if add_hold_image(st.session_state.username, img_bytes):
+                                st.success("Image uploaded and optimized successfully!")
+                                st.rerun()
                     except Exception as e:
                         st.error(f"Error uploading image: {str(e)}")
             
@@ -1975,8 +2002,13 @@ else:
                 </div>
                 """, unsafe_allow_html=True)
                 try:
-                    image = Image.open(io.BytesIO(img_data))
-                    st.image(image, use_container_width=True)  # Updated parameter
+                    # Use st.cache_data to cache the image data
+                    @st.cache_data(ttl=3600)  # Cache for 1 hour
+                    def get_cached_image(img_data):
+                        return Image.open(io.BytesIO(img_data))
+                    
+                    image = get_cached_image(img_data)
+                    st.image(image, use_container_width=True)
                 except Exception as e:
                     st.error(f"Error displaying image: {str(e)}")
             else:
