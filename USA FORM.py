@@ -8,7 +8,20 @@ from PIL import Image
 import io
 import pandas as pd
 import json
-import plotly.express as px
+
+# Try to import plotly, use alternative if not available
+try:
+    import plotly.express as px
+    PLOTLY_AVAILABLE = True
+except ImportError:
+    PLOTLY_AVAILABLE = False
+    st.warning("""
+        📊 Analytics visualizations require plotly. 
+        To enable advanced analytics, please install it using:
+        ```
+        pip install plotly
+        ```
+    """)
 
 # --------------------------
 # Database Functions
@@ -2206,21 +2219,33 @@ else:
                         with col3:
                             st.metric("Most Popular Break Type", df['Break Type'].mode()[0])
                         
-                        # Break distribution by type
-                        st.markdown("### Break Distribution")
-                        fig = px.pie(df, names='Break Type', title='Break Type Distribution')
-                        st.plotly_chart(fig)
-                        
-                        # Break distribution by shift
-                        fig = px.pie(df, names='Shift', title='Shift Distribution')
-                        st.plotly_chart(fig)
-                        
-                        # Time series of break usage
-                        st.markdown("### Break Usage Over Time")
-                        daily_breaks = df.groupby('Date')['Number of Agents'].sum().reset_index()
-                        fig = px.line(daily_breaks, x='Date', y='Number of Agents', 
-                                    title='Daily Break Usage')
-                        st.plotly_chart(fig)
+                        if PLOTLY_AVAILABLE:
+                            # Break distribution by type
+                            st.markdown("### Break Distribution")
+                            fig = px.pie(df, names='Break Type', title='Break Type Distribution')
+                            st.plotly_chart(fig)
+                            
+                            # Break distribution by shift
+                            fig = px.pie(df, names='Shift', title='Shift Distribution')
+                            st.plotly_chart(fig)
+                            
+                            # Time series of break usage
+                            st.markdown("### Break Usage Over Time")
+                            daily_breaks = df.groupby('Date')['Number of Agents'].sum().reset_index()
+                            fig = px.line(daily_breaks, x='Date', y='Number of Agents', 
+                                        title='Daily Break Usage')
+                            st.plotly_chart(fig)
+                        else:
+                            # Fallback to basic statistics display
+                            st.markdown("### Break Distribution")
+                            st.dataframe(df.groupby('Break Type')['Number of Agents'].agg(['count', 'mean']).round(2))
+                            
+                            st.markdown("### Shift Distribution")
+                            st.dataframe(df.groupby('Shift')['Number of Agents'].agg(['count', 'mean']).round(2))
+                            
+                            st.markdown("### Daily Break Usage")
+                            daily_breaks = df.groupby('Date')['Number of Agents'].sum().reset_index()
+                            st.line_chart(daily_breaks.set_index('Date'))
                         
                         # Download analytics data
                         csv = df.to_csv(index=False).encode('utf-8')
