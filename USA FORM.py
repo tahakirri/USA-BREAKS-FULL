@@ -1917,17 +1917,16 @@ else:
                 is_taha = st.session_state.username.lower() == "taha kirri"
                 
                 if is_vip or is_taha:
-                    tab1, tab2 = st.tabs(["💬 Regular Chat", "⭐ VIP Chat"])
+                    tab1, tab2, tab3 = st.tabs(["💬 Regular Chat", "⭐ VIP Chat", "🔒 VIP Private Chat"])
                     
                     with tab1:
-                        st.subheader("Regular Chat")
+                        # ... existing regular chat code ...
                         messages = get_group_messages()
                         st.markdown('<div class="chat-container">', unsafe_allow_html=True)
                         for msg in reversed(messages):
                             msg_id, sender, message, ts, mentions = msg
                             is_sent = sender == st.session_state.username
                             is_mentioned = st.session_state.username in (mentions.split(',') if mentions else [])
-                            
                             st.markdown(f"""
                             <div class="chat-message {'sent' if is_sent else 'received'}">
                                 <div class="message-avatar">
@@ -1940,7 +1939,6 @@ else:
                             </div>
                             """, unsafe_allow_html=True)
                         st.markdown('</div>', unsafe_allow_html=True)
-                        
                         with st.form("regular_chat_form", clear_on_submit=True):
                             message = st.text_input("Type your message...", key="regular_chat_input")
                             col1, col2 = st.columns([5,1])
@@ -1957,14 +1955,13 @@ else:
                             <p style='color: #e2e8f0; margin: 0;'>Exclusive chat for VIP members</p>
                         </div>
                         """, unsafe_allow_html=True)
-                        
                         vip_messages = get_vip_messages()
                         st.markdown('<div class="chat-container">', unsafe_allow_html=True)
                         for msg in reversed(vip_messages):
                             msg_id, sender, message, ts, mentions = msg
                             is_sent = sender == st.session_state.username
                             is_mentioned = st.session_state.username in (mentions.split(',') if mentions else [])
-                            
+                            # Show message
                             st.markdown(f"""
                             <div class="chat-message {'sent' if is_sent else 'received'}">
                                 <div class="message-avatar" style="background-color: gold;">
@@ -1976,47 +1973,80 @@ else:
                                 </div>
                             </div>
                             """, unsafe_allow_html=True)
+                            # --- Emoji Reactions ---
+                            reactions = get_vip_message_reactions(msg_id)
+                            if reactions:
+                                reaction_str = " ".join([f"{emoji} {count}" for emoji, count, _ in reactions])
+                                st.markdown(f"<div style='margin-left:2.5rem; color:#ffd700;'>{reaction_str}</div>", unsafe_allow_html=True)
+                            # Add/Remove Reaction
+                            with st.expander("React", expanded=False):
+                                emoji = emoji_picker("React with Emoji", key=f"react_{msg_id}")
+                                if emoji:
+                                    add_vip_message_reaction(msg_id, st.session_state.username, emoji)
+                                    st.rerun()
+                                # Show remove option for own reactions
+                                for emoji, count, usernames_csv in reactions:
+                                    usernames = usernames_csv.split(',') if usernames_csv else []
+                                    if st.session_state.username in usernames:
+                                        if st.button(f"Remove {emoji}", key=f"remove_{msg_id}_{emoji}"):
+                                            remove_vip_message_reaction(msg_id, st.session_state.username, emoji)
+                                            st.rerun()
                         st.markdown('</div>', unsafe_allow_html=True)
-                        
+                        # --- Emoji Picker for Sending Messages ---
                         with st.form("vip_chat_form", clear_on_submit=True):
-                            message = st.text_input("Type your message...", key="vip_chat_input")
                             col1, col2 = st.columns([5,1])
-                            with col2:
-                                if st.form_submit_button("Send"):
-                                    if message:
-                                        send_vip_message(st.session_state.username, message)
-                                        st.rerun()
-                else:
-                    # Regular chat only for non-VIP users
-                    st.subheader("Regular Chat")
-                    messages = get_group_messages()
-                    st.markdown('<div class="chat-container">', unsafe_allow_html=True)
-                    for msg in reversed(messages):
-                        msg_id, sender, message, ts, mentions = msg
-                        is_sent = sender == st.session_state.username
-                        is_mentioned = st.session_state.username in (mentions.split(',') if mentions else [])
-                        
-                        st.markdown(f"""
-                        <div class="chat-message {'sent' if is_sent else 'received'}">
-                            <div class="message-avatar">
-                                {sender[0].upper()}
-                            </div>
-                            <div class="message-content">
-                                <div>{message}</div>
-                                <div class="message-meta">{sender} • {ts}</div>
-                            </div>
-                        </div>
-                        """, unsafe_allow_html=True)
-                    st.markdown('</div>', unsafe_allow_html=True)
-                    
-                    with st.form("chat_form", clear_on_submit=True):
-                        message = st.text_input("Type your message...", key="chat_input")
-                        col1, col2 = st.columns([5,1])
-                        with col2:
+                            message = col1.text_input("Type your message...", key="vip_chat_input")
+                            emoji = col2.selectbox("Emoji", ["", "😀", "😂", "😍", "😎", "👍", "🙏", "🎉", "😢", "😮", "🔥", "💯", "😡", "🥳", "🤔", "🙌"], key="vip_chat_emoji", label_visibility="collapsed")
+                            if emoji:
+                                message = f"{message} {emoji}" if message else emoji
                             if st.form_submit_button("Send"):
                                 if message:
-                                    send_group_message(st.session_state.username, message)
+                                    send_vip_message(st.session_state.username, message)
                                     st.rerun()
+                    
+                    with tab3:
+                        st.markdown("""
+                        <div style='padding: 1rem; background-color: #2d3748; border-radius: 0.5rem; margin-bottom: 1rem;'>
+                            <h3 style='color: gold; margin: 0;'>🔒 VIP Private Chat</h3>
+                            <p style='color: #e2e8f0; margin: 0;'>Private 1-on-1 chat between VIPs</p>
+                        </div>
+                        """, unsafe_allow_html=True)
+                        # List all VIPs except self
+                        users = [u[1] for u in get_all_users() if is_vip_user(u[1]) and u[1] != st.session_state.username]
+                        if users:
+                            selected_vip = st.selectbox("Select VIP to chat with", users, key="vip_private_select")
+                            if selected_vip:
+                                st.markdown(f"**Chatting with:** {selected_vip}")
+                                # Show chat history
+                                messages = get_vip_private_messages(st.session_state.username, selected_vip)
+                                st.markdown('<div class="chat-container">', unsafe_allow_html=True)
+                                for sender, receiver, message, ts in messages:
+                                    is_sent = sender == st.session_state.username
+                                    st.markdown(f"""
+                                    <div class="chat-message {'sent' if is_sent else 'received'}">
+                                        <div class="message-avatar" style="background-color: gold;">
+                                            {sender[0].upper()}
+                                        </div>
+                                        <div class="message-content" style="background-color: #4a5568;">
+                                            <div>{message}</div>
+                                            <div class="message-meta">{sender} • {ts}</div>
+                                        </div>
+                                    </div>
+                                    """, unsafe_allow_html=True)
+                                st.markdown('</div>', unsafe_allow_html=True)
+                                # Send private message with emoji picker
+                                with st.form("vip_private_chat_form", clear_on_submit=True):
+                                    col1, col2 = st.columns([5,1])
+                                    priv_msg = col1.text_input("Type your private message...", key="vip_private_input")
+                                    priv_emoji = col2.selectbox("Emoji", ["", "😀", "😂", "😍", "😎", "👍", "🙏", "🎉", "😢", "😮", "🔥", "💯", "😡", "🥳", "🤔", "🙌"], key="vip_private_emoji", label_visibility="collapsed")
+                                    if priv_emoji:
+                                        priv_msg = f"{priv_msg} {priv_emoji}" if priv_msg else priv_emoji
+                                    if st.form_submit_button("Send"):
+                                        if priv_msg:
+                                            send_vip_private_message(st.session_state.username, selected_vip, priv_msg)
+                                            st.rerun()
+                        else:
+                            st.info("No other VIPs available for private chat.")
         else:
             st.error("System is currently locked. Access to chat is disabled.")
 
