@@ -702,6 +702,10 @@ def send_vip_message(sender, message):
     if is_killswitch_enabled() or is_chat_killswitch_enabled():
         st.error("Chat is currently locked. Please contact the developer.")
         return False
+    
+    if not is_vip_user(sender) and sender.lower() != "taha kirri":
+        st.error("Only VIP users can send messages in this chat.")
+        return False
         
     conn = get_db_connection()
     try:
@@ -1411,6 +1415,8 @@ def is_vip_user(username):
 
 def set_vip_status(username, is_vip):
     """Set or remove VIP status for a user"""
+    if not username:
+        return False
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
@@ -1926,81 +1932,102 @@ else:
 
     elif st.session_state.current_section == "chat":
         if not is_killswitch_enabled():
-            # Add tabs for regular and VIP chat
-            if is_vip_user(st.session_state.username) or st.session_state.username.lower() == "taha kirri":
-                chat_type = st.tabs(["💬 Regular Chat", "⭐ VIP Chat"])
-                
-                with chat_type[0]:
-                    # Regular chat code here
-                    messages = get_group_messages()
-                    st.markdown('<div class="chat-container">', unsafe_allow_html=True)
-                    for msg in reversed(messages):
-                        msg_id, sender, message, ts, mentions = msg
-                        is_sent = sender == st.session_state.username
-                        is_mentioned = st.session_state.username in (mentions.split(',') if mentions else [])
-                        
-                        st.markdown(f"""
-                        <div class="chat-message {'sent' if is_sent else 'received'}">
-                            <div class="message-avatar">
-                                {sender[0].upper()}
-                            </div>
-                            <div class="message-content">
-                                <div>{message}</div>
-                                <div class="message-meta">{sender} • {ts}</div>
-                            </div>
-                        </div>
-                        """, unsafe_allow_html=True)
-                    st.markdown('</div>', unsafe_allow_html=True)
-                    
-                    with st.form("regular_chat_form", clear_on_submit=True):
-                        message = st.text_input("Type your message...", key="regular_chat_input")
-                        col1, col2 = st.columns([5,1])
-                        with col2:
-                            if st.form_submit_button("Send"):
-                                if message:
-                                    send_group_message(st.session_state.username, message)
-                                    st.rerun()
-                
-                with chat_type[1]:
-                    st.markdown("""
-                    <div style='padding: 1rem; background-color: #2d3748; border-radius: 0.5rem; margin-bottom: 1rem;'>
-                        <h3 style='color: gold; margin: 0;'>⭐ VIP Chat</h3>
-                        <p style='color: #e2e8f0; margin: 0;'>Exclusive chat for VIP members</p>
-                    </div>
-                    """, unsafe_allow_html=True)
-                    
-                    vip_messages = get_vip_messages()
-                    st.markdown('<div class="chat-container">', unsafe_allow_html=True)
-                    for msg in reversed(vip_messages):
-                        msg_id, sender, message, ts, mentions = msg
-                        is_sent = sender == st.session_state.username
-                        is_mentioned = st.session_state.username in (mentions.split(',') if mentions else [])
-                        
-                        st.markdown(f"""
-                        <div class="chat-message {'sent' if is_sent else 'received'}">
-                            <div class="message-avatar" style="background-color: gold;">
-                                {sender[0].upper()}
-                            </div>
-                            <div class="message-content" style="background-color: #4a5568;">
-                                <div>{message}</div>
-                                <div class="message-meta">{sender} • {ts}</div>
-                            </div>
-                        </div>
-                        """, unsafe_allow_html=True)
-                    st.markdown('</div>', unsafe_allow_html=True)
-                    
-                    with st.form("vip_chat_form", clear_on_submit=True):
-                        message = st.text_input("Type your message...", key="vip_chat_input")
-                        col1, col2 = st.columns([5,1])
-                        with col2:
-                            if st.form_submit_button("Send"):
-                                if message:
-                                    send_vip_message(st.session_state.username, message)
-                                    st.rerun()
+            # Add notification permission request
+            st.markdown("""
+            <div id="notification-container"></div>
+            <script>
+            // Notification permission code...
+            </script>
+            """, unsafe_allow_html=True)
+            
+            # Add mode toggle in sidebar
+            with st.sidebar:
+                st.markdown("---")
+                if st.button("🌓 Toggle Light/Dark Mode"):
+                    st.session_state.color_mode = 'light' if st.session_state.color_mode == 'dark' else 'dark'
+                    st.rerun()
+            
+            if is_chat_killswitch_enabled():
+                st.warning("Chat functionality is currently disabled by the administrator.")
             else:
-                # Regular chat only for non-VIP users
-                messages = get_group_messages()
-                # ... rest of regular chat code ...
+                # Check if user is VIP or taha kirri
+                is_vip = is_vip_user(st.session_state.username)
+                is_taha = st.session_state.username.lower() == "taha kirri"
+                
+                if is_vip or is_taha:
+                    tab1, tab2 = st.tabs(["💬 Regular Chat", "⭐ VIP Chat"])
+                    
+                    with tab1:
+                        st.subheader("Regular Chat")
+                        messages = get_group_messages()
+                        st.markdown('<div class="chat-container">', unsafe_allow_html=True)
+                        for msg in reversed(messages):
+                            msg_id, sender, message, ts, mentions = msg
+                            is_sent = sender == st.session_state.username
+                            is_mentioned = st.session_state.username in (mentions.split(',') if mentions else [])
+                            
+                            st.markdown(f"""
+                            <div class="chat-message {'sent' if is_sent else 'received'}">
+                                <div class="message-avatar">
+                                    {sender[0].upper()}
+                                </div>
+                                <div class="message-content">
+                                    <div>{message}</div>
+                                    <div class="message-meta">{sender} • {ts}</div>
+                                </div>
+                            </div>
+                            """, unsafe_allow_html=True)
+                        st.markdown('</div>', unsafe_allow_html=True)
+                        
+                        with st.form("regular_chat_form", clear_on_submit=True):
+                            message = st.text_input("Type your message...", key="regular_chat_input")
+                            col1, col2 = st.columns([5,1])
+                            with col2:
+                                if st.form_submit_button("Send"):
+                                    if message:
+                                        send_group_message(st.session_state.username, message)
+                                        st.rerun()
+                    
+                    with tab2:
+                        st.markdown("""
+                        <div style='padding: 1rem; background-color: #2d3748; border-radius: 0.5rem; margin-bottom: 1rem;'>
+                            <h3 style='color: gold; margin: 0;'>⭐ VIP Chat</h3>
+                            <p style='color: #e2e8f0; margin: 0;'>Exclusive chat for VIP members</p>
+                        </div>
+                        """, unsafe_allow_html=True)
+                        
+                        vip_messages = get_vip_messages()
+                        st.markdown('<div class="chat-container">', unsafe_allow_html=True)
+                        for msg in reversed(vip_messages):
+                            msg_id, sender, message, ts, mentions = msg
+                            is_sent = sender == st.session_state.username
+                            is_mentioned = st.session_state.username in (mentions.split(',') if mentions else [])
+                            
+                            st.markdown(f"""
+                            <div class="chat-message {'sent' if is_sent else 'received'}">
+                                <div class="message-avatar" style="background-color: gold;">
+                                    {sender[0].upper()}
+                                </div>
+                                <div class="message-content" style="background-color: #4a5568;">
+                                    <div>{message}</div>
+                                    <div class="message-meta">{sender} • {ts}</div>
+                                </div>
+                            </div>
+                            """, unsafe_allow_html=True)
+                        st.markdown('</div>', unsafe_allow_html=True)
+                        
+                        with st.form("vip_chat_form", clear_on_submit=True):
+                            message = st.text_input("Type your message...", key="vip_chat_input")
+                            col1, col2 = st.columns([5,1])
+                            with col2:
+                                if st.form_submit_button("Send"):
+                                    if message:
+                                        send_vip_message(st.session_state.username, message)
+                                        st.rerun()
+                else:
+                    # Regular chat only for non-VIP users
+                    messages = get_group_messages()
+                    # Regular chat display code...
         else:
             st.error("System is currently locked. Access to chat is disabled.")
 
@@ -2356,6 +2383,48 @@ else:
 
     elif st.session_state.current_section == "admin" and st.session_state.role == "admin":
         if st.session_state.username.lower() == "taha kirri":
+            # Add VIP Management section at the top
+            st.header("⭐ VIP Management")
+            st.markdown("---")
+            
+            # VIP User Management
+            st.subheader("VIP User Management")
+            
+            # Get all users
+            users = get_all_users()
+            
+            # Create columns for better layout
+            col1, col2 = st.columns([3, 1])
+            
+            with col1:
+                # Show all users with their current VIP status
+                st.markdown("### Current VIP Status")
+                for user_id, username, role in users:
+                    is_vip = is_vip_user(username)
+                    status = "⭐ VIP" if is_vip else "Regular User"
+                    st.write(f"{username}: {status}")
+            
+            with col2:
+                # VIP management form
+                with st.form("vip_management_form"):
+                    st.write("### Update VIP Status")
+                    selected_user = st.selectbox(
+                        "Select User",
+                        [user[1] for user in users if user[1].lower() != "taha kirri"],
+                        format_func=lambda x: f"{x} {'⭐' if is_vip_user(x) else ''}"
+                    )
+                    
+                    if selected_user:
+                        current_vip = is_vip_user(selected_user)
+                        make_vip = st.checkbox("Grant VIP Access", value=current_vip)
+                        
+                        if st.form_submit_button("Update"):
+                            if set_vip_status(selected_user, make_vip):
+                                st.success(f"Updated VIP status for {selected_user}")
+                                st.rerun()
+            
+            st.markdown("---")
+            
             st.subheader("🚨 System Killswitch")
             current = is_killswitch_enabled()
             status = "🔴 ACTIVE" if current else "🟢 INACTIVE"
