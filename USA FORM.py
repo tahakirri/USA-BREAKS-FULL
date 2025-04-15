@@ -1593,13 +1593,9 @@ else:
                     "flag": "🇪🇸",
                     "language": "Spanish",
                     "shift": "6pm",
-                    "shifts": {
-                        "6pm": {
-                            "early_tea": {"start": "19:00", "end": "20:45", "slots": ["19:00", "19:15", "19:30", "19:45", "20:00", "20:15", "20:30", "20:45"]},
-                            "lunch": {"start": "21:00", "end": "22:30", "slots": ["21:00", "21:30", "22:00", "22:30"]},
-                            "late_tea": {"start": "00:00", "end": "01:30", "slots": ["00:00", "00:15", "00:30", "00:45", "01:00", "01:15", "01:30"]},
-                        }
-                    }
+                    "early_tea": {"start": "19:00", "end": "20:45", "slots": ["19:00", "19:15", "19:30", "19:45", "20:00", "20:15", "20:30", "20:45"]},
+                    "lunch": {"start": "21:00", "end": "22:30", "slots": ["21:00", "21:30", "22:00", "22:30"]},
+                    "late_tea": {"start": "00:00", "end": "01:30", "slots": ["00:00", "00:15", "00:30", "00:45", "01:00", "01:15", "01:30"]}
                 }
             }
             with open(TEMPLATES_FILE, "w") as f:
@@ -1921,7 +1917,7 @@ else:
                         st.markdown("#### Early Tea Break")
                         if "2pm" in bookings[date_str] and "early_tea" in bookings[date_str]["2pm"]:
                             data = []
-                            for slot in current_template["shifts"]["2pm"]["early_tea"]["slots"]:
+                            for slot in current_template["early_tea"]["slots"]:
                                 if slot in bookings[date_str]["2pm"]["early_tea"]:
                                     for agent in bookings[date_str]["2pm"]["early_tea"][slot]:
                                         data.append({"Time": slot, "Agent": agent})
@@ -1936,7 +1932,7 @@ else:
                         st.markdown("#### Lunch Break")
                         if "2pm" in bookings[date_str] and "lunch" in bookings[date_str]["2pm"]:
                             data = []
-                            for slot in current_template["shifts"]["2pm"]["lunch"]["slots"]:
+                            for slot in current_template["lunch"]["slots"]:
                                 if slot in bookings[date_str]["2pm"]["lunch"]:
                                     for agent in bookings[date_str]["2pm"]["lunch"][slot]:
                                         data.append({"Time": slot, "Agent": agent})
@@ -1951,7 +1947,7 @@ else:
                         st.markdown("#### Late Tea Break")
                         if "2pm" in bookings[date_str] and "late_tea" in bookings[date_str]["2pm"]:
                             data = []
-                            for slot in current_template["shifts"]["2pm"]["late_tea"]["slots"]:
+                            for slot in current_template["late_tea"]["slots"]:
                                 if slot in bookings[date_str]["2pm"]["late_tea"]:
                                     for agent in bookings[date_str]["2pm"]["late_tea"][slot]:
                                         data.append({"Time": slot, "Agent": agent})
@@ -1970,7 +1966,7 @@ else:
                         st.markdown("#### Early Tea Break")
                         if "6pm" in bookings[date_str] and "early_tea" in bookings[date_str]["6pm"]:
                             data = []
-                            for slot in current_template["shifts"]["6pm"]["early_tea"]["slots"]:
+                            for slot in current_template["early_tea"]["slots"]:
                                 if slot in bookings[date_str]["6pm"]["early_tea"]:
                                     for agent in bookings[date_str]["6pm"]["early_tea"][slot]:
                                         data.append({"Time": slot, "Agent": agent})
@@ -1985,7 +1981,7 @@ else:
                         st.markdown("#### Lunch Break")
                         if "6pm" in bookings[date_str] and "lunch" in bookings[date_str]["6pm"]:
                             data = []
-                            for slot in current_template["shifts"]["6pm"]["lunch"]["slots"]:
+                            for slot in current_template["lunch"]["slots"]:
                                 if slot in bookings[date_str]["6pm"]["lunch"]:
                                     for agent in bookings[date_str]["6pm"]["lunch"][slot]:
                                         data.append({"Time": slot, "Agent": agent})
@@ -2000,7 +1996,7 @@ else:
                         st.markdown("#### Late Tea Break")
                         if "6pm" in bookings[date_str] and "late_tea" in bookings[date_str]["6pm"]:
                             data = []
-                            for slot in current_template["shifts"]["6pm"]["late_tea"]["slots"]:
+                            for slot in current_template["late_tea"]["slots"]:
                                 if slot in bookings[date_str]["6pm"]["late_tea"]:
                                     for agent in bookings[date_str]["6pm"]["late_tea"][slot]:
                                         data.append({"Time": slot, "Agent": agent})
