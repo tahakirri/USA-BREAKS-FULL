@@ -1706,7 +1706,7 @@ else:
                         st.rerun()
                 else:
                     early_tea_options = []
-                    for slot in current_template["shifts"]["2pm"]["early_tea"]["slots"]:
+                    for slot in current_template["early_tea"]["slots"]:
                         count = get_slot_bookings("2pm", "early_tea", slot)
                         if count < max_per_slot:
                             early_tea_options.append(f"{slot} ({count}/{max_per_slot})")
@@ -1736,7 +1736,7 @@ else:
                         st.rerun()
                 else:
                     lunch_options = []
-                    for slot in current_template["shifts"]["2pm"]["lunch"]["slots"]:
+                    for slot in current_template["lunch"]["slots"]:
                         count = get_slot_bookings("2pm", "lunch", slot)
                         if count < max_per_slot:
                             lunch_options.append(f"{slot} ({count}/{max_per_slot})")
@@ -1766,7 +1766,7 @@ else:
                         st.rerun()
                 else:
                     late_tea_options = []
-                    for slot in current_template["shifts"]["2pm"]["late_tea"]["slots"]:
+                    for slot in current_template["late_tea"]["slots"]:
                         count = get_slot_bookings("2pm", "late_tea", slot)
                         if count < max_per_slot:
                             late_tea_options.append(f"{slot} ({count}/{max_per_slot})")
@@ -1801,7 +1801,7 @@ else:
                         st.rerun()
                 else:
                     early_tea_options = []
-                    for slot in current_template["shifts"]["6pm"]["early_tea"]["slots"]:
+                    for slot in current_template["early_tea"]["slots"]:
                         count = get_slot_bookings("6pm", "early_tea", slot)
                         if count < max_per_slot:
                             early_tea_options.append(f"{slot} ({count}/{max_per_slot})")
@@ -1831,7 +1831,7 @@ else:
                         st.rerun()
                 else:
                     lunch_options = []
-                    for slot in current_template["shifts"]["6pm"]["lunch"]["slots"]:
+                    for slot in current_template["lunch"]["slots"]:
                         count = get_slot_bookings("6pm", "lunch", slot)
                         if count < max_per_slot:
                             lunch_options.append(f"{slot} ({count}/{max_per_slot})")
@@ -1861,7 +1861,7 @@ else:
                         st.rerun()
                 else:
                     late_tea_options = []
-                    for slot in current_template["shifts"]["6pm"]["late_tea"]["slots"]:
+                    for slot in current_template["late_tea"]["slots"]:
                         count = get_slot_bookings("6pm", "late_tea", slot)
                         if count < max_per_slot:
                             late_tea_options.append(f"{slot} ({count}/{max_per_slot})")
