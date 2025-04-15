@@ -34,230 +34,81 @@ def authenticate(username, password):
 
 def init_db():
     conn = get_db_connection()
-    try:
-        cursor = conn.cursor()
-        
-        # Create tables if they don't exist
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS users (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                username TEXT UNIQUE,
-                password TEXT,
-                role TEXT CHECK(role IN ('agent', 'admin')))
-        """)
-        
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS requests (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                agent_name TEXT,
-                request_type TEXT,
-                identifier TEXT,
-                comment TEXT,
-                timestamp TEXT,
-                completed INTEGER DEFAULT 0)
-        """)
-        
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS mistakes (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                team_leader TEXT,
-                agent_name TEXT,
-                ticket_id TEXT,
-                error_description TEXT,
-                timestamp TEXT)
-        """)
-        
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS group_messages (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                sender TEXT,
-                message TEXT,
-                timestamp TEXT,
-                mentions TEXT)
-        """)
-        
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS hold_images (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                uploader TEXT,
-                image_data BLOB,
-                timestamp TEXT)
-        """)
-        
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS request_comments (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                request_id INTEGER,
-                user TEXT,
-                comment TEXT,
-                timestamp TEXT,
-                FOREIGN KEY(request_id) REFERENCES requests(id))
-        """)
-        
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS late_logins (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                agent_name TEXT,
-                presence_time TEXT,
-                login_time TEXT,
-                reason TEXT,
-                timestamp TEXT)
-        """)
-        
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS quality_issues (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                agent_name TEXT,
-                issue_type TEXT,
-                timing TEXT,
-                mobile_number TEXT,
-                product TEXT,
-                timestamp TEXT)
-        """)
-        
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS midshift_issues (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                agent_name TEXT,
-                issue_type TEXT,
-                start_time TEXT,
-                end_time TEXT,
-                timestamp TEXT)
-        """)
-        
-        # Add break template table
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS break_templates (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT UNIQUE,
-                max_users_per_slot INTEGER,
-                is_active INTEGER DEFAULT 1,
-                created_by TEXT,
-                created_at TEXT)
-        """)
-        
-        # Add break slots table
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS break_slots (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                template_id INTEGER,
-                break_type TEXT CHECK(break_type IN ('first_tea', 'lunch', 'second_tea')),
-                start_time TEXT,
-                end_time TEXT,
-                FOREIGN KEY(template_id) REFERENCES break_templates(id))
-        """)
-        
-        # Add break bookings table
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS break_bookings (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                agent_name TEXT,
-                template_id INTEGER,
-                slot_id INTEGER,
-                booking_date TEXT,
-                created_at TEXT,
-                FOREIGN KEY(template_id) REFERENCES break_templates(id),
-                FOREIGN KEY(slot_id) REFERENCES break_slots(id))
-        """)
-        
-        # Handle system_settings table schema migration
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='system_settings'")
-        if not cursor.fetchone():
-            cursor.execute("""
-                CREATE TABLE system_settings (
-                    id INTEGER PRIMARY KEY DEFAULT 1,
-                    killswitch_enabled INTEGER DEFAULT 0,
-                    chat_killswitch_enabled INTEGER DEFAULT 0)
-            """)
-            cursor.execute("INSERT INTO system_settings (id, killswitch_enabled, chat_killswitch_enabled) VALUES (1, 0, 0)")
-        else:
-            cursor.execute("PRAGMA table_info(system_settings)")
-            columns = [column[1] for column in cursor.fetchall()]
-            if 'chat_killswitch_enabled' not in columns:
-                cursor.execute("ALTER TABLE system_settings ADD COLUMN chat_killswitch_enabled INTEGER DEFAULT 0")
-                cursor.execute("UPDATE system_settings SET chat_killswitch_enabled = 0 WHERE id = 1")
-        
-        # Create default admin account
-        cursor.execute("""
-            INSERT OR IGNORE INTO users (username, password, role) 
-            VALUES (?, ?, ?)
-        """, ("taha kirri", hash_password("arise@99"), "admin"))
-        
-        # Create additional admin accounts
-        admin_accounts = [
-            ("taha kirri", "arise@99"),
-            ("Issam Samghini", "admin@2025"),
-            ("Loubna Fellah", "admin@99"),
-            ("Youssef Kamal", "admin@006"),
-            ("Fouad Fathi", "admin@55")
-        ]
-        
-        for username, password in admin_accounts:
-            cursor.execute("""
-                INSERT OR IGNORE INTO users (username, password, role) 
-                VALUES (?, ?, ?)
-            """, (username, hash_password(password), "admin"))
-        
-        # Create agent accounts (agent name as username, workspace ID as password)
-        agents = [
-            ("Karabila Younes", "30866"),
-            ("Kaoutar Mzara", "30514"),
-            ("Ben Tahar Chahid", "30864"),
-            ("Cherbassi Khadija", "30868"),
-            ("Lekhmouchi Kamal", "30869"),
-            ("Said Kilani", "30626"),
-            ("AGLIF Rachid", "30830"),
-            ("Yacine Adouha", "30577"),
-            ("Manal Elanbi", "30878"),
-            ("Jawad Ouassaddine", "30559"),
-            ("Kamal Elhaouar", "30844"),
-            ("Hoummad Oubella", "30702"),
-            ("Zouheir Essafi", "30703"),
-            ("Anwar Atifi", "30781"),
-            ("Said Elgaouzi", "30782"),
-            ("HAMZA SAOUI", "30716"),
-            ("Ibtissam Mazhari", "30970"),
-            ("Imad Ghazali", "30971"),
-            ("Jamila Lahrech", "30972"),
-            ("Nassim Ouazzani Touhami", "30973"),
-            ("Salaheddine Chaggour", "30974"),
-            ("Omar Tajani", "30711"),
-            ("Nizar Remz", "30728"),
-            ("Abdelouahed Fettah", "30693"),
-            ("Amal Bouramdane", "30675"),
-            ("Fatima Ezzahrae Oubaalla", "30513"),
-            ("Redouane Bertal", "30643"),
-            ("Abdelouahab Chenani", "30789"),
-            ("Imad El Youbi", "30797"),
-            ("Youssef Hammouda", "30791"),
-            ("Anas Ouassifi", "30894"),
-            ("SALSABIL ELMOUSS", "30723"),
-            ("Hicham Khalafa", "30712"),
-            ("Ghita Adib", "30710"),
-            ("Aymane Msikila", "30722"),
-            ("Marouane Boukhadda", "30890"),
-            ("Hamid Boulatouan", "30899"),
-            ("Bouchaib Chafiqi", "30895"),
-            ("Houssam Gouaalla", "30891"),
-            ("Abdellah Rguig", "30963"),
-            ("Abdellatif Chatir", "30964"),
-            ("Abderrahman Oueto", "30965"),
-            ("Fatiha Lkamel", "30967"),
-            ("Abdelhamid Jaber", "30708"),
-            ("Yassine Elkanouni", "30735")
-        ]
-        
-        for agent_name, workspace_id in agents:
-            cursor.execute("""
-                INSERT OR IGNORE INTO users (username, password, role) 
-                VALUES (?, ?, ?)
-            """, (agent_name, hash_password(workspace_id), "agent"))
-        
-        conn.commit()
-    except sqlite3.Error as e:
-        print(f"Database error: {e}")
-    finally:
-        conn.close()
+    cursor = conn.cursor()
+
+    # Create users table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT UNIQUE NOT NULL,
+            password TEXT NOT NULL,
+            role TEXT NOT NULL
+        )
+    ''')
+
+    # Create requests table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS requests (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            request_id TEXT UNIQUE NOT NULL,
+            agent_name TEXT NOT NULL,
+            request_type TEXT NOT NULL,
+            request_details TEXT NOT NULL,
+            status TEXT NOT NULL,
+            created_at TIMESTAMP NOT NULL,
+            updated_at TIMESTAMP NOT NULL,
+            assigned_to TEXT,
+            priority TEXT,
+            comments TEXT
+        )
+    ''')
+
+    # Create break templates table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS break_templates (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT UNIQUE NOT NULL,
+            max_users_per_slot INTEGER NOT NULL,
+            is_active BOOLEAN DEFAULT 1,
+            created_by TEXT NOT NULL,
+            created_at TIMESTAMP NOT NULL
+        )
+    ''')
+
+    # Create break slots table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS break_slots (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            template_id INTEGER NOT NULL,
+            break_type TEXT NOT NULL,
+            start_time TEXT NOT NULL,
+            end_time TEXT NOT NULL,
+            FOREIGN KEY (template_id) REFERENCES break_templates (id)
+        )
+    ''')
+
+    # Create break bookings table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS break_bookings (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            agent_name TEXT NOT NULL,
+            template_id INTEGER NOT NULL,
+            slot_id INTEGER NOT NULL,
+            booking_date TEXT NOT NULL,
+            created_at TIMESTAMP NOT NULL,
+            FOREIGN KEY (template_id) REFERENCES break_templates (id),
+            FOREIGN KEY (slot_id) REFERENCES break_slots (id)
+        )
+    ''')
+
+    # Create default admin user if not exists
+    cursor.execute("SELECT * FROM users WHERE username = 'admin'")
+    if not cursor.fetchone():
+        cursor.execute("INSERT INTO users (username, password, role) VALUES (?, ?, ?)",
+                      ('admin', 'admin123', 'admin'))
+
+    conn.commit()
+    conn.close()
 
 def is_killswitch_enabled():
     conn = get_db_connection()
@@ -1545,186 +1396,13 @@ else:
                 st.info("You have no mid-shift issue records")
 
     elif st.session_state.current_section == "break_booking":
-        st.title("⏸️ Break Booking")
-        
-        # Date selection
-        selected_date = st.date_input("Select Date", 
-                                    min_value=datetime.now().date(),
-                                    value=datetime.now().date())
-        
-        # Get available templates
-        templates = get_break_templates()
-        if not templates:
-            st.info("No break templates available. Please contact your administrator.")
+        if is_killswitch_enabled():
+            st.error("System is currently locked. Break booking is disabled.")
         else:
-            # Show booking form
-            with st.form("break_booking_form"):
-                template_id = st.selectbox("Select Template", 
-                                        options=[t[0] for t in templates],
-                                        format_func=lambda x: next(t[1] for t in templates if t[0] == x))
-                
-                # Get slots for selected template
-                slots = get_break_slots(template_id)
-                if not slots:
-                    st.info("No slots available in this template.")
-                else:
-                    slot_options = []
-                    for slot in slots:
-                        slot_id, _, break_type, start_time, end_time = slot
-                        bookings = get_slot_bookings(slot_id, selected_date.strftime("%Y-%m-%d"))
-                        max_users = next(t[2] for t in templates if t[0] == template_id)
-                        break_name = {
-                            "first_tea": "First Tea Break",
-                            "lunch": "Lunch Break",
-                            "second_tea": "Second Tea Break"
-                        }[break_type]
-                        slot_options.append((slot_id, 
-                                        f"{break_name} ({start_time}-{end_time}) - {bookings}/{max_users} booked"))
-                    
-                    if slot_options:
-                        selected_slot = st.selectbox("Select Break Slot", 
-                                                options=[s[0] for s in slot_options],
-                                                format_func=lambda x: next(s[1] for s in slot_options if s[0] == x))
-                        
-                        if st.form_submit_button("Book Break"):
-                            if book_break(st.session_state.username, template_id, selected_slot, 
-                                        selected_date.strftime("%Y-%m-%d")):
-                                st.success("Break booked successfully!")
-                                st.rerun()
-                    else:
-                        st.info("No slots available for booking.")
-            
-            # Show user's bookings
-            st.subheader("Your Bookings")
-            bookings = get_agent_bookings(st.session_state.username)
-            if bookings:
-                for booking in bookings:
-                    booking_id, _, _, _, booking_date, _, template_name, break_type, start_time, end_time = booking
-                    break_name = {
-                        "first_tea": "First Tea Break",
-                        "lunch": "Lunch Break",
-                        "second_tea": "Second Tea Break"
-                    }[break_type]
-                    
-                    cols = st.columns([3, 1])
-                    cols[0].write(f"""
-                    **{break_name}** ({start_time}-{end_time})  
-                    Template: {template_name}  
-                    Date: {booking_date}
-                    """)
-                    
-                    if cols[1].button("Cancel", key=f"cancel_{booking_id}"):
-                        if cancel_booking(booking_id):
-                            st.success("Booking cancelled!")
-                            st.rerun()
-            else:
-                st.info("You have no break bookings")
+            agent_break_dashboard()
 
-    elif st.session_state.current_section == "break_admin":
-        if st.session_state.role == "admin":
-            st.title("⚙️ Break Booking Administration")
-            
-            # Create new template
-            with st.expander("Create New Template"):
-                with st.form("create_template"):
-                    template_name = st.text_input("Template Name")
-                    max_users = st.number_input("Maximum Users per Slot", min_value=1, value=5)
-                    
-                    # First Tea Break
-                    st.subheader("First Tea Break")
-                    first_tea_start = st.text_input("Start Time (HH:MM)", value="10:00", key="first_tea_start")
-                    first_tea_end = st.text_input("End Time (HH:MM)", value="10:15", key="first_tea_end")
-                    
-                    # Lunch Break
-                    st.subheader("Lunch Break")
-                    lunch_start = st.text_input("Start Time (HH:MM)", value="13:00", key="lunch_start")
-                    lunch_end = st.text_input("End Time (HH:MM)", value="14:00", key="lunch_end")
-                    
-                    # Second Tea Break
-                    st.subheader("Second Tea Break")
-                    second_tea_start = st.text_input("Start Time (HH:MM)", value="15:30", key="second_tea_start")
-                    second_tea_end = st.text_input("End Time (HH:MM)", value="15:45", key="second_tea_end")
-                    
-                    if st.form_submit_button("Create Template"):
-                        try:
-                            # Validate time formats
-                            times = [first_tea_start, first_tea_end, lunch_start, lunch_end, 
-                                    second_tea_start, second_tea_end]
-                            for t in times:
-                                datetime.strptime(t, "%H:%M")
-                            
-                            # Create template
-                            template_id = create_break_template(template_name, max_users, st.session_state.username)
-                            if template_id:
-                                # Add slots
-                                add_break_slot(template_id, "first_tea", first_tea_start, first_tea_end)
-                                add_break_slot(template_id, "lunch", lunch_start, lunch_end)
-                                add_break_slot(template_id, "second_tea", second_tea_start, second_tea_end)
-                                st.success("Template created successfully!")
-                                st.rerun()
-                        except ValueError:
-                            st.error("Invalid time format. Please use HH:MM format (e.g., 09:30)")
-            
-            # Manage existing templates
-            st.subheader("Manage Templates")
-            templates = get_break_templates()
-            if templates:
-                for template in templates:
-                    template_id, name, max_users, is_active, created_by, created_at = template
-                    
-                    with st.expander(f"Template: {name}"):
-                        st.write(f"Created by: {created_by}")
-                        st.write(f"Created at: {created_at}")
-                        st.write(f"Max users per slot: {max_users}")
-                        
-                        # Show slots
-                        slots = get_break_slots(template_id)
-                        for slot in slots:
-                            slot_id, _, break_type, start_time, end_time = slot
-                            break_name = {
-                                "first_tea": "First Tea Break",
-                                "lunch": "Lunch Break",
-                                "second_tea": "Second Tea Break"
-                            }[break_type]
-                            st.write(f"- {break_name}: {start_time}-{end_time}")
-                        
-                        cols = st.columns(2)
-                        if is_active:
-                            if cols[0].button("Deactivate", key=f"deact_{template_id}"):
-                                if toggle_template(template_id, False):
-                                    st.success("Template deactivated!")
-                                    st.rerun()
-                        else:
-                            if cols[0].button("Activate", key=f"act_{template_id}"):
-                                if toggle_template(template_id, True):
-                                    st.success("Template activated!")
-                                    st.rerun()
-            
-            # View all bookings
-            st.subheader("View Bookings")
-            selected_date = st.date_input("Select Date", value=datetime.now().date())
-            
-            # Get all users
-            users = get_all_users()
-            for user in users:
-                uid, username, role = user
-                if role == "agent":
-                    bookings = get_agent_bookings(username, selected_date.strftime("%Y-%m-%d"))
-                    if bookings:
-                        st.write(f"**{username}**")
-                        for booking in bookings:
-                            booking_id, _, _, _, _, _, template_name, break_type, start_time, end_time = booking
-                            break_name = {
-                                "first_tea": "First Tea Break",
-                                "lunch": "Lunch Break",
-                                "second_tea": "Second Tea Break"
-                            }[break_type]
-                            st.write(f"- {break_name} ({start_time}-{end_time}) - {template_name}")
-        else:
-            st.error("Access Denied: You don't have permission to view this section.")
-            if st.session_state.current_section == "break_admin":
-                st.session_state.current_section = "requests"
-                st.rerun()
+    elif st.session_state.current_section == "break_admin" and st.session_state.role == "admin":
+        admin_break_dashboard()
 
     elif st.session_state.current_section == "admin" and st.session_state.role == "admin":
         if st.session_state.username.lower() == "taha kirri":
@@ -2044,79 +1722,9 @@ def toggle_template(template_id, active):
     finally:
         conn.close()
 
-def break_booking_interface():
-    st.title("⏸️ Break Booking")
-    
-    # Date selection
-    selected_date = st.date_input("Select Date", 
-                                 min_value=datetime.now().date(),
-                                 value=datetime.now().date())
-    
-    # Get available templates
-    templates = get_break_templates()
-    if not templates:
-        st.info("No break templates available. Please contact your administrator.")
-        return
-    
-    # Show booking form
-    with st.form("break_booking_form"):
-        template_id = st.selectbox("Select Template", 
-                                 options=[t[0] for t in templates],
-                                 format_func=lambda x: next(t[1] for t in templates if t[0] == x))
-        
-        # Get slots for selected template
-        slots = get_break_slots(template_id)
-        slot_options = []
-        for slot in slots:
-            slot_id, _, break_type, start_time, end_time = slot
-            bookings = get_slot_bookings(slot_id, selected_date.strftime("%Y-%m-%d"))
-            max_users = next(t[2] for t in templates if t[0] == template_id)
-            break_name = {
-                "first_tea": "First Tea Break",
-                "lunch": "Lunch Break",
-                "second_tea": "Second Tea Break"
-            }[break_type]
-            slot_options.append((slot_id, 
-                               f"{break_name} ({start_time}-{end_time}) - {bookings}/{max_users} booked"))
-        
-        selected_slot = st.selectbox("Select Break Slot", 
-                                   options=[s[0] for s in slot_options],
-                                   format_func=lambda x: next(s[1] for s in slot_options if s[0] == x))
-        
-        if st.form_submit_button("Book Break"):
-            if book_break(st.session_state.username, template_id, selected_slot, 
-                         selected_date.strftime("%Y-%m-%d")):
-                st.success("Break booked successfully!")
-                st.rerun()
-    
-    # Show user's bookings
-    st.subheader("Your Bookings")
-    bookings = get_agent_bookings(st.session_state.username)
-    if bookings:
-        for booking in bookings:
-            booking_id, _, _, _, booking_date, _, template_name, break_type, start_time, end_time = booking
-            break_name = {
-                "first_tea": "First Tea Break",
-                "lunch": "Lunch Break",
-                "second_tea": "Second Tea Break"
-            }[break_type]
-            
-            cols = st.columns([3, 1])
-            cols[0].write(f"""
-            **{break_name}** ({start_time}-{end_time})  
-            Template: {template_name}  
-            Date: {booking_date}
-            """)
-            
-            if cols[1].button("Cancel", key=f"cancel_{booking_id}"):
-                if cancel_booking(booking_id):
-                    st.success("Booking cancelled!")
-                    st.rerun()
-    else:
-        st.info("You have no break bookings")
-
-def break_booking_admin_interface():
-    st.title("⚙️ Break Booking Administration")
+# Break Dashboard Functions
+def admin_break_dashboard():
+    st.title("Break Schedule Administration")
     
     # Create new template
     with st.expander("Create New Template"):
@@ -2162,36 +1770,37 @@ def break_booking_admin_interface():
     # Manage existing templates
     st.subheader("Manage Templates")
     templates = get_break_templates()
-    for template in templates:
-        template_id, name, max_users, is_active, created_by, created_at = template
-        
-        with st.expander(f"Template: {name}"):
-            st.write(f"Created by: {created_by}")
-            st.write(f"Created at: {created_at}")
-            st.write(f"Max users per slot: {max_users}")
+    if templates:
+        for template in templates:
+            template_id, name, max_users, is_active, created_by, created_at = template
             
-            # Show slots
-            slots = get_break_slots(template_id)
-            for slot in slots:
-                slot_id, _, break_type, start_time, end_time = slot
-                break_name = {
-                    "first_tea": "First Tea Break",
-                    "lunch": "Lunch Break",
-                    "second_tea": "Second Tea Break"
-                }[break_type]
-                st.write(f"- {break_name}: {start_time}-{end_time}")
-            
-            cols = st.columns(2)
-            if is_active:
-                if cols[0].button("Deactivate", key=f"deact_{template_id}"):
-                    if toggle_template(template_id, False):
-                        st.success("Template deactivated!")
-                        st.rerun()
-            else:
-                if cols[0].button("Activate", key=f"act_{template_id}"):
-                    if toggle_template(template_id, True):
-                        st.success("Template activated!")
-                        st.rerun()
+            with st.expander(f"Template: {name}"):
+                st.write(f"Created by: {created_by}")
+                st.write(f"Created at: {created_at}")
+                st.write(f"Max users per slot: {max_users}")
+                
+                # Show slots
+                slots = get_break_slots(template_id)
+                for slot in slots:
+                    slot_id, _, break_type, start_time, end_time = slot
+                    break_name = {
+                        "first_tea": "First Tea Break",
+                        "lunch": "Lunch Break",
+                        "second_tea": "Second Tea Break"
+                    }[break_type]
+                    st.write(f"- {break_name}: {start_time}-{end_time}")
+                
+                cols = st.columns(2)
+                if is_active:
+                    if cols[0].button("Deactivate", key=f"deact_{template_id}"):
+                        if toggle_template(template_id, False):
+                            st.success("Template deactivated!")
+                            st.rerun()
+                else:
+                    if cols[0].button("Activate", key=f"act_{template_id}"):
+                        if toggle_template(template_id, True):
+                            st.success("Template activated!")
+                            st.rerun()
     
     # View all bookings
     st.subheader("View Bookings")
@@ -2213,6 +1822,83 @@ def break_booking_admin_interface():
                         "second_tea": "Second Tea Break"
                     }[break_type]
                     st.write(f"- {break_name} ({start_time}-{end_time}) - {template_name}")
+
+def agent_break_dashboard():
+    st.title("Break Booking")
+    
+    # Date selection
+    selected_date = st.date_input("Select Date", 
+                                 min_value=datetime.now().date(),
+                                 value=datetime.now().date())
+    
+    # Get available templates
+    templates = get_break_templates()
+    if not templates:
+        st.info("No break templates available. Please contact your administrator.")
+        return
+    
+    # Show booking form
+    with st.form("break_booking_form"):
+        template_id = st.selectbox("Select Template", 
+                                 options=[t[0] for t in templates],
+                                 format_func=lambda x: next(t[1] for t in templates if t[0] == x))
+        
+        # Get slots for selected template
+        slots = get_break_slots(template_id)
+        if not slots:
+            st.info("No slots available in this template.")
+        else:
+            slot_options = []
+            for slot in slots:
+                slot_id, _, break_type, start_time, end_time = slot
+                bookings = get_slot_bookings(slot_id, selected_date.strftime("%Y-%m-%d"))
+                max_users = next(t[2] for t in templates if t[0] == template_id)
+                break_name = {
+                    "first_tea": "First Tea Break",
+                    "lunch": "Lunch Break",
+                    "second_tea": "Second Tea Break"
+                }[break_type]
+                slot_options.append((slot_id, 
+                                f"{break_name} ({start_time}-{end_time}) - {bookings}/{max_users} booked"))
+            
+            if slot_options:
+                selected_slot = st.selectbox("Select Break Slot", 
+                                        options=[s[0] for s in slot_options],
+                                        format_func=lambda x: next(s[1] for s in slot_options if s[0] == x))
+                
+                if st.form_submit_button("Book Break"):
+                    if book_break(st.session_state.username, template_id, selected_slot, 
+                                selected_date.strftime("%Y-%m-%d")):
+                        st.success("Break booked successfully!")
+                        st.rerun()
+            else:
+                st.info("No slots available for booking.")
+    
+    # Show user's bookings
+    st.subheader("Your Bookings")
+    bookings = get_agent_bookings(st.session_state.username)
+    if bookings:
+        for booking in bookings:
+            booking_id, _, _, _, booking_date, _, template_name, break_type, start_time, end_time = booking
+            break_name = {
+                "first_tea": "First Tea Break",
+                "lunch": "Lunch Break",
+                "second_tea": "Second Tea Break"
+            }[break_type]
+            
+            cols = st.columns([3, 1])
+            cols[0].write(f"""
+            **{break_name}** ({start_time}-{end_time})  
+            Template: {template_name}  
+            Date: {booking_date}
+            """)
+            
+            if cols[1].button("Cancel", key=f"cancel_{booking_id}"):
+                if cancel_booking(booking_id):
+                    st.success("Booking cancelled!")
+                    st.rerun()
+    else:
+        st.info("You have no break bookings")
 
 if __name__ == "__main__":
     st.write("Request Management System")
