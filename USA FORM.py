@@ -1417,236 +1417,89 @@ st.set_page_config(
 def inject_custom_css():
     st.markdown("""
     <style>
-        /* Global Styles */
         .stApp {
-            background-color: #f8fafc;
-            color: #1e293b;
-        }
-        
-        /* Sidebar Styling */
-        [data-testid="stSidebar"] {
-            background-color: #ffffff;
-            border-right: 1px solid #e2e8f0;
-            padding: 2rem 1rem;
-        }
-        
-        [data-testid="stSidebar"] .stButton > button {
-            width: 100%;
-            text-align: left;
-            padding: 0.75rem 1rem;
-            background-color: transparent;
-            color: #475569;
-            border: none;
-            border-radius: 0.5rem;
-            margin-bottom: 0.5rem;
-            transition: all 0.2s;
-        }
-        
-        [data-testid="stSidebar"] .stButton > button:hover {
-            background-color: #f1f5f9;
-            color: #2563eb;
-        }
-        
-        /* Card Styling */
-        .card {
-            background-color: #ffffff;
-            border-radius: 1rem;
-            padding: 1.5rem;
-            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-            margin-bottom: 1rem;
-            border: 1px solid #e2e8f0;
-        }
-        
-        /* Form Styling */
-        .stTextInput > div > div {
-            border-radius: 0.5rem;
-            border: 1px solid #e2e8f0;
-        }
-        
-        .stTextInput > div > div:focus-within {
-            border-color: #2563eb;
-            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
-        }
-        
-        .stSelectbox > div > div {
-            border-radius: 0.5rem;
-            border: 1px solid #e2e8f0;
-        }
-        
-        /* Button Styling */
-        .stButton > button {
-            border-radius: 0.5rem;
-            padding: 0.5rem 1rem;
-            background-color: #2563eb;
-            color: white;
-            border: none;
-            font-weight: 500;
-            transition: all 0.2s;
-        }
-        
-        .stButton > button:hover {
-            background-color: #1d4ed8;
-            transform: translateY(-1px);
-        }
-        
-        /* Login Form Styling */
-        .login-container {
-            max-width: 400px;
-            margin: 4rem auto;
-            padding: 2rem;
             background-color: white;
-            border-radius: 1rem;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
         }
-        
-        /* Notification Styling */
-        .notification {
+        .stMarkdown h1 {
+            color: black;
+            font-size: 24px;
+            font-weight: bold;
+        }
+        .stMarkdown h2 {
+            color: black;
+            font-size: 20px;
+            font-weight: bold;
+            border-bottom: 1px solid black;
+        }
+        .stDataFrame {
+            width: 100%;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        th, td {
+            border: 1px solid black;
+            padding: 8px;
+            text-align: center;
+        }
+        th {
+            background-color: #f2f2f2;
+            font-weight: bold;
+        }
+        .warning {
+            color: red;
+            font-weight: bold;
+        }
+        .break-option {
+            padding: 5px;
+            margin: 2px;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+        .break-option:hover {
+            background-color: #f0f0f0;
+        }
+        .selected-break {
+            background-color: #4CAF50;
+            color: white;
+        }
+        .full-break {
+            background-color: #FF5252;
+            color: white;
+        }
+        .stApp { background-color: #121212; color: #E0E0E0; }
+        [data-testid="stSidebar"] { background-color: #1E1E1E; }
+        .stButton>button { background-color: #2563EB; color: white; }
+        .card { background-color: #1F1F1F; border-radius: 12px; padding: 1.5rem; }
+        .metric-card { background-color: #1F2937; border-radius: 10px; padding: 20px; }
+        .killswitch-active {
+            background-color: #4A1E1E;
+            border-left: 5px solid #D32F2F;
             padding: 1rem;
-            border-radius: 0.5rem;
             margin-bottom: 1rem;
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
+            color: #FFCDD2;
         }
-        
-        .notification.info {
-            background-color: #dbeafe;
-            color: #1e40af;
-            border-left: 4px solid #2563eb;
-        }
-        
-        .notification.warning {
-            background-color: #fef3c7;
-            color: #92400e;
-            border-left: 4px solid #d97706;
-        }
-        
-        .notification.error {
-            background-color: #fee2e2;
-            color: #991b1b;
-            border-left: 4px solid #dc2626;
-        }
-        
-        /* Comment Box Styling */
-        .comment-box {
-            background-color: #f8fafc;
-            border-radius: 0.5rem;
+        .chat-killswitch-active {
+            background-color: #1E3A4A;
+            border-left: 5px solid #1E88E5;
             padding: 1rem;
-            margin: 0.5rem 0;
-            border: 1px solid #e2e8f0;
+            margin-bottom: 1rem;
+            color: #B3E5FC;
         }
-        
+        .comment-box {
+            margin: 0.5rem 0;
+            padding: 0.5rem;
+            background: #2D2D2D;
+            border-radius: 8px;
+        }
         .comment-user {
             display: flex;
             justify-content: space-between;
-            color: #64748b;
-            font-size: 0.875rem;
-            margin-bottom: 0.5rem;
+            margin-bottom: 0.25rem;
         }
-        
         .comment-text {
-            color: #334155;
-        }
-        
-        /* Metric Card Styling */
-        .metric-card {
-            background-color: #ffffff;
-            border-radius: 1rem;
-            padding: 1.5rem;
-            border: 1px solid #e2e8f0;
-            text-align: center;
-        }
-        
-        .metric-value {
-            font-size: 2rem;
-            font-weight: 600;
-            color: #2563eb;
-            margin: 0.5rem 0;
-        }
-        
-        .metric-label {
-            color: #64748b;
-            font-size: 0.875rem;
-        }
-        
-        /* Table Styling */
-        .stDataFrame {
-            border: 1px solid #e2e8f0;
-            border-radius: 0.5rem;
-            overflow: hidden;
-        }
-        
-        .stDataFrame table {
-            border-collapse: separate;
-            border-spacing: 0;
-        }
-        
-        .stDataFrame th {
-            background-color: #f8fafc;
-            padding: 0.75rem 1rem;
-            border-bottom: 1px solid #e2e8f0;
-            color: #475569;
-            font-weight: 500;
-        }
-        
-        .stDataFrame td {
-            padding: 0.75rem 1rem;
-            border-bottom: 1px solid #e2e8f0;
-            color: #334155;
-        }
-        
-        /* Killswitch Styling */
-        .killswitch-active {
-            background-color: #fee2e2;
-            border-radius: 0.5rem;
-            padding: 1rem;
-            margin-bottom: 1rem;
-            border-left: 4px solid #dc2626;
-            color: #991b1b;
-        }
-        
-        .chat-killswitch-active {
-            background-color: #dbeafe;
-            border-radius: 0.5rem;
-            padding: 1rem;
-            margin-bottom: 1rem;
-            border-left: 4px solid #2563eb;
-            color: #1e40af;
-        }
-        
-        /* Header Styling */
-        h1, h2, h3, h4, h5, h6 {
-            color: #1e293b;
-            font-weight: 600;
-            margin-bottom: 1rem;
-        }
-        
-        /* Expander Styling */
-        .streamlit-expanderHeader {
-            background-color: #f8fafc;
-            border-radius: 0.5rem;
-            border: 1px solid #e2e8f0;
-            padding: 0.75rem 1rem;
-            color: #475569;
-            font-weight: 500;
-        }
-        
-        /* Progress Bar Styling */
-        .stProgress > div > div {
-            background-color: #2563eb;
-            border-radius: 1rem;
-        }
-        
-        /* File Uploader Styling */
-        .stFileUploader > div {
-            border-radius: 0.5rem;
-            border: 2px dashed #e2e8f0;
-            padding: 2rem;
-            text-align: center;
-        }
-        
-        .stFileUploader > div:hover {
-            border-color: #2563eb;
+            margin-top: 0.5rem;
         }
     </style>
     """, unsafe_allow_html=True)
@@ -1666,17 +1519,13 @@ init_db()
 init_break_session_state()
 
 if not st.session_state.authenticated:
-    st.markdown("""
-        <div class="login-container">
-            <h1 style="text-align: center; margin-bottom: 2rem;">🏢 Request Management System</h1>
-    """, unsafe_allow_html=True)
-    
-    with st.form("login_form"):
-        username = st.text_input("Username")
-        password = st.text_input("Password", type="password")
-        submit_col1, submit_col2, submit_col3 = st.columns([1, 2, 1])
-        with submit_col2:
-            if st.form_submit_button("Login", use_container_width=True):
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        st.title("🏢 Request Management System")
+        with st.form("login_form"):
+            username = st.text_input("Username")
+            password = st.text_input("Password", type="password")
+            if st.form_submit_button("Login"):
                 if username and password:
                     role = authenticate(username, password)
                     if role:
@@ -1691,8 +1540,6 @@ if not st.session_state.authenticated:
                         st.rerun()
                     else:
                         st.error("Invalid credentials")
-    
-    st.markdown("</div>", unsafe_allow_html=True)
 
 else:
     if is_killswitch_enabled():
