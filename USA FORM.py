@@ -893,25 +893,6 @@ def admin_break_dashboard():
     st.title("Break Schedule Management")
     st.markdown("---")
     
-    # Bulk Time Update Section
-    st.subheader("⏰ Bulk Time Update")
-    st.warning("⚠️ This will update all time slots in all templates!")
-    
-    col1, col2 = st.columns(2)
-    with col1:
-        if st.button("➕ Add 1 Hour to All Times", use_container_width=True):
-            if bulk_update_template_times(1):
-                st.success("Successfully added 1 hour to all template times!")
-                st.rerun()
-    
-    with col2:
-        if st.button("➖ Subtract 1 Hour from All Times", use_container_width=True):
-            if bulk_update_template_times(-1):
-                st.success("Successfully subtracted 1 hour from all template times!")
-                st.rerun()
-    
-    st.markdown("---")
-    
     # Initialize templates if empty
     if 'templates' not in st.session_state:
         st.session_state.templates = {}
@@ -931,14 +912,34 @@ def admin_break_dashboard():
             st.session_state.active_templates.append("Default Template")
         save_break_data()
     
-    # Template Management
-    st.subheader("Template Management")
+    # Bulk Time Update Section
+    st.subheader("⏰ Bulk Time Update")
+    st.warning("⚠️ This will update all time slots in all templates!")
     
     col1, col2 = st.columns(2)
     with col1:
+        if st.button("➕ Add 1 Hour to All Times", use_container_width=True):
+            if bulk_update_template_times(1):
+                st.success("Successfully added 1 hour to all template times!")
+                st.rerun()
+    
+    with col2:
+        if st.button("➖ Subtract 1 Hour from All Times", use_container_width=True):
+            if bulk_update_template_times(-1):
+                st.success("Successfully subtracted 1 hour from all template times!")
+                st.rerun()
+    
+    st.markdown("---")
+    
+    # Template Management
+    st.subheader("Template Management")
+    
+    # Template creation with aligned button
+    col1, col2 = st.columns([3, 1])
+    with col1:
         template_name = st.text_input("New Template Name:")
     with col2:
-        if st.button("Create Template"):
+        if st.button("Create Template", use_container_width=True):
             if template_name and template_name not in st.session_state.templates:
                 st.session_state.templates[template_name] = {
                     "lunch_breaks": ["19:30", "20:00", "20:30", "21:00", "21:30"],
@@ -989,21 +990,24 @@ def admin_break_dashboard():
                 height=200
             )
         
-        if st.button("Save Changes"):
-            template["lunch_breaks"] = [t.strip() for t in lunch_breaks.split("\n") if t.strip()]
-            template["tea_breaks"]["early"] = [t.strip() for t in early_tea.split("\n") if t.strip()]
-            template["tea_breaks"]["late"] = [t.strip() for t in late_tea.split("\n") if t.strip()]
-            save_break_data()
-            st.success("Template updated successfully!")
-            st.rerun()
+        template_col1, template_col2, template_col3 = st.columns([2, 1, 1])
+        with template_col2:
+            if st.button("Save Template Changes", use_container_width=True):
+                template["lunch_breaks"] = [t.strip() for t in lunch_breaks.split("\n") if t.strip()]
+                template["tea_breaks"]["early"] = [t.strip() for t in early_tea.split("\n") if t.strip()]
+                template["tea_breaks"]["late"] = [t.strip() for t in late_tea.split("\n") if t.strip()]
+                save_break_data()
+                st.success("Template updated successfully!")
+                st.rerun()
         
-        if st.button("Delete Template") and len(st.session_state.templates) > 1:
-            del st.session_state.templates[selected_template]
-            if selected_template in st.session_state.active_templates:
-                st.session_state.active_templates.remove(selected_template)
-            save_break_data()
-            st.success(f"Template '{selected_template}' deleted!")
-            st.rerun()
+        with template_col3:
+            if st.button("Delete Template", use_container_width=True) and len(st.session_state.templates) > 1:
+                del st.session_state.templates[selected_template]
+                if selected_template in st.session_state.active_templates:
+                    st.session_state.active_templates.remove(selected_template)
+                save_break_data()
+                st.success(f"Template '{selected_template}' deleted!")
+                st.rerun()
     
     # Break Limits
     st.markdown("---")
@@ -1019,42 +1023,32 @@ def admin_break_dashboard():
         
         limits = st.session_state.break_limits[selected_template]
         
+        # Function to create limit controls
+        def create_limit_controls(break_times, limit_dict, break_type):
+            for i, time in enumerate(break_times):
+                cols = st.columns([2, 1, 1, 1])
+                cols[0].write(time)
+                with cols[1]:
+                    if st.button("-", key=f"minus_{break_type}_{time}"):
+                        if limit_dict[time] > 1:
+                            limit_dict[time] -= 1
+                            save_break_data()
+                            st.rerun()
+                cols[2].write(str(limit_dict[time]))
+                with cols[3]:
+                    if st.button("+", key=f"plus_{break_type}_{time}"):
+                        limit_dict[time] += 1
+                        save_break_data()
+                        st.rerun()
+        
         st.write("Lunch Break Limits")
-        cols = st.columns(len(template["lunch_breaks"]))
-        for i, time in enumerate(template["lunch_breaks"]):
-            with cols[i]:
-                limits["lunch"][time] = st.number_input(
-                    f"Max at {time}",
-                    min_value=1,
-                    value=limits["lunch"].get(time, 5),
-                    key=f"lunch_limit_{time}"
-                )
+        create_limit_controls(template["lunch_breaks"], limits["lunch"], "lunch")
         
         st.write("Early Tea Break Limits")
-        cols = st.columns(len(template["tea_breaks"]["early"]))
-        for i, time in enumerate(template["tea_breaks"]["early"]):
-            with cols[i]:
-                limits["early_tea"][time] = st.number_input(
-                    f"Max at {time}",
-                    min_value=1,
-                    value=limits["early_tea"].get(time, 3),
-                    key=f"early_tea_limit_{time}"
-                )
+        create_limit_controls(template["tea_breaks"]["early"], limits["early_tea"], "early_tea")
         
         st.write("Late Tea Break Limits")
-        cols = st.columns(len(template["tea_breaks"]["late"]))
-        for i, time in enumerate(template["tea_breaks"]["late"]):
-            with cols[i]:
-                limits["late_tea"][time] = st.number_input(
-                    f"Max at {time}",
-                    min_value=1,
-                    value=limits["late_tea"].get(time, 3),
-                    key=f"late_tea_limit_{time}"
-                )
-        
-        if st.button("Save Limits"):
-            save_break_data()
-            st.success("Break limits saved successfully!")
+        create_limit_controls(template["tea_breaks"]["late"], limits["late_tea"], "late_tea")
     
     # View Bookings
     st.markdown("---")
@@ -1067,11 +1061,17 @@ def admin_break_dashboard():
         if selected_date in st.session_state.agent_bookings:
             bookings_data = []
             for agent, breaks in st.session_state.agent_bookings[selected_date].items():
+                # Get template from any of the breaks since they're all from the same template
+                template_name = (breaks.get("lunch", {}).get("template", "-") or 
+                              breaks.get("early_tea", {}).get("template", "-") or 
+                              breaks.get("late_tea", {}).get("template", "-"))
+                
                 booking = {
                     "Agent": agent,
-                    "Lunch": breaks.get("lunch", {}).get("time", "-") if isinstance(breaks.get("lunch"), dict) else breaks.get("lunch", "-"),
-                    "Early Tea": breaks.get("early_tea", {}).get("time", "-") if isinstance(breaks.get("early_tea"), dict) else breaks.get("early_tea", "-"),
-                    "Late Tea": breaks.get("late_tea", {}).get("time", "-") if isinstance(breaks.get("late_tea"), dict) else breaks.get("late_tea", "-")
+                    "Template": template_name,
+                    "Lunch": breaks.get("lunch", {}).get("time", "-"),
+                    "Early Tea": breaks.get("early_tea", {}).get("time", "-"),
+                    "Late Tea": breaks.get("late_tea", {}).get("time", "-")
                 }
                 bookings_data.append(booking)
             
