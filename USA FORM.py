@@ -44,28 +44,110 @@ def init_db():
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 username TEXT UNIQUE,
                 password TEXT,
-                role TEXT CHECK(role IN ('agent', 'admin')),
-                is_vip INTEGER DEFAULT 0
-            )
+                role TEXT CHECK(role IN ('agent', 'admin')))
         """)
         
         cursor.execute("""
-            CREATE TABLE IF NOT EXISTS vip_messages (
+            CREATE TABLE IF NOT EXISTS requests (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                agent_name TEXT,
+                request_type TEXT,
+                identifier TEXT,
+                comment TEXT,
+                timestamp TEXT,
+                completed INTEGER DEFAULT 0)
+        """)
+        
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS mistakes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                team_leader TEXT,
+                agent_name TEXT,
+                ticket_id TEXT,
+                error_description TEXT,
+                timestamp TEXT)
+        """)
+        
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS group_messages (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 sender TEXT,
                 message TEXT,
                 timestamp TEXT,
-                mentions TEXT
-            )
+                mentions TEXT)
         """)
         
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS hold_images (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                uploader TEXT,
+                image_data BLOB,
+                timestamp TEXT)
+        """)
+        
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS request_comments (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                request_id INTEGER,
+                user TEXT,
+                comment TEXT,
+                timestamp TEXT,
+                FOREIGN KEY(request_id) REFERENCES requests(id))
+        """)
+        
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS late_logins (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                agent_name TEXT,
+                presence_time TEXT,
+                login_time TEXT,
+                reason TEXT,
+                timestamp TEXT)
+        """)
+        
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS quality_issues (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                agent_name TEXT,
+                issue_type TEXT,
+                timing TEXT,
+                mobile_number TEXT,
+                product TEXT,
+                timestamp TEXT)
+        """)
+        
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS midshift_issues (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                agent_name TEXT,
+                issue_type TEXT,
+                start_time TEXT,
+                end_time TEXT,
+                timestamp TEXT)
+        """)
+        
+        # Handle system_settings table schema migration
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='system_settings'")
+        if not cursor.fetchone():
+            cursor.execute("""
+                CREATE TABLE system_settings (
+                    id INTEGER PRIMARY KEY DEFAULT 1,
+                    killswitch_enabled INTEGER DEFAULT 0,
+                    chat_killswitch_enabled INTEGER DEFAULT 0)
+            """)
+            cursor.execute("INSERT INTO system_settings (id, killswitch_enabled, chat_killswitch_enabled) VALUES (1, 0, 0)")
+        else:
+            cursor.execute("PRAGMA table_info(system_settings)")
+            columns = [column[1] for column in cursor.fetchall()]
+            if 'chat_killswitch_enabled' not in columns:
+                cursor.execute("ALTER TABLE system_settings ADD COLUMN chat_killswitch_enabled INTEGER DEFAULT 0")
+                cursor.execute("UPDATE system_settings SET chat_killswitch_enabled = 0 WHERE id = 1")
+
         # Create default admin account
         cursor.execute("""
-            INSERT OR IGNORE INTO users (username, password, role, is_vip) 
-            VALUES (?, ?, ?, ?)
-        """, ("taha kirri", hash_password("arise@99"), "admin", 1))
-        
-        # Create other admin accounts
+            INSERT OR IGNORE INTO users (username, password, role) 
+            VALUES (?, ?, ?)
+        """, ("taha kirri", hash_password("arise@99"), "admin"))
         admin_accounts = [
             ("taha kirri", "arise@99"),
             ("Issam Samghini", "admin@2025"),
@@ -76,11 +158,10 @@ def init_db():
         
         for username, password in admin_accounts:
             cursor.execute("""
-                INSERT OR IGNORE INTO users (username, password, role, is_vip) 
-                VALUES (?, ?, ?, ?)
-            """, (username, hash_password(password), "admin", 0))
-        
-        # Create agent accounts
+                INSERT OR IGNORE INTO users (username, password, role) 
+                VALUES (?, ?, ?)
+            """, (username, hash_password(password), "admin"))
+        # Create agent accounts (agent name as username, workspace ID as password)
         agents = [
             ("Karabila Younes", "30866"),
             ("Kaoutar Mzara", "30514"),
@@ -131,14 +212,9 @@ def init_db():
         
         for agent_name, workspace_id in agents:
             cursor.execute("""
-                INSERT OR IGNORE INTO users (username, password, role, is_vip) 
-                VALUES (?, ?, ?, ?)
-            """, (agent_name, hash_password(workspace_id), "agent", 0))
-        
-        # Ensure taha kirri has VIP status
-        cursor.execute("""
-            UPDATE users SET is_vip = 1 WHERE LOWER(username) = 'taha kirri'
-        """)
+                INSERT OR IGNORE INTO users (username, password, role) 
+                VALUES (?, ?, ?)
+            """, (agent_name, hash_password(workspace_id), "agent"))
         
         conn.commit()
     finally:
@@ -610,40 +686,6 @@ def clear_midshift_issues():
     finally:
         conn.close()
 
-def send_vip_message(sender, message):
-    """Send a message in the VIP-only chat"""
-    if is_killswitch_enabled() or is_chat_killswitch_enabled():
-        st.error("Chat is currently locked. Please contact the developer.")
-        return False
-    
-    if not is_vip_user(sender) and sender.lower() != "taha kirri":
-        st.error("Only VIP users can send messages in this chat.")
-        return False
-        
-    conn = get_db_connection()
-    try:
-        cursor = conn.cursor()
-        mentions = re.findall(r'@(\w+)', message)
-        cursor.execute("""
-            INSERT INTO vip_messages (sender, message, timestamp, mentions) 
-            VALUES (?, ?, ?, ?)
-        """, (sender, message, datetime.now().strftime("%Y-%m-%d %H:%M:%S"), 
-             ','.join(mentions)))
-        conn.commit()
-        return True
-    finally:
-        conn.close()
-
-def get_vip_messages():
-    """Get messages from the VIP-only chat"""
-    conn = get_db_connection()
-    try:
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM vip_messages ORDER BY timestamp DESC LIMIT 50")
-        return cursor.fetchall()
-    finally:
-        conn.close()
-
 # --------------------------
 # Break Scheduling Functions (from first code)
 # --------------------------
@@ -888,37 +930,6 @@ def admin_break_dashboard():
             st.session_state.active_templates.append("Default Template")
         save_break_data()
     
-    # Template Activation Management
-    st.subheader("🔄 Template Activation")
-    st.info("Only activated templates will be available for agents to book breaks from.")
-    
-    col1, col2 = st.columns([2, 1])
-    with col1:
-        st.write("### Active Templates")
-        active_templates = st.session_state.active_templates
-        template_list = list(st.session_state.templates.keys())
-        
-        for template in template_list:
-            is_active = template in active_templates
-            if st.checkbox(f"{template} {'✅' if is_active else ''}", 
-                         value=is_active, 
-                         key=f"active_{template}"):
-                if template not in active_templates:
-                    active_templates.append(template)
-            else:
-                if template in active_templates:
-                    active_templates.remove(template)
-        
-        st.session_state.active_templates = active_templates
-        save_break_data()
-    
-    with col2:
-        st.write("### Statistics")
-        st.metric("Total Templates", len(template_list))
-        st.metric("Active Templates", len(active_templates))
-    
-    st.markdown("---")
-    
     # Template Management
     st.subheader("Template Management")
     
@@ -935,6 +946,7 @@ def admin_break_dashboard():
                         "late": ["21:45", "22:00", "22:15", "22:30"]
                     }
                 }
+                st.session_state.active_templates.append(template_name)
                 save_break_data()
                 st.success(f"Template '{template_name}' created!")
                 st.rerun()
@@ -1122,48 +1134,6 @@ def admin_break_dashboard():
     else:
         st.info("No bookings available")
 
-def time_to_minutes(time_str):
-    """Convert time string (HH:MM) to minutes since midnight"""
-    try:
-        hours, minutes = map(int, time_str.split(':'))
-        return hours * 60 + minutes
-    except:
-        return None
-
-def times_overlap(time1, time2, duration_minutes=15):
-    """Check if two time slots overlap, assuming each break is duration_minutes long"""
-    t1 = time_to_minutes(time1)
-    t2 = time_to_minutes(time2)
-    
-    if t1 is None or t2 is None:
-        return False
-        
-    # Check if the breaks overlap
-    return abs(t1 - t2) < duration_minutes
-
-def check_break_conflicts(selected_breaks):
-    """Check for conflicts between selected breaks"""
-    times = []
-    
-    # Collect all selected break times
-    if selected_breaks.get("lunch"):
-        times.append(("lunch", selected_breaks["lunch"]))
-    if selected_breaks.get("early_tea"):
-        times.append(("early_tea", selected_breaks["early_tea"]))
-    if selected_breaks.get("late_tea"):
-        times.append(("late_tea", selected_breaks["late_tea"]))
-    
-    # Check each pair of breaks for overlap
-    for i in range(len(times)):
-        for j in range(i + 1, len(times)):
-            break1_type, break1_time = times[i]
-            break2_type, break2_time = times[j]
-            
-            if times_overlap(break1_time, break2_time, 30 if "lunch" in (break1_type, break2_type) else 15):
-                return f"Conflict detected between {break1_type.replace('_', ' ')} ({break1_time}) and {break2_type.replace('_', ' ')} ({break2_time})"
-    
-    return None
-
 def agent_break_dashboard():
     st.title("Break Booking")
     st.markdown("---")
@@ -1250,21 +1220,21 @@ def agent_break_dashboard():
     
     # Break selection
     with st.form("break_selection_form"):
-        st.write("**Lunch Break** (30 minutes)")
+        st.write("**Lunch Break**")
         lunch_time = st.selectbox(
             "Select Lunch Break",
             [""] + template["lunch_breaks"],
             format_func=lambda x: "No selection" if x == "" else x
         )
         
-        st.write("**Early Tea Break** (15 minutes)")
+        st.write("**Early Tea Break**")
         early_tea = st.selectbox(
             "Select Early Tea Break",
             [""] + template["tea_breaks"]["early"],
             format_func=lambda x: "No selection" if x == "" else x
         )
         
-        st.write("**Late Tea Break** (15 minutes)")
+        st.write("**Late Tea Break**")
         late_tea = st.selectbox(
             "Select Late Tea Break",
             [""] + template["tea_breaks"]["late"],
@@ -1275,18 +1245,6 @@ def agent_break_dashboard():
         if st.form_submit_button("Confirm Breaks"):
             if not (lunch_time or early_tea or late_tea):
                 st.error("Please select at least one break.")
-                return
-            
-            # Check for time conflicts
-            selected_breaks = {
-                "lunch": lunch_time if lunch_time else None,
-                "early_tea": early_tea if early_tea else None,
-                "late_tea": late_tea if late_tea else None
-            }
-            
-            conflict = check_break_conflicts(selected_breaks)
-            if conflict:
-                st.error(conflict)
                 return
             
             # Check limits for each selected break
@@ -1344,31 +1302,6 @@ def agent_break_dashboard():
                 save_break_data()
                 st.success("Your breaks have been confirmed!")
                 st.rerun()
-
-def is_vip_user(username):
-    """Check if a user has VIP status"""
-    conn = get_db_connection()
-    try:
-        cursor = conn.cursor()
-        cursor.execute("SELECT is_vip FROM users WHERE username = ?", (username,))
-        result = cursor.fetchone()
-        return bool(result[0]) if result else False
-    finally:
-        conn.close()
-
-def set_vip_status(username, is_vip):
-    """Set or remove VIP status for a user"""
-    if not username:
-        return False
-    conn = get_db_connection()
-    try:
-        cursor = conn.cursor()
-        cursor.execute("UPDATE users SET is_vip = ? WHERE username = ?", 
-                      (1 if is_vip else 0, username))
-        conn.commit()
-        return True
-    finally:
-        conn.close()
 
 # --------------------------
 # Streamlit App
@@ -1723,14 +1656,8 @@ else:
             ("📞 Quality Issues", "quality_issues"),
             ("🔄 Mid-shift Issues", "midshift_issues")
         ]
-        
-        # Add admin option for admin users
         if st.session_state.role == "admin":
             nav_options.append(("⚙️ Admin", "admin"))
-        
-        # Add VIP Management for taha kirri
-        if st.session_state.username.lower() == "taha kirri":
-            nav_options.append(("⭐ VIP Management", "vip_management"))
         
         for option, value in nav_options:
             if st.button(option, key=f"nav_{value}", use_container_width=True):
@@ -1909,158 +1836,44 @@ else:
             </script>
             """, unsafe_allow_html=True)
             
+            # Add mode toggle in sidebar
+            with st.sidebar:
+                st.markdown("---")
+                if st.button("🌓 Toggle Light/Dark Mode"):
+                    st.session_state.color_mode = 'light' if st.session_state.color_mode == 'dark' else 'dark'
+                    st.rerun()
+            
             if is_chat_killswitch_enabled():
                 st.warning("Chat functionality is currently disabled by the administrator.")
             else:
-                # Check if user is VIP or taha kirri
-                is_vip = is_vip_user(st.session_state.username)
-                is_taha = st.session_state.username.lower() == "taha kirri"
+                messages = get_group_messages()
+                st.markdown('<div class="chat-container">', unsafe_allow_html=True)
+                for msg in reversed(messages):
+                    msg_id, sender, message, ts, mentions = msg
+                    is_sent = sender == st.session_state.username
+                    is_mentioned = st.session_state.username in (mentions.split(',') if mentions else [])
+                    
+                    st.markdown(f"""
+                    <div class="chat-message {'sent' if is_sent else 'received'}">
+                        <div class="message-avatar">
+                            {sender[0].upper()}
+                        </div>
+                        <div class="message-content">
+                            <div>{message}</div>
+                            <div class="message-meta">{sender} • {ts}</div>
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                st.markdown('</div>', unsafe_allow_html=True)
                 
-                if is_vip or is_taha:
-                    tab1, tab2, tab3 = st.tabs(["💬 Regular Chat", "⭐ VIP Chat", "🔒 Private Chat"])
-                    
-                    with tab1:
-                        # ... existing Regular Chat code ...
-                        messages = get_group_messages()
-                        st.markdown('<div class="chat-container">', unsafe_allow_html=True)
-                        for msg in reversed(messages):
-                            msg_id, sender, message, ts, mentions = msg
-                            is_sent = sender == st.session_state.username
-                            is_mentioned = st.session_state.username in (mentions.split(',') if mentions else [])
-                            st.markdown(f"""
-                            <div class="chat-message {'sent' if is_sent else 'received'}">
-                                <div class="message-avatar">
-                                    {sender[0].upper()}
-                                </div>
-                                <div class="message-content">
-                                    <div>{message}</div>
-                                    <div class="message-meta">{sender} • {ts}</div>
-                                </div>
-                            </div>
-                            """, unsafe_allow_html=True)
-                        st.markdown('</div>', unsafe_allow_html=True)
-                        with st.form("regular_chat_form", clear_on_submit=True):
-                            message = st.text_input("Type your message...", key="regular_chat_input")
-                            col1, col2 = st.columns([5,1])
-                            with col2:
-                                if st.form_submit_button("Send"):
-                                    if message:
-                                        send_group_message(st.session_state.username, message)
-                                        st.rerun()
-                    
-                    with tab2:
-                        # ... existing VIP Chat code ...
-                        st.markdown("""
-                        <div style='padding: 1rem; background-color: #2d3748; border-radius: 0.5rem; margin-bottom: 1rem;'>
-                            <h3 style='color: gold; margin: 0;'>⭐ VIP Chat</h3>
-                            <p style='color: #e2e8f0; margin: 0;'>Exclusive chat for VIP members</p>
-                        </div>
-                        """, unsafe_allow_html=True)
-                        vip_messages = get_vip_messages()
-                        st.markdown('<div class="chat-container">', unsafe_allow_html=True)
-                        for msg in reversed(vip_messages):
-                            msg_id, sender, message, ts, mentions = msg
-                            is_sent = sender == st.session_state.username
-                            is_mentioned = st.session_state.username in (mentions.split(',') if mentions else [])
-                            st.markdown(f"""
-                            <div class="chat-message {'sent' if is_sent else 'received'}">
-                                <div class="message-avatar" style="background-color: gold;">
-                                    {sender[0].upper()}
-                                </div>
-                                <div class="message-content" style="background-color: #4a5568;">
-                                    <div>{message}</div>
-                                    <div class="message-meta">{sender} • {ts}</div>
-                                </div>
-                            </div>
-                            """, unsafe_allow_html=True)
-                        st.markdown('</div>', unsafe_allow_html=True)
-                        with st.form("vip_chat_form", clear_on_submit=True):
-                            message = st.text_input("Type your message...", key="vip_chat_input")
-                            col1, col2 = st.columns([5,1])
-                            with col2:
-                                if st.form_submit_button("Send"):
-                                    if message:
-                                        send_vip_message(st.session_state.username, message)
-                                        st.rerun()
-                    
-                    with tab3:
-                        st.markdown("""
-                        <div style='padding: 1rem; background-color: #2d3748; border-radius: 0.5rem; margin-bottom: 1rem;'>
-                            <h3 style='color: #e2e8f0; margin: 0;'>🔒 Private Chat</h3>
-                            <p style='color: #e2e8f0; margin: 0;'>Private chat between VIP members</p>
-                        </div>
-                        """, unsafe_allow_html=True)
-                        users = get_all_users()
-                        vip_users = [u[1] for u in users if is_vip_user(u[1]) and u[1] != st.session_state.username]
-                        if is_taha:
-                            # Admin view: see all pairs
-                            all_pairs = get_all_vip_private_pairs()
-                            pair_labels = [f"{a} ↔ {b}" for a, b in all_pairs]
-                            selected_pair = st.selectbox("Select VIP pair to view:", pair_labels, index=0 if pair_labels else None)
-                            if selected_pair:
-                                a, b = all_pairs[pair_labels.index(selected_pair)]
-                                chat_user1, chat_user2 = a, b
-                        else:
-                            # VIP view: select another VIP
-                            chat_user1 = st.session_state.username
-                            chat_user2 = st.selectbox("Select VIP to chat with:", vip_users, index=0 if vip_users else None)
-                        if (is_taha and selected_pair) or (not is_taha and chat_user2):
-                            messages = get_vip_private_messages(chat_user1, chat_user2)
-                            st.markdown('<div class="chat-container">', unsafe_allow_html=True)
-                            for sender, receiver, message, ts in messages:
-                                is_sent = sender == st.session_state.username
-                                st.markdown(f"""
-                                <div class="chat-message {'sent' if is_sent else 'received'}">
-                                    <div class="message-avatar" style="background-color: #60a5fa;">
-                                        {sender[0].upper()}
-                                    </div>
-                                    <div class="message-content" style="background-color: #334155;">
-                                        <div>{message}</div>
-                                        <div class="message-meta">{sender} • {ts}</div>
-                                    </div>
-                                </div>
-                                """, unsafe_allow_html=True)
-                            st.markdown('</div>', unsafe_allow_html=True)
-                            if not is_taha:
-                                with st.form("vip_private_chat_form", clear_on_submit=True):
-                                    message = st.text_input("Type your message...", key="vip_private_chat_input")
-                                    col1, col2 = st.columns([5,1])
-                                    with col2:
-                                        if st.form_submit_button("Send"):
-                                            if message:
-                                                send_vip_private_message(st.session_state.username, chat_user2, message)
-                                                st.rerun()
-                else:
-                    # Regular chat only for non-VIP users
-                    st.subheader("Regular Chat")
-                    messages = get_group_messages()
-                    st.markdown('<div class="chat-container">', unsafe_allow_html=True)
-                    for msg in reversed(messages):
-                        msg_id, sender, message, ts, mentions = msg
-                        is_sent = sender == st.session_state.username
-                        is_mentioned = st.session_state.username in (mentions.split(',') if mentions else [])
-                        
-                        st.markdown(f"""
-                        <div class="chat-message {'sent' if is_sent else 'received'}">
-                            <div class="message-avatar">
-                                {sender[0].upper()}
-                            </div>
-                            <div class="message-content">
-                                <div>{message}</div>
-                                <div class="message-meta">{sender} • {ts}</div>
-                            </div>
-                        </div>
-                        """, unsafe_allow_html=True)
-                    st.markdown('</div>', unsafe_allow_html=True)
-                    
-                    with st.form("chat_form", clear_on_submit=True):
-                        message = st.text_input("Type your message...", key="chat_input")
-                        col1, col2 = st.columns([5,1])
-                        with col2:
-                            if st.form_submit_button("Send"):
-                                if message:
-                                    send_group_message(st.session_state.username, message)
-                                    st.rerun()
+                with st.form("chat_form", clear_on_submit=True):
+                    message = st.text_input("Type your message...", key="chat_input")
+                    col1, col2 = st.columns([5,1])
+                    with col2:
+                        if st.form_submit_button("Send"):
+                            if message:
+                                send_group_message(st.session_state.username, message)
+                                st.rerun()
         else:
             st.error("System is currently locked. Access to chat is disabled.")
 
@@ -2575,119 +2388,11 @@ else:
                     delete_user(uid)
                     st.rerun()
 
-        st.subheader("⭐ VIP User Management")
-        
-        # Get all users
-        users = get_all_users()
-        
-        with st.form("vip_management"):
-            selected_user = st.selectbox(
-                "Select User",
-                [user[1] for user in users],
-                format_func=lambda x: f"{x} {'⭐' if is_vip_user(x) else ''}"
-            )
-            
-            if selected_user:
-                current_vip = is_vip_user(selected_user)
-                make_vip = st.checkbox("VIP Status", value=current_vip)
-                
-                if st.form_submit_button("Update VIP Status"):
-                    if set_vip_status(selected_user, make_vip):
-                        st.success(f"Updated VIP status for {selected_user}")
-                        # Force database refresh
-                        conn = get_db_connection()
-                        try:
-                            cursor = conn.cursor()
-                            cursor.execute("SELECT is_vip FROM users WHERE username = ?", (selected_user,))
-                            new_status = cursor.fetchone()
-                            if new_status:
-                                st.write(f"New VIP status: {'VIP' if new_status[0] else 'Regular User'}")
-                        finally:
-                            conn.close()
-                        st.rerun()
-        
-        st.markdown("---")
-
     elif st.session_state.current_section == "breaks":
         if st.session_state.role == "admin":
             admin_break_dashboard()
         else:
             agent_break_dashboard()
-
-    elif st.session_state.current_section == "vip_management" and st.session_state.username.lower() == "taha kirri":
-        st.title("⭐ VIP Management")
-        
-        # Get all users
-        users = get_all_users()
-        
-        # Create columns for better layout
-        col1, col2 = st.columns([3, 1])
-        
-        with col1:
-            # Show all users with their current VIP status
-            st.markdown("### Current VIP Status")
-            user_data = []
-            for user_id, username, role in users:
-                is_vip = is_vip_user(username)
-                user_data.append({
-                    "Username": username,
-                    "Role": role,
-                    "Status": "⭐ VIP" if is_vip else "Regular User"
-                })
-            
-            df = pd.DataFrame(user_data)
-            st.dataframe(df, use_container_width=True)
-        
-        with col2:
-            # VIP management form
-            with st.form("vip_management_form"):
-                st.write("### Update VIP Status")
-                selected_user = st.selectbox(
-                    "Select User",
-                    [user[1] for user in users if user[1].lower() != "taha kirri"],
-                    format_func=lambda x: f"{x} {'⭐' if is_vip_user(x) else ''}"
-                )
-                
-                if selected_user:
-                    current_vip = is_vip_user(selected_user)
-                    make_vip = st.checkbox("Grant VIP Access", value=current_vip)
-                    
-                    if st.form_submit_button("Update"):
-                        if set_vip_status(selected_user, make_vip):
-                            st.success(f"Updated VIP status for {selected_user}")
-                            st.rerun()
-        
-        # Add VIP Statistics
-        st.markdown("---")
-        st.subheader("VIP Statistics")
-        
-        total_users = len(users)
-        vip_users = sum(1 for user in users if is_vip_user(user[1]))
-        
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            st.metric("Total Users", total_users)
-        with col2:
-            st.metric("VIP Users", vip_users)
-        with col3:
-            st.metric("Regular Users", total_users - vip_users)
-        
-        # VIP Chat Overview
-        st.markdown("---")
-        st.subheader("VIP Chat Overview")
-        vip_messages = get_vip_messages()
-        if vip_messages:
-            message_data = []
-            for msg in vip_messages[:10]:  # Show last 10 messages
-                msg_id, sender, message, ts, mentions = msg
-                message_data.append({
-                    "Time": ts,
-                    "Sender": sender,
-                    "Message": message
-                })
-            st.dataframe(pd.DataFrame(message_data))
-        else:
-            st.info("No VIP messages yet")
 
 def get_new_messages(last_check_time):
     """Get new messages since last check"""
@@ -2729,112 +2434,6 @@ def handle_message_check():
                 })
         return {"new_messages": bool(messages_data), "messages": messages_data}
     return {"new_messages": False, "messages": []}
-
-# --- VIP Chat Enhancements ---
-# 1. Add DB tables for reactions and private messages
-
-def init_vip_chat_tables():
-    conn = get_db_connection()
-    try:
-        cursor = conn.cursor()
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS vip_message_reactions (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                message_id INTEGER,
-                username TEXT,
-                emoji TEXT,
-                UNIQUE(message_id, username, emoji)
-            )
-        ''')
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS vip_private_messages (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                sender TEXT,
-                receiver TEXT,
-                message TEXT,
-                timestamp TEXT
-            )
-        ''')
-        conn.commit()
-    finally:
-        conn.close()
-
-init_vip_chat_tables()
-
-# --- Emoji Picker Helper ---
-def emoji_picker(label, key):
-    emojis = ["😀", "😂", "😍", "😎", "👍", "🙏", "🎉", "😢", "😮", "🔥", "💯", "😡", "🥳", "🤔", "🙌"]
-    col1, col2 = st.columns([5, 1])
-    emoji = col2.selectbox("", emojis, key=key+"_emoji", label_visibility="collapsed")
-    return emoji if col1.button(label, key=key+"_btn") else None
-
-# --- VIP Message Reactions ---
-def get_vip_message_reactions(message_id):
-    conn = get_db_connection()
-    try:
-        cursor = conn.cursor()
-        cursor.execute("SELECT emoji, COUNT(*), GROUP_CONCAT(username) FROM vip_message_reactions WHERE message_id = ? GROUP BY emoji", (message_id,))
-        return cursor.fetchall()  # [(emoji, count, usernames_csv), ...]
-    finally:
-        conn.close()
-
-def add_vip_message_reaction(message_id, username, emoji):
-    conn = get_db_connection()
-    try:
-        cursor = conn.cursor()
-        cursor.execute("INSERT OR IGNORE INTO vip_message_reactions (message_id, username, emoji) VALUES (?, ?, ?)", (message_id, username, emoji))
-        conn.commit()
-    finally:
-        conn.close()
-
-def remove_vip_message_reaction(message_id, username, emoji):
-    conn = get_db_connection()
-    try:
-        cursor = conn.cursor()
-        cursor.execute("DELETE FROM vip_message_reactions WHERE message_id = ? AND username = ? AND emoji = ?", (message_id, username, emoji))
-        conn.commit()
-    finally:
-        conn.close()
-
-# --- VIP Private Messaging ---
-def send_vip_private_message(sender, receiver, message):
-    conn = get_db_connection()
-    try:
-        cursor = conn.cursor()
-        cursor.execute("INSERT INTO vip_private_messages (sender, receiver, message, timestamp) VALUES (?, ?, ?, ?)", (sender, receiver, message, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
-        conn.commit()
-    finally:
-        conn.close()
-
-def get_vip_private_messages(user1, user2):
-    conn = get_db_connection()
-    try:
-        cursor = conn.cursor()
-        cursor.execute("""
-            SELECT sender, receiver, message, timestamp FROM vip_private_messages
-            WHERE (sender = ? AND receiver = ?) OR (sender = ? AND receiver = ?)
-            ORDER BY timestamp ASC
-        """, (user1, user2, user2, user1))
-        return cursor.fetchall()
-    finally:
-        conn.close()
-
-def get_all_vip_private_pairs():
-    conn = get_db_connection()
-    try:
-        cursor = conn.cursor()
-        cursor.execute("SELECT DISTINCT sender, receiver FROM vip_private_messages")
-        pairs = set()
-        for sender, receiver in cursor.fetchall():
-            pairs.add(tuple(sorted([sender, receiver])))
-        return sorted(list(pairs))
-    finally:
-        conn.close()
-
-# --- VIP Chat UI Enhancements ---
-# In the VIP chat tab, add emoji picker, reactions, and private chat
-# (Insert this in the VIP chat tab code block)
-# ... existing code ...
 
 if __name__ == "__main__":
     inject_custom_css()
