@@ -1003,6 +1003,9 @@ def agent_break_dashboard():
     
     if 'templates' not in st.session_state:
         st.session_state.templates = {}
+    
+    if 'selected_template_for_booking' not in st.session_state:
+        st.session_state.selected_template_for_booking = None
         
     # Create default template if no templates exist
     if not st.session_state.templates:
@@ -1042,19 +1045,28 @@ def agent_break_dashboard():
                     current_agent_template = bookings[break_type]['template']
                     break
         
-        # If agent has existing bookings, show which template they're using
+        # Template selection section
+        st.markdown("### 1. Select Your Break Schedule")
         if current_agent_template:
-            st.info(f"You are currently using the **{current_agent_template}** template for today's breaks. All breaks must be booked from this template.")
+            st.info(f"You are currently using the **{current_agent_template}** template for today's breaks.")
             template_name = current_agent_template
-            template = adjust_template_times(st.session_state.templates[template_name], st.session_state.timezone_offset)
+            st.session_state.selected_template_for_booking = template_name
         else:
-            # Let agent select from active templates if they haven't booked any breaks yet
             template_name = st.selectbox(
-                "Select Break Schedule:",
+                "First, select your break schedule template:",
                 st.session_state.active_templates,
-                index=0
+                key="template_selector",
+                index=None,
+                placeholder="Choose a template..."
             )
-            template = adjust_template_times(st.session_state.templates[template_name], st.session_state.timezone_offset)
+            if template_name:
+                st.session_state.selected_template_for_booking = template_name
+                st.success(f"You selected the **{template_name}** template. You can now book your breaks below.")
+            else:
+                st.warning("⚠️ Please select a break schedule template before booking any breaks.")
+                return  # Stop here if no template is selected
+        
+        template = st.session_state.templates[template_name]
         
         if not template["lunch_breaks"] and not template["tea_breaks"]["early"] and not template["tea_breaks"]["late"]:
             st.error("Template appears to be empty or invalid. Please contact admin.")
@@ -1065,7 +1077,7 @@ def agent_break_dashboard():
         
         # Booking section
         st.markdown("---")
-        st.header("Available Break Slots")
+        st.markdown("### 2. Available Break Slots")
         
         # Lunch break booking
         st.subheader("Lunch Break")
