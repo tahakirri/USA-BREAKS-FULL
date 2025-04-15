@@ -1541,6 +1541,75 @@ else:
                 st.info("You have no mid-shift issue records")
 
     elif st.session_state.current_section == "break_booking":
+        st.title("⏸️ Break Booking")
+        
+        # Date selection
+        selected_date = st.date_input("Select Date", 
+                                    min_value=datetime.now().date(),
+                                    value=datetime.now().date())
+        
+        # Get available templates
+        templates = get_break_templates()
+        if not templates:
+            st.info("No break templates available. Please contact your administrator.")
+            pass
+        else:
+            # Show booking form
+            with st.form("break_booking_form"):
+                template_id = st.selectbox("Select Template", 
+                                        options=[t[0] for t in templates],
+                                        format_func=lambda x: next(t[1] for t in templates if t[0] == x))
+                
+                # Get slots for selected template
+                slots = get_break_slots(template_id)
+                slot_options = []
+                for slot in slots:
+                    slot_id, _, break_type, start_time, end_time = slot
+                    bookings = get_slot_bookings(slot_id, selected_date.strftime("%Y-%m-%d"))
+                    max_users = next(t[2] for t in templates if t[0] == template_id)
+                    break_name = {
+                        "first_tea": "First Tea Break",
+                        "lunch": "Lunch Break",
+                        "second_tea": "Second Tea Break"
+                    }[break_type]
+                    slot_options.append((slot_id, 
+                                    f"{break_name} ({start_time}-{end_time}) - {bookings}/{max_users} booked"))
+                
+                selected_slot = st.selectbox("Select Break Slot", 
+                                        options=[s[0] for s in slot_options],
+                                        format_func=lambda x: next(s[1] for s in slot_options if s[0] == x))
+                
+                if st.form_submit_button("Book Break"):
+                    if book_break(st.session_state.username, template_id, selected_slot, 
+                                selected_date.strftime("%Y-%m-%d")):
+                        st.success("Break booked successfully!")
+                        st.rerun()
+        
+        # Show user's bookings
+        st.subheader("Your Bookings")
+        bookings = get_agent_bookings(st.session_state.username)
+        if bookings:
+            for booking in bookings:
+                booking_id, _, _, _, booking_date, _, template_name, break_type, start_time, end_time = booking
+                break_name = {
+                    "first_tea": "First Tea Break",
+                    "lunch": "Lunch Break",
+                    "second_tea": "Second Tea Break"
+                }[break_type]
+                
+                cols = st.columns([3, 1])
+                cols[0].write(f"""
+                **{break_name}** ({start_time}-{end_time})  
+                Template: {template_name}  
+                Date: {booking_date}
+                """)
+                
+                if cols[1].button("Cancel", key=f"cancel_{booking_id}"):
+                    if cancel_booking(booking_id):
+                        st.success("Booking cancelled!")
+                        st.rerun()
+        else:
+            st.info("You have no break bookings")
 
     elif st.session_state.current_section == "break_admin":
         if st.session_state.role == "admin":
