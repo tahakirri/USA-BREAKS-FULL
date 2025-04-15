@@ -468,43 +468,18 @@ def delete_user(user_id):
     finally:
         conn.close()
 
-def optimize_image(image_bytes):
-    """Optimize image for storage and display"""
-    try:
-        # Open the image
-        img = Image.open(io.BytesIO(image_bytes))
-        
-        # Convert to RGB if necessary (handles PNG transparency)
-        if img.mode in ('RGBA', 'P'):
-            img = img.convert('RGB')
-        
-        # Calculate new dimensions while maintaining aspect ratio
-        max_size = (800, 800)  # Maximum width and height
-        img.thumbnail(max_size, Image.Resampling.LANCZOS)
-        
-        # Save the optimized image to bytes with JPEG compression
-        output_buffer = io.BytesIO()
-        img.save(output_buffer, format='JPEG', quality=85, optimize=True)
-        return output_buffer.getvalue()
-    except Exception as e:
-        st.error(f"Error optimizing image: {str(e)}")
-        return image_bytes
-
 def add_hold_image(uploader, image_data):
     if is_killswitch_enabled():
         st.error("System is currently locked. Please contact the developer.")
         return False
         
-    # Optimize the image before storing
-    optimized_image = optimize_image(image_data)
-    
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
         cursor.execute("""
             INSERT INTO hold_images (uploader, image_data, timestamp) 
             VALUES (?, ?, ?)
-        """, (uploader, optimized_image, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+        """, (uploader, image_data, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
         conn.commit()
         return True
     finally:
@@ -1969,21 +1944,11 @@ else:
         if not is_killswitch_enabled():
             st.subheader("🖼️ HOLD Images")
             
-            # Only show upload and clear options to admin users
+            # Only show upload option to admin users
             if st.session_state.role == "admin":
-                col1, col2 = st.columns([3, 1])
-                with col1:
-                    uploaded_file = st.file_uploader("Upload HOLD Image", type=['png', 'jpg', 'jpeg'])
-                with col2:
-                    if st.button("🗑️ Clear HOLD Image", type="secondary"):
-                        if clear_hold_images():
-                            st.success("HOLD image cleared successfully!")
-                            st.rerun()
-            
-            if uploaded_file is not None:
-                try:
-                    # Show a spinner while processing
-                    with st.spinner('Optimizing and uploading image...'):
+                uploaded_file = st.file_uploader("Upload HOLD Image", type=['png', 'jpg', 'jpeg'])
+                if uploaded_file is not None:
+                    try:
                         # Convert the file to bytes
                         img_bytes = uploaded_file.getvalue()
                         
@@ -1994,35 +1959,30 @@ else:
                         if add_hold_image(st.session_state.username, img_bytes):
                             st.success("Image uploaded successfully!")
                             st.rerun()
+                    except Exception as e:
+                        st.error(f"Error uploading image: {str(e)}")
+            
+            # Display images (visible to all users)
+            images = get_hold_images()
+            if images:
+                # Get only the most recent image
+                img = images[0]  # Since images are ordered by timestamp DESC
+                img_id, uploader, img_data, timestamp = img
+                st.markdown(f"""
+                <div style="border: 1px solid #ddd; padding: 10px; margin-bottom: 20px; border-radius: 5px;">
+                    <p><strong>Uploaded by:</strong> {uploader}</p>
+                    <p><small>Uploaded at: {timestamp}</small></p>
+                </div>
+                """, unsafe_allow_html=True)
+                try:
+                    image = Image.open(io.BytesIO(img_data))
+                    st.image(image, use_container_width=True)  # Updated parameter
                 except Exception as e:
-                    st.error(f"Error uploading image: {str(e)}")
-        
-        # Display images (visible to all users)
-        images = get_hold_images()
-        if images:
-            # Get only the most recent image
-            img = images[0]  # Since images are ordered by timestamp DESC
-            img_id, uploader, img_data, timestamp = img
-            st.markdown(f"""
-            <div style="border: 1px solid #ddd; padding: 10px; margin-bottom: 20px; border-radius: 5px;">
-                <p><strong>Uploaded by:</strong> {uploader}</p>
-                <p><small>Uploaded at: {timestamp}</small></p>
-            </div>
-            """, unsafe_allow_html=True)
-            try:
-                # Use st.cache_data to cache the image data
-                @st.cache_data(ttl=3600)  # Cache for 1 hour
-                def get_cached_image(img_data):
-                    return Image.open(io.BytesIO(img_data))
-                
-                image = get_cached_image(img_data)
-                st.image(image, use_container_width=True)
-            except Exception as e:
-                st.error(f"Error displaying image: {str(e)}")
+                    st.error(f"Error displaying image: {str(e)}")
+            else:
+                st.info("No HOLD images available")
         else:
-            st.info("No HOLD images available")
-    else:
-        st.error("System is currently locked. Access to HOLD images is disabled.")
+            st.error("System is currently locked. Access to HOLD images is disabled.")
 
     elif st.session_state.current_section == "late_login":
         st.subheader("⏰ Late Login Report")
