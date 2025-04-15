@@ -13,11 +13,16 @@ import json
 # Database Functions
 # --------------------------
 
+def get_db_connection():
+    """Create and return a database connection."""
+    os.makedirs("data", exist_ok=True)
+    return sqlite3.connect("data/requests.db")
+
 def hash_password(password):
     return hashlib.sha256(password.encode()).hexdigest()
 
 def authenticate(username, password):
-    conn = sqlite3.connect("data/requests.db")
+    conn = get_db_connection()
     try:
         cursor = conn.cursor()
         hashed_password = hash_password(password)
@@ -29,8 +34,7 @@ def authenticate(username, password):
         conn.close()
 
 def init_db():
-    os.makedirs("data", exist_ok=True)
-    conn = sqlite3.connect("data/requests.db")
+    conn = get_db_connection()
     try:
         cursor = conn.cursor()
         
@@ -81,6 +85,47 @@ def init_db():
                 timestamp TEXT)
         """)
         
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS request_comments (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                request_id INTEGER,
+                user TEXT,
+                comment TEXT,
+                timestamp TEXT,
+                FOREIGN KEY(request_id) REFERENCES requests(id))
+        """)
+        
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS late_logins (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                agent_name TEXT,
+                presence_time TEXT,
+                login_time TEXT,
+                reason TEXT,
+                timestamp TEXT)
+        """)
+        
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS quality_issues (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                agent_name TEXT,
+                issue_type TEXT,
+                timing TEXT,
+                mobile_number TEXT,
+                product TEXT,
+                timestamp TEXT)
+        """)
+        
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS midshift_issues (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                agent_name TEXT,
+                issue_type TEXT,
+                start_time TEXT,
+                end_time TEXT,
+                timestamp TEXT)
+        """)
+        
         # Handle system_settings table schema migration
         cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='system_settings'")
         if not cursor.fetchone():
@@ -97,17 +142,7 @@ def init_db():
             if 'chat_killswitch_enabled' not in columns:
                 cursor.execute("ALTER TABLE system_settings ADD COLUMN chat_killswitch_enabled INTEGER DEFAULT 0")
                 cursor.execute("UPDATE system_settings SET chat_killswitch_enabled = 0 WHERE id = 1")
-        
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS request_comments (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                request_id INTEGER,
-                user TEXT,
-                comment TEXT,
-                timestamp TEXT,
-                FOREIGN KEY(request_id) REFERENCES requests(id))
-        """)
-        
+
         # Create default admin account
         cursor.execute("""
             INSERT OR IGNORE INTO users (username, password, role) 
@@ -186,7 +221,7 @@ def init_db():
         conn.close()
 
 def is_killswitch_enabled():
-    conn = sqlite3.connect("data/requests.db")
+    conn = get_db_connection()
     try:
         cursor = conn.cursor()
         cursor.execute("SELECT killswitch_enabled FROM system_settings WHERE id = 1")
@@ -196,7 +231,7 @@ def is_killswitch_enabled():
         conn.close()
 
 def is_chat_killswitch_enabled():
-    conn = sqlite3.connect("data/requests.db")
+    conn = get_db_connection()
     try:
         cursor = conn.cursor()
         cursor.execute("SELECT chat_killswitch_enabled FROM system_settings WHERE id = 1")
@@ -206,7 +241,7 @@ def is_chat_killswitch_enabled():
         conn.close()
 
 def toggle_killswitch(enable):
-    conn = sqlite3.connect("data/requests.db")
+    conn = get_db_connection()
     try:
         cursor = conn.cursor()
         cursor.execute("UPDATE system_settings SET killswitch_enabled = ? WHERE id = 1",
@@ -217,7 +252,7 @@ def toggle_killswitch(enable):
         conn.close()
 
 def toggle_chat_killswitch(enable):
-    conn = sqlite3.connect("data/requests.db")
+    conn = get_db_connection()
     try:
         cursor = conn.cursor()
         cursor.execute("UPDATE system_settings SET chat_killswitch_enabled = ? WHERE id = 1",
@@ -232,7 +267,7 @@ def add_request(agent_name, request_type, identifier, comment):
         st.error("System is currently locked. Please contact the developer.")
         return False
         
-    conn = sqlite3.connect("data/requests.db")
+    conn = get_db_connection()
     try:
         cursor = conn.cursor()
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -254,7 +289,7 @@ def add_request(agent_name, request_type, identifier, comment):
         conn.close()
 
 def get_requests():
-    conn = sqlite3.connect("data/requests.db")
+    conn = get_db_connection()
     try:
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM requests ORDER BY timestamp DESC")
@@ -263,7 +298,7 @@ def get_requests():
         conn.close()
 
 def search_requests(query):
-    conn = sqlite3.connect("data/requests.db")
+    conn = get_db_connection()
     try:
         cursor = conn.cursor()
         query = f"%{query.lower()}%"
@@ -284,7 +319,7 @@ def update_request_status(request_id, completed):
         st.error("System is currently locked. Please contact the developer.")
         return False
         
-    conn = sqlite3.connect("data/requests.db")
+    conn = get_db_connection()
     try:
         cursor = conn.cursor()
         cursor.execute("UPDATE requests SET completed = ? WHERE id = ?",
@@ -299,7 +334,7 @@ def add_request_comment(request_id, user, comment):
         st.error("System is currently locked. Please contact the developer.")
         return False
         
-    conn = sqlite3.connect("data/requests.db")
+    conn = get_db_connection()
     try:
         cursor = conn.cursor()
         cursor.execute("""
@@ -312,7 +347,7 @@ def add_request_comment(request_id, user, comment):
         conn.close()
 
 def get_request_comments(request_id):
-    conn = sqlite3.connect("data/requests.db")
+    conn = get_db_connection()
     try:
         cursor = conn.cursor()
         cursor.execute("""
@@ -329,7 +364,7 @@ def add_mistake(team_leader, agent_name, ticket_id, error_description):
         st.error("System is currently locked. Please contact the developer.")
         return False
         
-    conn = sqlite3.connect("data/requests.db")
+    conn = get_db_connection()
     try:
         cursor = conn.cursor()
         cursor.execute("""
@@ -343,7 +378,7 @@ def add_mistake(team_leader, agent_name, ticket_id, error_description):
         conn.close()
 
 def get_mistakes():
-    conn = sqlite3.connect("data/requests.db")
+    conn = get_db_connection()
     try:
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM mistakes ORDER BY timestamp DESC")
@@ -352,7 +387,7 @@ def get_mistakes():
         conn.close()
 
 def search_mistakes(query):
-    conn = sqlite3.connect("data/requests.db")
+    conn = get_db_connection()
     try:
         cursor = conn.cursor()
         query = f"%{query.lower()}%"
@@ -372,7 +407,7 @@ def send_group_message(sender, message):
         st.error("Chat is currently locked. Please contact the developer.")
         return False
         
-    conn = sqlite3.connect("data/requests.db")
+    conn = get_db_connection()
     try:
         cursor = conn.cursor()
         mentions = re.findall(r'@(\w+)', message)
@@ -387,7 +422,7 @@ def send_group_message(sender, message):
         conn.close()
 
 def get_group_messages():
-    conn = sqlite3.connect("data/requests.db")
+    conn = get_db_connection()
     try:
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM group_messages ORDER BY timestamp DESC LIMIT 50")
@@ -396,7 +431,7 @@ def get_group_messages():
         conn.close()
 
 def get_all_users():
-    conn = sqlite3.connect("data/requests.db")
+    conn = get_db_connection()
     try:
         cursor = conn.cursor()
         cursor.execute("SELECT id, username, role FROM users")
@@ -409,7 +444,7 @@ def add_user(username, password, role):
         st.error("System is currently locked. Please contact the developer.")
         return False
         
-    conn = sqlite3.connect("data/requests.db")
+    conn = get_db_connection()
     try:
         cursor = conn.cursor()
         cursor.execute("INSERT INTO users (username, password, role) VALUES (?, ?, ?)",
@@ -424,7 +459,7 @@ def delete_user(user_id):
         st.error("System is currently locked. Please contact the developer.")
         return False
         
-    conn = sqlite3.connect("data/requests.db")
+    conn = get_db_connection()
     try:
         cursor = conn.cursor()
         cursor.execute("DELETE FROM users WHERE id = ?", (user_id,))
@@ -438,7 +473,7 @@ def add_hold_image(uploader, image_data):
         st.error("System is currently locked. Please contact the developer.")
         return False
         
-    conn = sqlite3.connect("data/requests.db")
+    conn = get_db_connection()
     try:
         cursor = conn.cursor()
         cursor.execute("""
@@ -451,7 +486,7 @@ def add_hold_image(uploader, image_data):
         conn.close()
 
 def get_hold_images():
-    conn = sqlite3.connect("data/requests.db")
+    conn = get_db_connection()
     try:
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM hold_images ORDER BY timestamp DESC")
@@ -464,7 +499,7 @@ def clear_hold_images():
         st.error("System is currently locked. Please contact the developer.")
         return False
         
-    conn = sqlite3.connect("data/requests.db")
+    conn = get_db_connection()
     try:
         cursor = conn.cursor()
         cursor.execute("DELETE FROM hold_images")
@@ -478,7 +513,7 @@ def clear_all_requests():
         st.error("System is currently locked. Please contact the developer.")
         return False
         
-    conn = sqlite3.connect("data/requests.db")
+    conn = get_db_connection()
     try:
         cursor = conn.cursor()
         cursor.execute("DELETE FROM requests")
@@ -493,7 +528,7 @@ def clear_all_mistakes():
         st.error("System is currently locked. Please contact the developer.")
         return False
         
-    conn = sqlite3.connect("data/requests.db")
+    conn = get_db_connection()
     try:
         cursor = conn.cursor()
         cursor.execute("DELETE FROM mistakes")
@@ -507,12 +542,147 @@ def clear_all_group_messages():
         st.error("System is currently locked. Please contact the developer.")
         return False
         
-    conn = sqlite3.connect("data/requests.db")
+    conn = get_db_connection()
     try:
         cursor = conn.cursor()
         cursor.execute("DELETE FROM group_messages")
         conn.commit()
         return True
+    finally:
+        conn.close()
+
+def add_late_login(agent_name, presence_time, login_time, reason):
+    if is_killswitch_enabled():
+        st.error("System is currently locked. Please contact the developer.")
+        return False
+        
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO late_logins (agent_name, presence_time, login_time, reason, timestamp) 
+            VALUES (?, ?, ?, ?, ?)
+        """, (agent_name, presence_time, login_time, reason,
+             datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+        conn.commit()
+        return True
+    finally:
+        conn.close()
+
+def get_late_logins():
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM late_logins ORDER BY timestamp DESC")
+        return cursor.fetchall()
+    finally:
+        conn.close()
+
+def add_quality_issue(agent_name, issue_type, timing, mobile_number, product):
+    if is_killswitch_enabled():
+        st.error("System is currently locked. Please contact the developer.")
+        return False
+        
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO quality_issues (agent_name, issue_type, timing, mobile_number, product, timestamp) 
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (agent_name, issue_type, timing, mobile_number, product,
+             datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+        conn.commit()
+        return True
+    finally:
+        conn.close()
+
+def get_quality_issues():
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM quality_issues ORDER BY timestamp DESC")
+        return cursor.fetchall()
+    except Exception as e:
+        st.error(f"Error fetching quality issues: {str(e)}")
+    finally:
+        conn.close()
+
+def add_midshift_issue(agent_name, issue_type, start_time, end_time):
+    if is_killswitch_enabled():
+        st.error("System is currently locked. Please contact the developer.")
+        return False
+        
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO midshift_issues (agent_name, issue_type, start_time, end_time, timestamp) 
+            VALUES (?, ?, ?, ?, ?)
+        """, (agent_name, issue_type, start_time, end_time,
+             datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+        conn.commit()
+        return True
+    except Exception as e:
+        st.error(f"Error adding mid-shift issue: {str(e)}")
+    finally:
+        conn.close()
+
+def get_midshift_issues():
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM midshift_issues ORDER BY timestamp DESC")
+        return cursor.fetchall()
+    except Exception as e:
+        st.error(f"Error fetching mid-shift issues: {str(e)}")
+    finally:
+        conn.close()
+
+def clear_late_logins():
+    if is_killswitch_enabled():
+        st.error("System is currently locked. Please contact the developer.")
+        return False
+        
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM late_logins")
+        conn.commit()
+        return True
+    except Exception as e:
+        st.error(f"Error clearing late logins: {str(e)}")
+    finally:
+        conn.close()
+
+def clear_quality_issues():
+    if is_killswitch_enabled():
+        st.error("System is currently locked. Please contact the developer.")
+        return False
+        
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM quality_issues")
+        conn.commit()
+        return True
+    except Exception as e:
+        st.error(f"Error clearing quality issues: {str(e)}")
+    finally:
+        conn.close()
+
+def clear_midshift_issues():
+    if is_killswitch_enabled():
+        st.error("System is currently locked. Please contact the developer.")
+        return False
+        
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM midshift_issues")
+        conn.commit()
+        return True
+    except Exception as e:
+        st.error(f"Error clearing mid-shift issues: {str(e)}")
     finally:
         conn.close()
 
@@ -1425,7 +1595,11 @@ else:
             ("☕ Breaks", "breaks"),
             ("🖼️ HOLD", "hold"),
             ("❌ Mistakes", "mistakes"),
-            ("💬 Chat", "chat")
+            ("💬 Chat", "chat"),
+            ("📱 Fancy Number", "fancy_number"),
+            ("⏰ Late Login", "late_login"),
+            ("📞 Quality Issues", "quality_issues"),
+            ("🔄 Mid-shift Issues", "midshift_issues")
         ]
         if st.session_state.role == "admin":
             nav_options.append(("⚙️ Admin", "admin"))
@@ -1639,6 +1813,309 @@ else:
         else:
             st.info("No images in HOLD")
 
+    elif st.session_state.current_section == "fancy_number":
+        st.title("📱 Fancy Number Checker")
+        
+        with st.form("fancy_number_form"):
+            phone_number = st.text_input("Enter Phone Number", placeholder="Enter a 10-digit phone number")
+            submit = st.form_submit_button("Check Number")
+            
+            if submit and phone_number:
+                # Clean the phone number
+                cleaned_number = ''.join(filter(str.isdigit, phone_number))
+                
+                if len(cleaned_number) != 10:
+                    st.error("Please enter a valid 10-digit phone number")
+                else:
+                    # Check for patterns
+                    patterns = []
+                    
+                    # Check for repeating digits
+                    for i in range(10):
+                        if str(i) * 3 in cleaned_number:
+                            patterns.append(f"Contains triple {i}'s")
+                        if str(i) * 4 in cleaned_number:
+                            patterns.append(f"Contains quadruple {i}'s")
+                    
+                    # Check for sequential numbers (ascending and descending)
+                    for i in range(len(cleaned_number)-2):
+                        if (int(cleaned_number[i]) + 1 == int(cleaned_number[i+1]) and 
+                            int(cleaned_number[i+1]) + 1 == int(cleaned_number[i+2])):
+                            patterns.append("Contains ascending sequence")
+                        elif (int(cleaned_number[i]) - 1 == int(cleaned_number[i+1]) and 
+                              int(cleaned_number[i+1]) - 1 == int(cleaned_number[i+2])):
+                            patterns.append("Contains descending sequence")
+                    
+                    # Check for palindrome patterns
+                    for i in range(len(cleaned_number)-3):
+                        segment = cleaned_number[i:i+4]
+                        if segment == segment[::-1]:
+                            patterns.append(f"Contains palindrome pattern: {segment}")
+                    
+                    # Check for repeated pairs
+                    for i in range(len(cleaned_number)-1):
+                        pair = cleaned_number[i:i+2]
+                        if cleaned_number.count(pair) > 1:
+                            patterns.append(f"Contains repeated pair: {pair}")
+                    
+                    # Format number in a readable way
+                    formatted_number = f"({cleaned_number[:3]}) {cleaned_number[3:6]}-{cleaned_number[6:]}"
+                    
+                    # Display results
+                    st.write("### Analysis Results")
+                    st.write(f"Formatted Number: {formatted_number}")
+                    
+                    if patterns:
+                        st.success("This is a fancy number! 🌟")
+                        st.write("Special patterns found:")
+                        for pattern in set(patterns):  # Using set to remove duplicates
+                            st.write(f"- {pattern}")
+                    else:
+                        st.info("This appears to be a regular number. No special patterns found.")
+
+    elif st.session_state.current_section == "late_login":
+        st.subheader("⏰ Late Login Report")
+        
+        if not is_killswitch_enabled():
+            with st.form("late_login_form"):
+                cols = st.columns(3)
+                presence_time = cols[0].text_input("Time of presence (HH:MM)", placeholder="08:30")
+                login_time = cols[1].text_input("Time of log in (HH:MM)", placeholder="09:15")
+                reason = cols[2].selectbox("Reason", [
+                    "Workspace Issue",
+                    "Avaya Issue",
+                    "Aaad Tool",
+                    "Windows Issue",
+                    "Reset Password"
+                ])
+                
+                if st.form_submit_button("Submit"):
+                    try:
+                        datetime.strptime(presence_time, "%H:%M")
+                        datetime.strptime(login_time, "%H:%M")
+                        add_late_login(
+                            st.session_state.username,
+                            presence_time,
+                            login_time,
+                            reason
+                        )
+                        st.success("Late login reported successfully!")
+                    except ValueError:
+                        st.error("Invalid time format. Please use HH:MM format (e.g., 08:30)")
+        
+        st.subheader("Late Login Records")
+        late_logins = get_late_logins()
+        
+        if st.session_state.role == "admin":
+            if late_logins:
+                data = []
+                for login in late_logins:
+                    _, agent, presence, login_time, reason, ts = login
+                    data.append({
+                        "Agent's Name": agent,
+                        "Time of presence": presence,
+                        "Time of log in": login_time,
+                        "Reason": reason
+                    })
+                
+                df = pd.DataFrame(data)
+                st.dataframe(df)
+                
+                csv = df.to_csv(index=False).encode('utf-8')
+                st.download_button(
+                    label="Download as CSV",
+                    data=csv,
+                    file_name="late_logins.csv",
+                    mime="text/csv"
+                )
+                
+                if st.button("Clear All Records"):
+                    clear_late_logins()
+                    st.rerun()
+            else:
+                st.info("No late login records found")
+        else:
+            user_logins = [login for login in late_logins if login[1] == st.session_state.username]
+            if user_logins:
+                data = []
+                for login in user_logins:
+                    _, agent, presence, login_time, reason, ts = login
+                    data.append({
+                        "Agent's Name": agent,
+                        "Time of presence": presence,
+                        "Time of log in": login_time,
+                        "Reason": reason
+                    })
+                
+                df = pd.DataFrame(data)
+                st.dataframe(df)
+            else:
+                st.info("You have no late login records")
+
+    elif st.session_state.current_section == "quality_issues":
+        st.subheader("📞 Quality Related Technical Issue")
+        
+        if not is_killswitch_enabled():
+            with st.form("quality_issue_form"):
+                cols = st.columns(4)
+                issue_type = cols[0].selectbox("Type of issue", [
+                    "Blocage Physical Avaya",
+                    "Hold Than Call Drop",
+                    "Call Drop From Workspace",
+                    "Wrong Space Frozen"
+                ])
+                timing = cols[1].text_input("Timing (HH:MM)", placeholder="14:30")
+                mobile_number = cols[2].text_input("Mobile number")
+                product = cols[3].selectbox("Product", [
+                    "LM_CS_LMUSA_EN",
+                    "LM_CS_LMUSA_ES"
+                ])
+                
+                if st.form_submit_button("Submit"):
+                    try:
+                        datetime.strptime(timing, "%H:%M")
+                        add_quality_issue(
+                            st.session_state.username,
+                            issue_type,
+                            timing,
+                            mobile_number,
+                            product
+                        )
+                        st.success("Quality issue reported successfully!")
+                    except ValueError:
+                        st.error("Invalid time format. Please use HH:MM format (e.g., 14:30)")
+        
+        st.subheader("Quality Issue Records")
+        quality_issues = get_quality_issues()
+        
+        if st.session_state.role == "admin":
+            if quality_issues:
+                data = []
+                for issue in quality_issues:
+                    _, agent, issue_type, timing, mobile, product, ts = issue
+                    data.append({
+                        "Agent's Name": agent,
+                        "Type of issue": issue_type,
+                        "Timing": timing,
+                        "Mobile number": mobile,
+                        "Product": product
+                    })
+                
+                df = pd.DataFrame(data)
+                st.dataframe(df)
+                
+                csv = df.to_csv(index=False).encode('utf-8')
+                st.download_button(
+                    label="Download as CSV",
+                    data=csv,
+                    file_name="quality_issues.csv",
+                    mime="text/csv"
+                )
+                
+                if st.button("Clear All Records"):
+                    clear_quality_issues()
+                    st.rerun()
+            else:
+                st.info("No quality issue records found")
+        else:
+            user_issues = [issue for issue in quality_issues if issue[1] == st.session_state.username]
+            if user_issues:
+                data = []
+                for issue in user_issues:
+                    _, agent, issue_type, timing, mobile, product, ts = issue
+                    data.append({
+                        "Agent's Name": agent,
+                        "Type of issue": issue_type,
+                        "Timing": timing,
+                        "Mobile number": mobile,
+                        "Product": product
+                    })
+                
+                df = pd.DataFrame(data)
+                st.dataframe(df)
+            else:
+                st.info("You have no quality issue records")
+
+    elif st.session_state.current_section == "midshift_issues":
+        st.subheader("🔄 Mid-shift Technical Issue")
+        
+        if not is_killswitch_enabled():
+            with st.form("midshift_issue_form"):
+                cols = st.columns(3)
+                issue_type = cols[0].selectbox("Issue Type", [
+                    "Default Not Ready",
+                    "Frozen Workspace",
+                    "Physical Avaya",
+                    "Pc Issue",
+                    "Aaad Tool",
+                    "Disconnected Avaya"
+                ])
+                start_time = cols[1].text_input("Start time (HH:MM)", placeholder="10:00")
+                end_time = cols[2].text_input("End time (HH:MM)", placeholder="10:30")
+                
+                if st.form_submit_button("Submit"):
+                    try:
+                        datetime.strptime(start_time, "%H:%M")
+                        datetime.strptime(end_time, "%H:%M")
+                        add_midshift_issue(
+                            st.session_state.username,
+                            issue_type,
+                            start_time,
+                            end_time
+                        )
+                        st.success("Mid-shift issue reported successfully!")
+                    except ValueError:
+                        st.error("Invalid time format. Please use HH:MM format (e.g., 10:00)")
+        
+        st.subheader("Mid-shift Issue Records")
+        midshift_issues = get_midshift_issues()
+        
+        if st.session_state.role == "admin":
+            if midshift_issues:
+                data = []
+                for issue in midshift_issues:
+                    _, agent, issue_type, start_time, end_time, ts = issue
+                    data.append({
+                        "Agent's Name": agent,
+                        "Issue Type": issue_type,
+                        "Start time": start_time,
+                        "End Time": end_time
+                    })
+                
+                df = pd.DataFrame(data)
+                st.dataframe(df)
+                
+                csv = df.to_csv(index=False).encode('utf-8')
+                st.download_button(
+                    label="Download as CSV",
+                    data=csv,
+                    file_name="midshift_issues.csv",
+                    mime="text/csv"
+                )
+                
+                if st.button("Clear All Records"):
+                    clear_midshift_issues()
+                    st.rerun()
+            else:
+                st.info("No mid-shift issue records found")
+        else:
+            user_issues = [issue for issue in midshift_issues if issue[1] == st.session_state.username]
+            if user_issues:
+                data = []
+                for issue in user_issues:
+                    _, agent, issue_type, start_time, end_time, ts = issue
+                    data.append({
+                        "Agent's Name": agent,
+                        "Issue Type": issue_type,
+                        "Start time": start_time,
+                        "End Time": end_time
+                    })
+                
+                df = pd.DataFrame(data)
+                st.dataframe(df)
+            else:
+                st.info("You have no mid-shift issue records")
+
     elif st.session_state.current_section == "admin" and st.session_state.role == "admin":
         if st.session_state.username.lower() == "taha kirri":
             st.subheader("🚨 System Killswitch")
@@ -1709,6 +2186,30 @@ else:
                         st.success("All HOLD images deleted!")
                         st.rerun()
 
+        with st.expander("❌ Clear All Late Logins"):
+            with st.form("clear_late_logins_form"):
+                st.warning("This will permanently delete ALL late login records!")
+                if st.form_submit_button("Clear All Late Logins"):
+                    if clear_late_logins():
+                        st.success("All late login records deleted!")
+                        st.rerun()
+
+        with st.expander("❌ Clear All Quality Issues"):
+            with st.form("clear_quality_issues_form"):
+                st.warning("This will permanently delete ALL quality issue records!")
+                if st.form_submit_button("Clear All Quality Issues"):
+                    if clear_quality_issues():
+                        st.success("All quality issue records deleted!")
+                        st.rerun()
+
+        with st.expander("❌ Clear All Mid-shift Issues"):
+            with st.form("clear_midshift_issues_form"):
+                st.warning("This will permanently delete ALL mid-shift issue records!")
+                if st.form_submit_button("Clear All Mid-shift Issues"):
+                    if clear_midshift_issues():
+                        st.success("All mid-shift issue records deleted!")
+                        st.rerun()
+
         with st.expander("💣 Clear ALL Data"):
             with st.form("nuclear_form"):
                 st.error("THIS WILL DELETE EVERYTHING IN THE SYSTEM!")
@@ -1718,6 +2219,9 @@ else:
                         clear_all_mistakes()
                         clear_all_group_messages()
                         clear_hold_images()
+                        clear_late_logins()
+                        clear_quality_issues()
+                        clear_midshift_issues()
                         st.success("All system data deleted!")
                         st.rerun()
                     except Exception as e:
