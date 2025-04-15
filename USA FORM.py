@@ -2232,24 +2232,47 @@ else:
         st.markdown("---")
         st.subheader("User Management")
         if not is_killswitch_enabled():
-            with st.form("add_user"):
-                user = st.text_input("Username")
-                pwd = st.text_input("Password", type="password")
-                role = st.selectbox("Role", ["agent", "admin"])
-                if st.form_submit_button("Add User"):
-                    if user and pwd:
-                        add_user(user, pwd, role)
-                        st.rerun()
+            # Only show the add user form to taha kirri
+            if st.session_state.username.lower() == "taha kirri":
+                with st.form("add_user"):
+                    user = st.text_input("Username")
+                    pwd = st.text_input("Password", type="password")
+                    role = st.selectbox("Role", ["agent", "admin"])
+                    if st.form_submit_button("Add User"):
+                        if user and pwd:
+                            add_user(user, pwd, role)
+                            st.rerun()
         
         st.subheader("Existing Users")
         users = get_all_users()
-        for uid, uname, urole in users:
+        
+        # Create a table-like display using columns
+        if st.session_state.username.lower() == "taha kirri":
+            # Full view for taha kirri
             cols = st.columns([3, 1, 1])
-            cols[0].write(uname)
-            cols[1].write(urole)
-            if cols[2].button("Delete", key=f"del_{uid}") and not is_killswitch_enabled():
-                delete_user(uid)
-                st.rerun()
+            cols[0].write("**Username**")
+            cols[1].write("**Role**")
+            cols[2].write("**Action**")
+            
+            for uid, uname, urole in users:
+                cols = st.columns([3, 1, 1])
+                cols[0].write(uname)
+                cols[1].write(urole)
+                if cols[2].button("Delete", key=f"del_{uid}") and not is_killswitch_enabled():
+                    delete_user(uid)
+                    st.rerun()
+        else:
+            # Limited view for other admins
+            cols = st.columns([4, 1])
+            cols[0].write("**Username**")
+            cols[1].write("**Action**")
+            
+            for uid, uname, urole in users:
+                cols = st.columns([4, 1])
+                cols[0].write(uname)
+                if cols[1].button("Delete", key=f"del_{uid}") and not is_killswitch_enabled():
+                    delete_user(uid)
+                    st.rerun()
 
     elif st.session_state.current_section == "breaks":
         if st.session_state.role == "admin":
