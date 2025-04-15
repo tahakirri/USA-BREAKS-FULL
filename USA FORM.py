@@ -9,20 +9,6 @@ import io
 import pandas as pd
 import json
 
-# Try to import plotly, use alternative if not available
-try:
-    import plotly.express as px
-    PLOTLY_AVAILABLE = True
-except ImportError:
-    PLOTLY_AVAILABLE = False
-    st.warning("""
-        📊 Analytics visualizations require plotly. 
-        To enable advanced analytics, please install it using:
-        ```
-        pip install plotly
-        ```
-    """)
-
 # --------------------------
 # Database Functions
 # --------------------------
@@ -1942,12 +1928,11 @@ else:
                 bookings = json.load(f)
             
             # Create tabs for different admin functions
-            tab1, tab2, tab3, tab4, tab5 = st.tabs([
+            tab1, tab2, tab3, tab4 = st.tabs([
                 "View Bookings", 
                 "Manage Slots", 
                 "Settings", 
-                "Templates",
-                "Analytics"
+                "Templates"
             ])
             
             # Tab 1: View Bookings
@@ -2174,90 +2159,6 @@ else:
                         st.rerun()
                     else:
                         st.error("Only the system administrator can reset templates.")
-            
-            # New Tab 5: Analytics
-            with tab5:
-                st.subheader("Break Analytics")
-                
-                # Date range selection
-                col1, col2 = st.columns(2)
-                with col1:
-                    start_date = st.date_input("Start Date", value=datetime.now().date())
-                with col2:
-                    end_date = st.date_input("End Date", value=datetime.now().date())
-                
-                if start_date and end_date:
-                    # Collect analytics data
-                    analytics_data = []
-                    current_date = start_date
-                    while current_date <= end_date:
-                        date_str = current_date.strftime("%Y-%m-%d")
-                        if date_str in bookings:
-                            for shift in bookings[date_str]:
-                                for break_type in bookings[date_str][shift]:
-                                    for slot in bookings[date_str][shift][break_type]:
-                                        agents = bookings[date_str][shift][break_type][slot]
-                                        analytics_data.append({
-                                            "Date": date_str,
-                                            "Shift": shift,
-                                            "Break Type": break_type,
-                                            "Time Slot": slot,
-                                            "Number of Agents": len(agents)
-                                        })
-                        current_date += pd.Timedelta(days=1)
-                    
-                    if analytics_data:
-                        df = pd.DataFrame(analytics_data)
-                        
-                        # Summary statistics
-                        st.markdown("### Summary Statistics")
-                        col1, col2, col3 = st.columns(3)
-                        with col1:
-                            st.metric("Total Breaks Taken", len(df))
-                        with col2:
-                            st.metric("Average Agents per Slot", f"{df['Number of Agents'].mean():.2f}")
-                        with col3:
-                            st.metric("Most Popular Break Type", df['Break Type'].mode()[0])
-                        
-                        if PLOTLY_AVAILABLE:
-                            # Break distribution by type
-                            st.markdown("### Break Distribution")
-                            fig = px.pie(df, names='Break Type', title='Break Type Distribution')
-                            st.plotly_chart(fig)
-                            
-                            # Break distribution by shift
-                            fig = px.pie(df, names='Shift', title='Shift Distribution')
-                            st.plotly_chart(fig)
-                            
-                            # Time series of break usage
-                            st.markdown("### Break Usage Over Time")
-                            daily_breaks = df.groupby('Date')['Number of Agents'].sum().reset_index()
-                            fig = px.line(daily_breaks, x='Date', y='Number of Agents', 
-                                        title='Daily Break Usage')
-                            st.plotly_chart(fig)
-                        else:
-                            # Fallback to basic statistics display
-                            st.markdown("### Break Distribution")
-                            st.dataframe(df.groupby('Break Type')['Number of Agents'].agg(['count', 'mean']).round(2))
-                            
-                            st.markdown("### Shift Distribution")
-                            st.dataframe(df.groupby('Shift')['Number of Agents'].agg(['count', 'mean']).round(2))
-                            
-                            st.markdown("### Daily Break Usage")
-                            daily_breaks = df.groupby('Date')['Number of Agents'].sum().reset_index()
-                            st.line_chart(daily_breaks.set_index('Date'))
-                        
-                        # Download analytics data
-                        csv = df.to_csv(index=False).encode('utf-8')
-                        st.download_button(
-                            "Download Analytics Data",
-                            csv,
-                            "break_analytics.csv",
-                            "text/csv",
-                            key='download-analytics-csv'
-                        )
-                    else:
-                        st.info("No break data available for the selected date range.")
         else:
             st.error("Access Denied: You don't have permission to view this section.")
             if st.session_state.current_section == "break_admin":
