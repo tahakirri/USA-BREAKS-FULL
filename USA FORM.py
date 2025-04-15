@@ -1878,6 +1878,9 @@ else:
                         # Convert the file to bytes
                         img_bytes = uploaded_file.getvalue()
                         
+                        # Clear existing images before adding new one
+                        clear_hold_images()
+                        
                         # Add to database
                         if add_hold_image(st.session_state.username, img_bytes):
                             st.success("Image uploaded successfully!")
@@ -1888,20 +1891,20 @@ else:
             # Display images (visible to all users)
             images = get_hold_images()
             if images:
-                for img in images:
-                    img_id, uploader, img_data, timestamp = img
-                    st.markdown(f"""
-                    <div style="border: 1px solid #ddd; padding: 10px; margin-bottom: 20px; border-radius: 5px;">
-                        <p><strong>Uploaded by:</strong> {uploader}</p>
-                        <p><small>Uploaded at: {timestamp}</small></p>
-                    </div>
-                    """, unsafe_allow_html=True)
-                    try:
-                        image = Image.open(io.BytesIO(img_data))
-                        st.image(image, use_column_width=True)
-                    except Exception as e:
-                        st.error(f"Error displaying image: {str(e)}")
-                    st.markdown("---")
+                # Get only the most recent image
+                img = images[0]  # Since images are ordered by timestamp DESC
+                img_id, uploader, img_data, timestamp = img
+                st.markdown(f"""
+                <div style="border: 1px solid #ddd; padding: 10px; margin-bottom: 20px; border-radius: 5px;">
+                    <p><strong>Uploaded by:</strong> {uploader}</p>
+                    <p><small>Uploaded at: {timestamp}</small></p>
+                </div>
+                """, unsafe_allow_html=True)
+                try:
+                    image = Image.open(io.BytesIO(img_data))
+                    st.image(image, use_container_width=True)  # Updated parameter
+                except Exception as e:
+                    st.error(f"Error displaying image: {str(e)}")
             else:
                 st.info("No HOLD images available")
         else:
