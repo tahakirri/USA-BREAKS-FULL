@@ -1910,19 +1910,17 @@ else:
                 selected_date = st.date_input("Select Date to View")
                 date_str = selected_date.strftime("%Y-%m-%d")
                 
-                # Get current template
-                current_template = templates[settings["current_template"]]
-                
                 if date_str in bookings:
-                    # 2 PM Shift
-                    st.markdown("### 2:00 PM Shift")
+                    # English 2 PM
+                    st.markdown("### 2:00 PM - English 🇺🇸")
                     col1, col2, col3 = st.columns(3)
+                    template_2pm = templates["2pm_english"]
                     
                     with col1:
                         st.markdown("#### Early Tea Break")
                         if "2pm" in bookings[date_str] and "early_tea" in bookings[date_str]["2pm"]:
                             data = []
-                            for slot in current_template["shifts"]["2pm"]["early_tea"]["slots"]:
+                            for slot in template_2pm["early_tea"]["slots"]:
                                 if slot in bookings[date_str]["2pm"]["early_tea"]:
                                     for agent in bookings[date_str]["2pm"]["early_tea"][slot]:
                                         data.append({"Time": slot, "Agent": agent})
@@ -1937,7 +1935,7 @@ else:
                         st.markdown("#### Lunch Break")
                         if "2pm" in bookings[date_str] and "lunch" in bookings[date_str]["2pm"]:
                             data = []
-                            for slot in current_template["shifts"]["2pm"]["lunch"]["slots"]:
+                            for slot in template_2pm["lunch"]["slots"]:
                                 if slot in bookings[date_str]["2pm"]["lunch"]:
                                     for agent in bookings[date_str]["2pm"]["lunch"][slot]:
                                         data.append({"Time": slot, "Agent": agent})
@@ -1952,7 +1950,7 @@ else:
                         st.markdown("#### Late Tea Break")
                         if "2pm" in bookings[date_str] and "late_tea" in bookings[date_str]["2pm"]:
                             data = []
-                            for slot in current_template["shifts"]["2pm"]["late_tea"]["slots"]:
+                            for slot in template_2pm["late_tea"]["slots"]:
                                 if slot in bookings[date_str]["2pm"]["late_tea"]:
                                     for agent in bookings[date_str]["2pm"]["late_tea"][slot]:
                                         data.append({"Time": slot, "Agent": agent})
@@ -1963,15 +1961,66 @@ else:
                         else:
                             st.info("No bookings")
                     
-                    # 6 PM Shift
-                    st.markdown("### 6:00 PM Shift")
+                    # Spanish 2 PM
+                    st.markdown("### 2:00 PM - Spanish 🇪🇸")
                     col1, col2, col3 = st.columns(3)
+                    template_2pm_es = templates["2pm_spanish"]
+                    
+                    with col1:
+                        st.markdown("#### Early Tea Break")
+                        if "2pm" in bookings[date_str] and "early_tea" in bookings[date_str]["2pm"]:
+                            data = []
+                            for slot in template_2pm_es["early_tea"]["slots"]:
+                                if slot in bookings[date_str]["2pm"]["early_tea"]:
+                                    for agent in bookings[date_str]["2pm"]["early_tea"][slot]:
+                                        data.append({"Time": slot, "Agent": agent})
+                            if data:
+                                st.dataframe(pd.DataFrame(data))
+                            else:
+                                st.info("No bookings")
+                        else:
+                            st.info("No bookings")
+                    
+                    with col2:
+                        st.markdown("#### Lunch Break")
+                        if "2pm" in bookings[date_str] and "lunch" in bookings[date_str]["2pm"]:
+                            data = []
+                            for slot in template_2pm_es["lunch"]["slots"]:
+                                if slot in bookings[date_str]["2pm"]["lunch"]:
+                                    for agent in bookings[date_str]["2pm"]["lunch"][slot]:
+                                        data.append({"Time": slot, "Agent": agent})
+                            if data:
+                                st.dataframe(pd.DataFrame(data))
+                            else:
+                                st.info("No bookings")
+                        else:
+                            st.info("No bookings")
+                    
+                    with col3:
+                        st.markdown("#### Late Tea Break")
+                        if "2pm" in bookings[date_str] and "late_tea" in bookings[date_str]["2pm"]:
+                            data = []
+                            for slot in template_2pm_es["late_tea"]["slots"]:
+                                if slot in bookings[date_str]["2pm"]["late_tea"]:
+                                    for agent in bookings[date_str]["2pm"]["late_tea"][slot]:
+                                        data.append({"Time": slot, "Agent": agent})
+                            if data:
+                                st.dataframe(pd.DataFrame(data))
+                            else:
+                                st.info("No bookings")
+                        else:
+                            st.info("No bookings")
+                    
+                    # English 6 PM
+                    st.markdown("### 6:00 PM - English 🇺🇸")
+                    col1, col2, col3 = st.columns(3)
+                    template_6pm = templates["6pm_english"]
                     
                     with col1:
                         st.markdown("#### Early Tea Break")
                         if "6pm" in bookings[date_str] and "early_tea" in bookings[date_str]["6pm"]:
                             data = []
-                            for slot in current_template["shifts"]["6pm"]["early_tea"]["slots"]:
+                            for slot in template_6pm["early_tea"]["slots"]:
                                 if slot in bookings[date_str]["6pm"]["early_tea"]:
                                     for agent in bookings[date_str]["6pm"]["early_tea"][slot]:
                                         data.append({"Time": slot, "Agent": agent})
@@ -1986,7 +2035,7 @@ else:
                         st.markdown("#### Lunch Break")
                         if "6pm" in bookings[date_str] and "lunch" in bookings[date_str]["6pm"]:
                             data = []
-                            for slot in current_template["shifts"]["6pm"]["lunch"]["slots"]:
+                            for slot in template_6pm["lunch"]["slots"]:
                                 if slot in bookings[date_str]["6pm"]["lunch"]:
                                     for agent in bookings[date_str]["6pm"]["lunch"][slot]:
                                         data.append({"Time": slot, "Agent": agent})
@@ -2001,7 +2050,57 @@ else:
                         st.markdown("#### Late Tea Break")
                         if "6pm" in bookings[date_str] and "late_tea" in bookings[date_str]["6pm"]:
                             data = []
-                            for slot in current_template["shifts"]["6pm"]["late_tea"]["slots"]:
+                            for slot in template_6pm["late_tea"]["slots"]:
+                                if slot in bookings[date_str]["6pm"]["late_tea"]:
+                                    for agent in bookings[date_str]["6pm"]["late_tea"][slot]:
+                                        data.append({"Time": slot, "Agent": agent})
+                            if data:
+                                st.dataframe(pd.DataFrame(data))
+                            else:
+                                st.info("No bookings")
+                        else:
+                            st.info("No bookings")
+                    
+                    # Spanish 6 PM
+                    st.markdown("### 6:00 PM - Spanish 🇪🇸")
+                    col1, col2, col3 = st.columns(3)
+                    template_6pm_es = templates["6pm_spanish"]
+                    
+                    with col1:
+                        st.markdown("#### Early Tea Break")
+                        if "6pm" in bookings[date_str] and "early_tea" in bookings[date_str]["6pm"]:
+                            data = []
+                            for slot in template_6pm_es["early_tea"]["slots"]:
+                                if slot in bookings[date_str]["6pm"]["early_tea"]:
+                                    for agent in bookings[date_str]["6pm"]["early_tea"][slot]:
+                                        data.append({"Time": slot, "Agent": agent})
+                            if data:
+                                st.dataframe(pd.DataFrame(data))
+                            else:
+                                st.info("No bookings")
+                        else:
+                            st.info("No bookings")
+                    
+                    with col2:
+                        st.markdown("#### Lunch Break")
+                        if "6pm" in bookings[date_str] and "lunch" in bookings[date_str]["6pm"]:
+                            data = []
+                            for slot in template_6pm_es["lunch"]["slots"]:
+                                if slot in bookings[date_str]["6pm"]["lunch"]:
+                                    for agent in bookings[date_str]["6pm"]["lunch"][slot]:
+                                        data.append({"Time": slot, "Agent": agent})
+                            if data:
+                                st.dataframe(pd.DataFrame(data))
+                            else:
+                                st.info("No bookings")
+                        else:
+                            st.info("No bookings")
+                    
+                    with col3:
+                        st.markdown("#### Late Tea Break")
+                        if "6pm" in bookings[date_str] and "late_tea" in bookings[date_str]["6pm"]:
+                            data = []
+                            for slot in template_6pm_es["late_tea"]["slots"]:
                                 if slot in bookings[date_str]["6pm"]["late_tea"]:
                                     for agent in bookings[date_str]["6pm"]["late_tea"][slot]:
                                         data.append({"Time": slot, "Agent": agent})
