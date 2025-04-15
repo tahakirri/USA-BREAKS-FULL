@@ -643,6 +643,23 @@ def admin_break_dashboard():
     # Template management
     st.header("Template Management")
     
+    # Initialize templates if empty
+    if 'templates' not in st.session_state:
+        st.session_state.templates = {}
+    
+    # Create default template if no templates exist
+    if not st.session_state.templates:
+        default_template = {
+            "lunch_breaks": ["19:30", "20:00", "20:30", "21:00", "21:30"],
+            "tea_breaks": {
+                "early": ["16:00", "16:15", "16:30", "16:45", "17:00", "17:15", "17:30"],
+                "late": ["21:45", "22:00", "22:15", "22:30"]
+            }
+        }
+        st.session_state.templates["Default Template"] = default_template
+        st.session_state.current_template = "Default Template"
+        save_break_data()
+    
     col1, col2 = st.columns(2)
     
     with col1:
@@ -672,53 +689,53 @@ def admin_break_dashboard():
         selected_template = st.selectbox(
             "Select Template to Edit:",
             list(st.session_state.templates.keys()),
-            index=0 if not st.session_state.current_template else list(st.session_state.templates.keys()).index(st.session_state.current_template)
+            index=list(st.session_state.templates.keys()).index(st.session_state.current_template) if st.session_state.current_template else 0
         )
         
         st.session_state.current_template = selected_template
+        template = st.session_state.templates[selected_template]
         
         if st.button("Delete Template"):
-            del st.session_state.templates[selected_template]
-            st.session_state.current_template = None
-            save_break_data()
-            st.success(f"Template '{selected_template}' deleted!")
-            st.rerun()
-
+            if len(st.session_state.templates) > 1:  # Prevent deleting the last template
+                del st.session_state.templates[selected_template]
+                st.session_state.current_template = list(st.session_state.templates.keys())[0]
+                save_break_data()
+                st.success(f"Template '{selected_template}' deleted!")
+                st.rerun()
+            else:
+                st.error("Cannot delete the last template")
         
         # Edit template
-        if st.session_state.current_template:
-            template = st.session_state.templates[st.session_state.current_template]
-            
-            st.subheader("Edit Lunch Breaks")
-            lunch_breaks = st.text_area(
-                "Lunch Breaks (one per line):",
-                "\n".join(template["lunch_breaks"]),
-                height=150
-            )
-            
-            st.subheader("Edit Tea Breaks")
-            st.write("Early Tea Breaks:")
-            early_tea_breaks = st.text_area(
-                "Early Tea Breaks (one per line):",
-                "\n".join(template["tea_breaks"]["early"]),
-                height=150,
-                key="early_tea"
-            )
-            
-            st.write("Late Tea Breaks:")
-            late_tea_breaks = st.text_area(
-                "Late Tea Breaks (one per line):",
-                "\n".join(template["tea_breaks"]["late"]),
-                height=150,
-                key="late_tea"
-            )
-            
-            if st.button("Save Changes"):
-                template["lunch_breaks"] = [t.strip() for t in lunch_breaks.split("\n") if t.strip()]
-                template["tea_breaks"]["early"] = [t.strip() for t in early_tea_breaks.split("\n") if t.strip()]
-                template["tea_breaks"]["late"] = [t.strip() for t in late_tea_breaks.split("\n") if t.strip()]
-                save_break_data()
-                st.success("Template updated successfully!")
+        st.subheader("Edit Lunch Breaks")
+        lunch_breaks = st.text_area(
+            "Lunch Breaks (one per line):",
+            "\n".join(template["lunch_breaks"]),
+            height=150
+        )
+        
+        st.subheader("Edit Tea Breaks")
+        st.write("Early Tea Breaks:")
+        early_tea_breaks = st.text_area(
+            "Early Tea Breaks (one per line):",
+            "\n".join(template["tea_breaks"]["early"]),
+            height=150,
+            key="early_tea"
+        )
+        
+        st.write("Late Tea Breaks:")
+        late_tea_breaks = st.text_area(
+            "Late Tea Breaks (one per line):",
+            "\n".join(template["tea_breaks"]["late"]),
+            height=150,
+            key="late_tea"
+        )
+        
+        if st.button("Save Changes"):
+            template["lunch_breaks"] = [t.strip() for t in lunch_breaks.split("\n") if t.strip()]
+            template["tea_breaks"]["early"] = [t.strip() for t in early_tea_breaks.split("\n") if t.strip()]
+            template["tea_breaks"]["late"] = [t.strip() for t in late_tea_breaks.split("\n") if t.strip()]
+            save_break_data()
+            st.success("Template updated successfully!")
     
     # Break limits management
     st.header("Break Limits Management")
