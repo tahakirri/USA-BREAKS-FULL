@@ -806,7 +806,7 @@ def display_schedule(template):
     # Rules section
     st.markdown("""
     **NO BREAK IN THE LAST HOUR WILL BE AUTHORIZED**  
-    **PS: ONLY 5 MINUTES BIO IS AUTHORIZED IN THE LAST HOUR BETWEEN 23:00 TILL 23:30 AND NO BREAK AFTER 23:30 !!!**  
+    **PS: ONLY 5 MINUTES BIO IS AUTHORIZED IN THE LAST HHOUR BETWEEN 23:00 TILL 23:30 AND NO BREAK AFTER 23:30 !!!**  
     **BREAKS SHOULD BE TAKEN AT THE NOTED TIME AND NEED TO BE CONFIRMED FROM RTA OR TEAM LEADERS**
     """)
 
@@ -1413,35 +1413,42 @@ if 'color_mode' not in st.session_state:
 def inject_custom_css():
     dark_mode = st.session_state.color_mode == 'dark'
     
-    # Define color schemes
     colors = {
         'dark': {
             'bg': '#0f172a',
             'sidebar': '#1e293b',
             'card': '#1e293b',
             'text': '#e2e8f0',
+            'text_secondary': '#94a3b8',
             'border': '#334155',
             'accent': '#60a5fa',
             'accent_hover': '#3b82f6',
             'muted': '#94a3b8',
             'input_bg': '#1e293b',
+            'input_text': '#e2e8f0',
             'my_message_bg': '#2563eb',
             'other_message_bg': '#334155',
-            'hover_bg': '#334155'
+            'hover_bg': '#334155',
+            'notification_bg': '#1e293b',
+            'notification_text': '#e2e8f0'
         },
         'light': {
             'bg': '#f8fafc',
             'sidebar': '#ffffff',
             'card': '#ffffff',
             'text': '#1e293b',
+            'text_secondary': '#475569',
             'border': '#e2e8f0',
             'accent': '#2563eb',
             'accent_hover': '#1d4ed8',
             'muted': '#64748b',
             'input_bg': '#ffffff',
+            'input_text': '#1e293b',
             'my_message_bg': '#2563eb',
             'other_message_bg': '#f1f5f9',
-            'hover_bg': '#f1f5f9'
+            'hover_bg': '#f1f5f9',
+            'notification_bg': '#f8fafc',
+            'notification_text': '#1e293b'
         }
     }
     
@@ -1449,6 +1456,62 @@ def inject_custom_css():
     
     st.markdown(f"""
     <style>
+        /* Global Text Colors */
+        .stApp {{
+            background-color: {c['bg']};
+            color: {c['text']};
+        }}
+        
+        /* Sidebar Title and Text */
+        [data-testid="stSidebar"] h1, 
+        [data-testid="stSidebar"] h2, 
+        [data-testid="stSidebar"] h3, 
+        [data-testid="stSidebar"] h4 {{
+            color: {c['text']} !important;
+        }}
+        
+        /* Input Fields */
+        .stTextInput input, 
+        .stTextArea textarea, 
+        .stSelectbox select {{
+            background-color: {c['input_bg']} !important;
+            color: {c['input_text']} !important;
+            border-color: {c['border']} !important;
+        }}
+        
+        /* Placeholder Text */
+        .stTextInput input::placeholder,
+        .stTextArea textarea::placeholder {{
+            color: {c['text_secondary']} !important;
+        }}
+        
+        /* Notification Center */
+        div[data-testid="stSidebar"] .element-container div.markdown-text-container {{
+            color: {c['text']} !important;
+        }}
+        
+        div[data-testid="stSidebar"] .element-container div.markdown-text-container h4 {{
+            color: {c['text']} !important;
+        }}
+        
+        div[data-testid="stSidebar"] .element-container div.markdown-text-container p {{
+            color: {c['text_secondary']} !important;
+        }}
+        
+        /* Welcome Message */
+        div[data-testid="stSidebar"] .element-container:first-child h1 {{
+            color: {c['text']} !important;
+        }}
+        
+        /* Notification Box */
+        div[style*="margin-bottom: 20px;"] {{
+            background-color: {c['notification_bg']};
+            color: {c['notification_text']};
+            padding: 1rem;
+            border-radius: 0.5rem;
+            border: 1px solid {c['border']};
+        }}
+        
         /* Sidebar Button Hover Animation */
         [data-testid="stSidebar"] .stButton > button {{
             width: 100%;
@@ -1496,12 +1559,6 @@ def inject_custom_css():
         
         .stTextInput > div > div:focus-within {{
             transform: translateY(-1px);
-        }}
-        
-        /* Global Styles */
-        .stApp {{
-            background-color: {c['bg']};
-            color: {c['text']};
         }}
         
         /* Chat Message Styling */
@@ -1716,11 +1773,28 @@ else:
                              and m[1] != st.session_state.username])
         
         st.markdown(f"""
-        <div style="margin-bottom: 20px;">
-            <h4>🔔 Notifications</h4>
-            <p>📋 Pending requests: {pending_requests}</p>
-            <p>❌ Recent mistakes: {new_mistakes}</p>
-            <p>💬 Unread messages: {unread_messages}</p>
+        <div style="
+            background-color: {'#1e293b' if st.session_state.color_mode == 'dark' else '#ffffff'};
+            padding: 1rem;
+            border-radius: 0.5rem;
+            border: 1px solid {'#334155' if st.session_state.color_mode == 'dark' else '#e2e8f0'};
+            margin-bottom: 20px;
+        ">
+            <h4 style="
+                color: {'#e2e8f0' if st.session_state.color_mode == 'dark' else '#1e293b'};
+                margin-bottom: 1rem;
+            ">🔔 Notifications</h4>
+            <p style="
+                color: {'#94a3b8' if st.session_state.color_mode == 'dark' else '#475569'};
+                margin-bottom: 0.5rem;
+            ">📋 Pending requests: {pending_requests}</p>
+            <p style="
+                color: {'#94a3b8' if st.session_state.color_mode == 'dark' else '#475569'};
+                margin-bottom: 0.5rem;
+            ">❌ Recent mistakes: {new_mistakes}</p>
+            <p style="
+                color: {'#94a3b8' if st.session_state.color_mode == 'dark' else '#475569'};
+            ">💬 Unread messages: {unread_messages}</p>
         </div>
         """, unsafe_allow_html=True)
         
