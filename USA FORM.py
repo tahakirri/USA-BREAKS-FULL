@@ -993,11 +993,39 @@ def admin_break_dashboard():
         template_col1, template_col2, template_col3 = st.columns([2, 1, 1])
         with template_col2:
             if st.button("Save Template Changes", use_container_width=True):
+                # Update template times
                 template["lunch_breaks"] = [t.strip() for t in lunch_breaks.split("\n") if t.strip()]
                 template["tea_breaks"]["early"] = [t.strip() for t in early_tea.split("\n") if t.strip()]
                 template["tea_breaks"]["late"] = [t.strip() for t in late_tea.split("\n") if t.strip()]
+                
+                # Update break limits for the new times
+                if selected_template not in st.session_state.break_limits:
+                    st.session_state.break_limits[selected_template] = {}
+                
+                # Update lunch break limits
+                new_lunch_limits = {}
+                for time in template["lunch_breaks"]:
+                    new_lunch_limits[time] = st.session_state.break_limits.get(selected_template, {}).get("lunch", {}).get(time, 5)
+                
+                # Update early tea break limits
+                new_early_tea_limits = {}
+                for time in template["tea_breaks"]["early"]:
+                    new_early_tea_limits[time] = st.session_state.break_limits.get(selected_template, {}).get("early_tea", {}).get(time, 3)
+                
+                # Update late tea break limits
+                new_late_tea_limits = {}
+                for time in template["tea_breaks"]["late"]:
+                    new_late_tea_limits[time] = st.session_state.break_limits.get(selected_template, {}).get("late_tea", {}).get(time, 3)
+                
+                # Save the updated limits
+                st.session_state.break_limits[selected_template] = {
+                    "lunch": new_lunch_limits,
+                    "early_tea": new_early_tea_limits,
+                    "late_tea": new_late_tea_limits
+                }
+                
                 save_break_data()
-                st.success("Template updated successfully!")
+                st.success("Template and break limits updated successfully!")
                 st.rerun()
         
         with template_col3:
@@ -1053,6 +1081,15 @@ def admin_break_dashboard():
     # View Bookings
     st.markdown("---")
     st.subheader("View All Bookings")
+    
+    # Add Clear All Bookings button with warning
+    if st.button("🗑️ Clear All Bookings"):
+        st.warning("⚠️ This will delete ALL break bookings for ALL dates. This action cannot be undone!")
+        if st.button("⚠️ Confirm Clear All Bookings"):
+            st.session_state.agent_bookings = {}
+            save_break_data()
+            st.success("All break bookings have been cleared!")
+            st.rerun()
     
     dates = list(st.session_state.agent_bookings.keys())
     if dates:
