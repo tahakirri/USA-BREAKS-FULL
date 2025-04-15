@@ -888,6 +888,37 @@ def admin_break_dashboard():
             st.session_state.active_templates.append("Default Template")
         save_break_data()
     
+    # Template Activation Management
+    st.subheader("🔄 Template Activation")
+    st.info("Only activated templates will be available for agents to book breaks from.")
+    
+    col1, col2 = st.columns([2, 1])
+    with col1:
+        st.write("### Active Templates")
+        active_templates = st.session_state.active_templates
+        template_list = list(st.session_state.templates.keys())
+        
+        for template in template_list:
+            is_active = template in active_templates
+            if st.checkbox(f"{template} {'✅' if is_active else ''}", 
+                         value=is_active, 
+                         key=f"active_{template}"):
+                if template not in active_templates:
+                    active_templates.append(template)
+            else:
+                if template in active_templates:
+                    active_templates.remove(template)
+        
+        st.session_state.active_templates = active_templates
+        save_break_data()
+    
+    with col2:
+        st.write("### Statistics")
+        st.metric("Total Templates", len(template_list))
+        st.metric("Active Templates", len(active_templates))
+    
+    st.markdown("---")
+    
     # Template Management
     st.subheader("Template Management")
     
@@ -904,7 +935,6 @@ def admin_break_dashboard():
                         "late": ["21:45", "22:00", "22:15", "22:30"]
                     }
                 }
-                st.session_state.active_templates.append(template_name)
                 save_break_data()
                 st.success(f"Template '{template_name}' created!")
                 st.rerun()
@@ -1855,16 +1885,29 @@ else:
             st.markdown("""
             <div id="notification-container"></div>
             <script>
-            // Notification permission code...
+            // Check if notifications are supported
+            if ('Notification' in window) {
+                const container = document.getElementById('notification-container');
+                if (Notification.permission === 'default') {
+                    container.innerHTML = `
+                        <div style="padding: 1rem; margin-bottom: 1rem; border-radius: 0.5rem; background-color: #1e293b; border: 1px solid #334155;">
+                            <p style="margin: 0; color: #e2e8f0;">Would you like to receive notifications for new messages?</p>
+                            <button onclick="requestNotificationPermission()" style="margin-top: 0.5rem; padding: 0.5rem 1rem; background-color: #2563eb; color: white; border: none; border-radius: 0.25rem; cursor: pointer;">
+                                Enable Notifications
+                            </button>
+                        </div>
+                    `;
+                }
+            }
+
+            async function requestNotificationPermission() {
+                const permission = await Notification.requestPermission();
+                if (permission === 'granted') {
+                    document.getElementById('notification-container').style.display = 'none';
+                }
+            }
             </script>
             """, unsafe_allow_html=True)
-            
-            # Add mode toggle in sidebar
-            with st.sidebar:
-                st.markdown("---")
-                if st.button("🌓 Toggle Light/Dark Mode"):
-                    st.session_state.color_mode = 'light' if st.session_state.color_mode == 'dark' else 'dark'
-                    st.rerun()
             
             if is_chat_killswitch_enabled():
                 st.warning("Chat functionality is currently disabled by the administrator.")
