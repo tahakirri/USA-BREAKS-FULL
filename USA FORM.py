@@ -1705,15 +1705,19 @@ else:
 
     elif st.session_state.current_section == "mistakes":
         if not is_killswitch_enabled():
-            with st.expander("➕ Report New Mistake"):
-                with st.form("mistake_form"):
-                    cols = st.columns(3)
-                    agent_name = cols[0].text_input("Agent Name")
-                    ticket_id = cols[1].text_input("Ticket ID")
-                    error_description = st.text_area("Error Description")
-                    if st.form_submit_button("Submit"):
-                        if agent_name and ticket_id and error_description:
-                            add_mistake(st.session_state.username, agent_name, ticket_id, error_description)
+            # Only show mistake reporting form to admin users
+            if st.session_state.role == "admin":
+                with st.expander("➕ Report New Mistake"):
+                    with st.form("mistake_form"):
+                        cols = st.columns(3)
+                        agent_name = cols[0].text_input("Agent Name")
+                        ticket_id = cols[1].text_input("Ticket ID")
+                        error_description = st.text_area("Error Description")
+                        if st.form_submit_button("Submit"):
+                            if agent_name and ticket_id and error_description:
+                                add_mistake(st.session_state.username, agent_name, ticket_id, error_description)
+                                st.success("Mistake reported successfully!")
+                                st.rerun()
         
             st.subheader("🔍 Search Mistakes")
             search_query = st.text_input("Search mistakes...")
@@ -1731,6 +1735,7 @@ else:
                     <p>Agent: {agent}</p>
                     <p>Ticket: {ticket}</p>
                     <p>Error: {error}</p>
+                    <p><small>Reported by: {tl}</small></p>
                 </div>
                 """, unsafe_allow_html=True)
         else:
@@ -1846,24 +1851,34 @@ else:
         if not is_killswitch_enabled():
             st.subheader("🖼️ HOLD Images")
             
-            uploaded_file = st.file_uploader("Upload HOLD Image", type=['png', 'jpg', 'jpeg'])
-            if uploaded_file is not None:
-                try:
-                    # Convert the file to bytes
-                    img_bytes = uploaded_file.getvalue()
-                    
-                    # Add to database
-                    if add_hold_image(st.session_state.username, img_bytes):
-                        st.success("Image uploaded successfully!")
-                except Exception as e:
-                    st.error(f"Error uploading image: {str(e)}")
+            # Only show upload option to admin users
+            if st.session_state.role == "admin":
+                uploaded_file = st.file_uploader("Upload HOLD Image", type=['png', 'jpg', 'jpeg'])
+                if uploaded_file is not None:
+                    try:
+                        # Convert the file to bytes
+                        img_bytes = uploaded_file.getvalue()
+                        
+                        # Add to database
+                        if add_hold_image(st.session_state.username, img_bytes):
+                            st.success("Image uploaded successfully!")
+                            st.rerun()
+                    except Exception as e:
+                        st.error(f"Error uploading image: {str(e)}")
+            else:
+                st.info("Only admin users can upload HOLD images.")
             
-            # Display images
+            # Display images (visible to all users)
             images = get_hold_images()
             if images:
                 for img in images:
                     img_id, uploader, img_data, timestamp = img
-                    st.markdown(f"**Uploaded by:** {uploader} at {timestamp}")
+                    st.markdown(f"""
+                    <div style="border: 1px solid #ddd; padding: 10px; margin-bottom: 20px; border-radius: 5px;">
+                        <p><strong>Uploaded by:</strong> {uploader}</p>
+                        <p><small>Uploaded at: {timestamp}</small></p>
+                    </div>
+                    """, unsafe_allow_html=True)
                     try:
                         image = Image.open(io.BytesIO(img_data))
                         st.image(image, use_column_width=True)
