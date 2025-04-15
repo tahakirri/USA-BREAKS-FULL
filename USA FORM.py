@@ -2031,6 +2031,8 @@ else:
                                         if full_msg.strip():
                                             send_vip_private_message(st.session_state.username, selected_vip, full_msg.strip())
                                             st.rerun()
+                            else:
+                                st.info("Select a VIP to start private chat.")
                         else:
                             st.info("No other VIPs available for private chat.")
                 else:
