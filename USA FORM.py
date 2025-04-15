@@ -1083,13 +1083,26 @@ def admin_break_dashboard():
     st.subheader("View All Bookings")
     
     # Add Clear All Bookings button with warning
+    if 'show_confirm_clear' not in st.session_state:
+        st.session_state.show_confirm_clear = False
+        
     if st.button("🗑️ Clear All Bookings"):
+        st.session_state.show_confirm_clear = True
+        
+    if st.session_state.show_confirm_clear:
         st.warning("⚠️ This will delete ALL break bookings for ALL dates. This action cannot be undone!")
-        if st.button("⚠️ Confirm Clear All Bookings"):
-            st.session_state.agent_bookings = {}
-            save_break_data()
-            st.success("All break bookings have been cleared!")
-            st.rerun()
+        confirm_col1, confirm_col2 = st.columns([1, 3])
+        with confirm_col1:
+            if st.button("⚠️ Yes, Clear All"):
+                st.session_state.agent_bookings.clear()
+                save_break_data()
+                st.session_state.show_confirm_clear = False
+                st.success("All break bookings have been cleared!")
+                st.rerun()
+        with confirm_col2:
+            if st.button("❌ Cancel"):
+                st.session_state.show_confirm_clear = False
+                st.rerun()
     
     dates = list(st.session_state.agent_bookings.keys())
     if dates:
@@ -1137,7 +1150,7 @@ def agent_break_dashboard():
     if is_killswitch_enabled():
         st.error("System is currently locked. Break booking is disabled.")
         return
-    
+        
     # Initialize session state
     if 'agent_bookings' not in st.session_state:
         st.session_state.agent_bookings = {}
@@ -1153,32 +1166,17 @@ def agent_break_dashboard():
     
     # Get current template
     current_template = None
+    has_bookings = False
     if current_date in st.session_state.agent_bookings and agent_id in st.session_state.agent_bookings[current_date]:
+        has_bookings = True
         bookings = st.session_state.agent_bookings[current_date][agent_id]
         for break_type in ['lunch', 'early_tea', 'late_tea']:
             if break_type in bookings and isinstance(bookings[break_type], dict):
                 current_template = bookings[break_type]['template']
                 break
     
-    # Template selection
-    if current_template:
-        st.info(f"You are using the **{current_template}** template today")
-        template = st.session_state.templates[current_template]
-    else:
-        selected_template = st.selectbox(
-            "Select your break schedule:",
-            available_templates,
-            index=None,
-            placeholder="Choose a template..."
-        )
-        if not selected_template:
-            st.warning("Please select a break schedule to continue")
-            return
-        template = st.session_state.templates[selected_template]
-        current_template = selected_template
-    
-    # Display current bookings
-    if current_date in st.session_state.agent_bookings and agent_id in st.session_state.agent_bookings[current_date]:
+    # Display current bookings if they exist
+    if has_bookings:
         st.subheader("Your Current Bookings")
         bookings = st.session_state.agent_bookings[current_date][agent_id]
         
@@ -1193,14 +1191,26 @@ def agent_break_dashboard():
                 else:
                     st.write(f"**{display_name}:** {bookings[break_type]}")
         
-        if st.button("Cancel All Bookings"):
-            del st.session_state.agent_bookings[current_date][agent_id]
-            save_break_data()
-            st.success("All bookings cancelled")
-            st.rerun()
+        st.info("⚠️ To modify or cancel your bookings, please contact your admin.")
+        return  # Stop here if agent already has bookings
     
-    # Book breaks
+    # Template selection for new bookings
+    if not current_template:
+        selected_template = st.selectbox(
+            "Select your break schedule:",
+            available_templates,
+            index=None,
+            placeholder="Choose a template..."
+        )
+        if not selected_template:
+            st.warning("Please select a break schedule to continue")
+            return
+        template = st.session_state.templates[selected_template]
+        current_template = selected_template
+    
+    # Book breaks (only shown if no existing bookings)
     st.subheader("Available Break Slots")
+    st.info("Note: Once you book your breaks, you cannot modify them without admin approval.")
     
     # Lunch breaks
     st.write("**Lunch Breaks**")
