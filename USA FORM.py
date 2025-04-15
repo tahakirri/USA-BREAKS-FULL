@@ -779,83 +779,36 @@ def count_bookings(date, break_type, time_slot):
 def display_schedule(template):
     st.header("LM US ENG 3:00 PM shift")
     
-    # Style for the tables
-    table_style = """
-    <style>
-        .break-table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-bottom: 1rem;
-            background-color: """ + ('#1e293b' if st.session_state.color_mode == 'dark' else '#ffffff') + """;
-            border-radius: 0.5rem;
-            overflow: hidden;
-        }
-        .break-table th, .break-table td {
-            padding: 0.75rem;
-            text-align: center;
-            border: 1px solid """ + ('#334155' if st.session_state.color_mode == 'dark' else '#e2e8f0') + """;
-            color: """ + ('#e2e8f0' if st.session_state.color_mode == 'dark' else '#1e293b') + """;
-        }
-        .break-table th {
-            background-color: """ + ('#334155' if st.session_state.color_mode == 'dark' else '#f1f5f9') + """;
-            font-weight: 600;
-        }
-        .break-rules {
-            margin-top: 1rem;
-            padding: 1rem;
-            background-color: """ + ('#1e293b' if st.session_state.color_mode == 'dark' else '#ffffff') + """;
-            border-radius: 0.5rem;
-            border: 1px solid """ + ('#334155' if st.session_state.color_mode == 'dark' else '#e2e8f0') + """;
-        }
-    </style>
-    """
-    st.markdown(table_style, unsafe_allow_html=True)
-    
     # Lunch breaks table
     st.markdown("### LUNCH BREAKS")
-    lunch_times = " | ".join(template["lunch_breaks"])
-    st.markdown(f"""
-    <table class="break-table">
-        <tr>
-            <th>DATE</th>
-            {''.join(f'<th>{time}</th>' for time in template["lunch_breaks"])}
-        </tr>
-        <tr>
-            <td>{st.session_state.selected_date}</td>
-            {''.join(f'<td></td>' for _ in template["lunch_breaks"])}
-        </tr>
-    </table>
-    """, unsafe_allow_html=True)
+    lunch_df = pd.DataFrame({
+        "DATE": [st.session_state.selected_date],
+        **{time: [""] for time in template["lunch_breaks"]}
+    })
+    st.table(lunch_df)
     
-    # Tea breaks tables
+    st.markdown("**KINDLY RESPECT THE RULES BELOW**")
+    st.markdown("**Non Respect Of Break Rules = Incident**")
+    st.markdown("---")
+    
+    # Tea breaks table
     st.markdown("### TEA BREAK")
-    max_rows = max(len(template["tea_breaks"]["early"]), len(template["tea_breaks"]["late"]))
     
-    st.markdown(f"""
-    <table class="break-table">
-        <tr>
-            <th>Early Tea Break</th>
-            <th>Late Tea Break</th>
-        </tr>
-        {''.join(f'''
-        <tr>
-            <td>{template["tea_breaks"]["early"][i] if i < len(template["tea_breaks"]["early"]) else ""}</td>
-            <td>{template["tea_breaks"]["late"][i] if i < len(template["tea_breaks"]["late"]) else ""}</td>
-        </tr>
-        ''' for i in range(max_rows))}
-    </table>
-    """, unsafe_allow_html=True)
+    # Create two columns for tea breaks
+    max_rows = max(len(template["tea_breaks"]["early"]), len(template["tea_breaks"]["late"]))
+    tea_data = {
+        "TEA BREAK": template["tea_breaks"]["early"] + [""] * (max_rows - len(template["tea_breaks"]["early"])),
+        "TEA BREAK": template["tea_breaks"]["late"] + [""] * (max_rows - len(template["tea_breaks"]["late"]))
+    }
+    tea_df = pd.DataFrame(tea_data)
+    st.table(tea_df)
     
     # Rules section
     st.markdown("""
-    <div class="break-rules">
-        <strong style="color: #dc2626;">KINDLY RESPECT THE RULES BELOW</strong><br>
-        <strong style="color: #dc2626;">Non Respect Of Break Rules = Incident</strong><br><br>
-        <strong>NO BREAK IN THE LAST HOUR WILL BE AUTHORIZED</strong><br>
-        <strong>PS: ONLY 5 MINUTES BIO IS AUTHORIZED IN THE LAST HOUR BETWEEN 23:00 TILL 23:30 AND NO BREAK AFTER 23:30 !!!</strong><br>
-        <strong>BREAKS SHOULD BE TAKEN AT THE NOTED TIME AND NEED TO BE CONFIRMED FROM RTA OR TEAM LEADERS</strong>
-    </div>
-    """, unsafe_allow_html=True)
+    **NO BREAK IN THE LAST HOUR WILL BE AUTHORIZED**  
+    **PS: ONLY 5 MINUTES BIO IS AUTHORIZED IN THE LAST HOUR BETWEEN 23:00 TILL 23:30 AND NO BREAK AFTER 23:30 !!!**  
+    **BREAKS SHOULD BE TAKEN AT THE NOTED TIME AND NEED TO BE CONFIRMED FROM RTA OR TEAM LEADERS**
+    """)
 
 def migrate_booking_data():
     if 'agent_bookings' in st.session_state:
@@ -1460,54 +1413,33 @@ if 'color_mode' not in st.session_state:
 def inject_custom_css():
     dark_mode = st.session_state.color_mode == 'dark'
     
+    # Define color schemes
     colors = {
         'dark': {
             'bg': '#0f172a',
             'sidebar': '#1e293b',
             'card': '#1e293b',
             'text': '#e2e8f0',
-            'text_secondary': '#94a3b8',
             'border': '#334155',
             'accent': '#60a5fa',
             'accent_hover': '#3b82f6',
             'muted': '#94a3b8',
             'input_bg': '#1e293b',
-            'input_text': '#e2e8f0',
             'my_message_bg': '#2563eb',
-            'other_message_bg': '#334155',
-            'hover_bg': '#334155',
-            'notification_bg': '#1e293b',
-            'notification_text': '#e2e8f0',
-            'button_bg': '#2563eb',
-            'button_text': '#ffffff',
-            'button_hover': '#1d4ed8',
-            'dropdown_bg': '#1e293b',
-            'dropdown_text': '#e2e8f0',
-            'dropdown_hover': '#334155'
+            'other_message_bg': '#334155'
         },
         'light': {
             'bg': '#f8fafc',
             'sidebar': '#ffffff',
             'card': '#ffffff',
             'text': '#1e293b',
-            'text_secondary': '#475569',
             'border': '#e2e8f0',
             'accent': '#2563eb',
             'accent_hover': '#1d4ed8',
             'muted': '#64748b',
             'input_bg': '#ffffff',
-            'input_text': '#1e293b',
             'my_message_bg': '#2563eb',
-            'other_message_bg': '#f1f5f9',
-            'hover_bg': '#f1f5f9',
-            'notification_bg': '#f8fafc',
-            'notification_text': '#1e293b',
-            'button_bg': '#2563eb',
-            'button_text': '#ffffff',
-            'button_hover': '#1d4ed8',
-            'dropdown_bg': '#ffffff',
-            'dropdown_text': '#1e293b',
-            'dropdown_hover': '#f1f5f9'
+            'other_message_bg': '#f1f5f9'
         }
     }
     
@@ -1515,63 +1447,85 @@ def inject_custom_css():
     
     st.markdown(f"""
     <style>
-        /* Button Styling */
-        .stButton > button {{
-            background-color: {c['button_bg']} !important;
-            color: {c['button_text']} !important;
-            border: none !important;
-            border-radius: 0.5rem !important;
-            padding: 0.5rem 1rem !important;
-            font-weight: 500 !important;
-            transition: all 0.2s ease-in-out !important;
+        /* Global Styles */
+        .stApp {{
+            background-color: {c['bg']};
+            color: {c['text']};
         }}
         
-        .stButton > button:hover {{
-            background-color: {c['button_hover']} !important;
-            transform: translateY(-2px);
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+        /* Chat Message Styling */
+        .chat-message {{
+            display: flex;
+            margin-bottom: 1rem;
+            max-width: 80%;
+            animation: fadeIn 0.3s ease-in-out;
         }}
         
-        /* Dropdown/Select Styling */
-        .stSelectbox > div > div {{
-            background-color: {c['dropdown_bg']} !important;
-            color: {c['dropdown_text']} !important;
-            border-color: {c['border']} !important;
+        .chat-message.received {{
+            margin-right: auto;
         }}
         
-        .stSelectbox > div > div:hover {{
-            border-color: {c['accent']} !important;
+        .chat-message.sent {{
+            margin-left: auto;
+            flex-direction: row-reverse;
         }}
         
-        /* Dropdown Options */
-        .stSelectbox [data-baseweb="select"] {{
-            background-color: {c['dropdown_bg']} !important;
+        .message-content {{
+            padding: 0.75rem 1rem;
+            border-radius: 1rem;
+            position: relative;
         }}
         
-        .stSelectbox [data-baseweb="select"] ul {{
-            background-color: {c['dropdown_bg']} !important;
+        .received .message-content {{
+            background-color: {c['other_message_bg']};
+            color: {c['text']};
+            border-bottom-left-radius: 0.25rem;
+            margin-right: 1rem;
         }}
         
-        .stSelectbox [data-baseweb="select"] li {{
-            background-color: {c['dropdown_bg']} !important;
-            color: {c['dropdown_text']} !important;
+        .sent .message-content {{
+            background-color: {c['my_message_bg']};
+            color: white;
+            border-bottom-right-radius: 0.25rem;
+            margin-left: 1rem;
         }}
         
-        .stSelectbox [data-baseweb="select"] li:hover {{
-            background-color: {c['dropdown_hover']} !important;
-        }}
-
-        /* Form Submit Button */
-        .stForm [data-testid="stFormSubmitButton"] button {{
-            background-color: {c['button_bg']} !important;
-            color: {c['button_text']} !important;
+        .message-meta {{
+            font-size: 0.75rem;
+            color: {c['muted']};
+            margin-top: 0.25rem;
         }}
         
-        .stForm [data-testid="stFormSubmitButton"] button:hover {{
-            background-color: {c['button_hover']} !important;
+        .message-avatar {{
+            width: 2.5rem;
+            height: 2.5rem;
+            border-radius: 50%;
+            background-color: {c['accent']};
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            font-size: 1rem;
         }}
-
-        /* Rest of your existing styles... */
+        
+        @keyframes fadeIn {{
+            from {{ opacity: 0; transform: translateY(10px); }}
+            to {{ opacity: 1; transform: translateY(0); }}
+        }}
+        
+        /* Rest of your existing styles with dynamic colors */
+        [data-testid="stSidebar"] {{
+            background-color: {c['sidebar']};
+            border-right: 1px solid {c['border']};
+        }}
+        
+        .card {{
+            background-color: {c['card']};
+            border: 1px solid {c['border']};
+        }}
+        
+        /* ... rest of your existing styles with dynamic colors ... */
     </style>
     """, unsafe_allow_html=True)
 
@@ -1673,20 +1627,9 @@ else:
         st.title(f"👋 Welcome, {st.session_state.username}")
         st.markdown("---")
         
-        # Add light/dark mode toggle at the top
-        mode_col1, mode_col2 = st.columns([1, 3])
-        with mode_col1:
-            current_mode = "🌙" if st.session_state.color_mode == 'dark' else "☀️"
-            st.write(f"### {current_mode}")
-        with mode_col2:
-            if st.button("Toggle Theme", use_container_width=True):
-                st.session_state.color_mode = 'light' if st.session_state.color_mode == 'dark' else 'dark'
-                st.rerun()
-        
-        st.markdown("---")
-        
         nav_options = [
             ("📋 Requests", "requests"),
+            ("📊 Dashboard", "dashboard"),
             ("☕ Breaks", "breaks"),
             ("🖼️ HOLD", "hold"),
             ("❌ Mistakes", "mistakes"),
@@ -1700,7 +1643,7 @@ else:
             nav_options.append(("⚙️ Admin", "admin"))
         
         for option, value in nav_options:
-            if st.button(option, key=f"nav_{value}", use_container_width=True):
+            if st.button(option, key=f"nav_{value}"):
                 st.session_state.current_section = value
                 
         st.markdown("---")
@@ -1711,32 +1654,15 @@ else:
                              and m[1] != st.session_state.username])
         
         st.markdown(f"""
-        <div style="
-            background-color: {'#1e293b' if st.session_state.color_mode == 'dark' else '#ffffff'};
-            padding: 1rem;
-            border-radius: 0.5rem;
-            border: 1px solid {'#334155' if st.session_state.color_mode == 'dark' else '#e2e8f0'};
-            margin-bottom: 20px;
-        ">
-            <h4 style="
-                color: {'#e2e8f0' if st.session_state.color_mode == 'dark' else '#1e293b'};
-                margin-bottom: 1rem;
-            ">🔔 Notifications</h4>
-            <p style="
-                color: {'#94a3b8' if st.session_state.color_mode == 'dark' else '#475569'};
-                margin-bottom: 0.5rem;
-            ">📋 Pending requests: {pending_requests}</p>
-            <p style="
-                color: {'#94a3b8' if st.session_state.color_mode == 'dark' else '#475569'};
-                margin-bottom: 0.5rem;
-            ">❌ Recent mistakes: {new_mistakes}</p>
-            <p style="
-                color: {'#94a3b8' if st.session_state.color_mode == 'dark' else '#475569'};
-            ">💬 Unread messages: {unread_messages}</p>
+        <div style="margin-bottom: 20px;">
+            <h4>🔔 Notifications</h4>
+            <p>📋 Pending requests: {pending_requests}</p>
+            <p>❌ Recent mistakes: {new_mistakes}</p>
+            <p>💬 Unread messages: {unread_messages}</p>
         </div>
         """, unsafe_allow_html=True)
         
-        if st.button("🚪 Logout", use_container_width=True):
+        if st.button("🚪 Logout"):
             st.session_state.authenticated = False
             st.rerun()
 
