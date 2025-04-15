@@ -1855,26 +1855,39 @@ else:
 # --------------------------
 
 def create_break_template(name, max_users_per_slot, created_by):
-    if is_killswitch_enabled():
-        st.error("System is currently locked. Please contact the developer.")
-        return False
-        
-    conn = get_db_connection()
     try:
+        if is_killswitch_enabled():
+            st.error("System is currently locked. Please contact the developer.")
+            return None
+            
+        conn = get_db_connection()
         cursor = conn.cursor()
+        
+        # Check if template with same name exists
+        cursor.execute("SELECT id FROM break_templates WHERE name = ?", (name,))
+        if cursor.fetchone():
+            st.error("A template with this name already exists")
+            return None
+            
+        # Insert new template
         cursor.execute("""
             INSERT INTO break_templates (name, max_users_per_slot, created_by, created_at)
             VALUES (?, ?, ?, ?)
         """, (name, max_users_per_slot, created_by, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+        
         template_id = cursor.lastrowid
         conn.commit()
         return template_id
+    except sqlite3.Error as e:
+        st.error(f"Database error: {str(e)}")
+        return None
     finally:
-        conn.close()
+        if 'conn' in locals():
+            conn.close()
 
 def add_break_slot(template_id, break_type, start_time, end_time):
-    conn = get_db_connection()
     try:
+        conn = get_db_connection()
         cursor = conn.cursor()
         cursor.execute("""
             INSERT INTO break_slots (template_id, break_type, start_time, end_time)
@@ -1882,8 +1895,12 @@ def add_break_slot(template_id, break_type, start_time, end_time):
         """, (template_id, break_type, start_time, end_time))
         conn.commit()
         return True
+    except sqlite3.Error as e:
+        st.error(f"Database error: {str(e)}")
+        return False
     finally:
-        conn.close()
+        if 'conn' in locals():
+            conn.close()
 
 def get_break_templates():
     try:
