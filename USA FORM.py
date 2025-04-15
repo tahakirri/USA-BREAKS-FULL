@@ -640,6 +640,32 @@ def display_schedule(template):
     **BREAKS SHOULD BE TAKEN AT THE NOTED TIME AND NEED TO BE CONFIRMED FROM RTA OR TEAM LEADERS**
     """)
 
+def migrate_booking_data():
+    if 'agent_bookings' in st.session_state:
+        for date in st.session_state.agent_bookings:
+            for agent in st.session_state.agent_bookings[date]:
+                bookings = st.session_state.agent_bookings[date][agent]
+                if "lunch" in bookings and isinstance(bookings["lunch"], str):
+                    bookings["lunch"] = {
+                        "time": bookings["lunch"],
+                        "template": "Default Template",
+                        "booked_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    }
+                if "early_tea" in bookings and isinstance(bookings["early_tea"], str):
+                    bookings["early_tea"] = {
+                        "time": bookings["early_tea"],
+                        "template": "Default Template",
+                        "booked_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    }
+                if "late_tea" in bookings and isinstance(bookings["late_tea"], str):
+                    bookings["late_tea"] = {
+                        "time": bookings["late_tea"],
+                        "template": "Default Template",
+                        "booked_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    }
+        
+        save_break_data()
+
 def admin_break_dashboard():
     st.title("Admin Dashboard")
     st.markdown("---")
@@ -830,6 +856,9 @@ def admin_break_dashboard():
     # View all bookings
     st.header("All Bookings")
     if st.session_state.agent_bookings:
+        # Migrate old data format if needed
+        migrate_booking_data()
+        
         # Add date filter
         dates = list(st.session_state.agent_bookings.keys())
         selected_date = st.selectbox("Select Date:", dates, index=len(dates)-1 if dates else 0)
@@ -846,11 +875,18 @@ def admin_break_dashboard():
                     
                     # Add lunch break details
                     if "lunch" in breaks:
-                        booking_entry.update({
-                            "Lunch Time": breaks["lunch"]["time"],
-                            "Lunch Template": breaks["lunch"]["template"],
-                            "Lunch Booked At": breaks["lunch"].get("booked_at", "N/A")
-                        })
+                        if isinstance(breaks["lunch"], dict):
+                            booking_entry.update({
+                                "Lunch Time": breaks["lunch"].get("time", "-"),
+                                "Lunch Template": breaks["lunch"].get("template", "Default Template"),
+                                "Lunch Booked At": breaks["lunch"].get("booked_at", "N/A")
+                            })
+                        else:
+                            booking_entry.update({
+                                "Lunch Time": str(breaks["lunch"]),
+                                "Lunch Template": "Default Template",
+                                "Lunch Booked At": "N/A"
+                            })
                     else:
                         booking_entry.update({
                             "Lunch Time": "-",
@@ -860,11 +896,18 @@ def admin_break_dashboard():
                     
                     # Add early tea break details
                     if "early_tea" in breaks:
-                        booking_entry.update({
-                            "Early Tea Time": breaks["early_tea"]["time"],
-                            "Early Tea Template": breaks["early_tea"]["template"],
-                            "Early Tea Booked At": breaks["early_tea"].get("booked_at", "N/A")
-                        })
+                        if isinstance(breaks["early_tea"], dict):
+                            booking_entry.update({
+                                "Early Tea Time": breaks["early_tea"].get("time", "-"),
+                                "Early Tea Template": breaks["early_tea"].get("template", "Default Template"),
+                                "Early Tea Booked At": breaks["early_tea"].get("booked_at", "N/A")
+                            })
+                        else:
+                            booking_entry.update({
+                                "Early Tea Time": str(breaks["early_tea"]),
+                                "Early Tea Template": "Default Template",
+                                "Early Tea Booked At": "N/A"
+                            })
                     else:
                         booking_entry.update({
                             "Early Tea Time": "-",
@@ -874,11 +917,18 @@ def admin_break_dashboard():
                     
                     # Add late tea break details
                     if "late_tea" in breaks:
-                        booking_entry.update({
-                            "Late Tea Time": breaks["late_tea"]["time"],
-                            "Late Tea Template": breaks["late_tea"]["template"],
-                            "Late Tea Booked At": breaks["late_tea"].get("booked_at", "N/A")
-                        })
+                        if isinstance(breaks["late_tea"], dict):
+                            booking_entry.update({
+                                "Late Tea Time": breaks["late_tea"].get("time", "-"),
+                                "Late Tea Template": breaks["late_tea"].get("template", "Default Template"),
+                                "Late Tea Booked At": breaks["late_tea"].get("booked_at", "N/A")
+                            })
+                        else:
+                            booking_entry.update({
+                                "Late Tea Time": str(breaks["late_tea"]),
+                                "Late Tea Template": "Default Template",
+                                "Late Tea Booked At": "N/A"
+                            })
                     else:
                         booking_entry.update({
                             "Late Tea Time": "-",
@@ -1085,16 +1135,30 @@ def agent_break_dashboard():
             if (st.session_state.selected_date in st.session_state.agent_bookings and 
                 agent_id in st.session_state.agent_bookings[st.session_state.selected_date]):
                 
+                # Migrate old data format if needed
+                migrate_booking_data()
+                
                 st.markdown("---")
                 st.header("Your Current Bookings")
                 bookings = st.session_state.agent_bookings[st.session_state.selected_date][agent_id]
                 
                 if "lunch" in bookings:
-                    st.write(f"**Lunch Break:** {bookings['lunch']['time']} (Template: {bookings['lunch']['template']})")
+                    if isinstance(bookings["lunch"], dict):
+                        st.write(f"**Lunch Break:** {bookings['lunch']['time']} (Template: {bookings['lunch']['template']})")
+                    else:
+                        st.write(f"**Lunch Break:** {bookings['lunch']} (Template: Default Template)")
+                
                 if "early_tea" in bookings:
-                    st.write(f"**Early Tea Break:** {bookings['early_tea']['time']} (Template: {bookings['early_tea']['template']})")
+                    if isinstance(bookings["early_tea"], dict):
+                        st.write(f"**Early Tea Break:** {bookings['early_tea']['time']} (Template: {bookings['early_tea']['template']})")
+                    else:
+                        st.write(f"**Early Tea Break:** {bookings['early_tea']} (Template: Default Template)")
+                
                 if "late_tea" in bookings:
-                    st.write(f"**Late Tea Break:** {bookings['late_tea']['time']} (Template: {bookings['late_tea']['template']})")
+                    if isinstance(bookings["late_tea"], dict):
+                        st.write(f"**Late Tea Break:** {bookings['late_tea']['time']} (Template: {bookings['late_tea']['template']})")
+                    else:
+                        st.write(f"**Late Tea Break:** {bookings['late_tea']} (Template: Default Template)")
                 
                 if st.button("Cancel All Bookings"):
                     if is_killswitch_enabled():
