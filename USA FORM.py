@@ -1417,89 +1417,312 @@ st.set_page_config(
 def inject_custom_css():
     st.markdown("""
     <style>
+        /* Global Styles */
         .stApp {
-            background-color: white;
+            background-color: #0f172a;
+            color: #e2e8f0;
         }
-        .stMarkdown h1 {
-            color: black;
-            font-size: 24px;
-            font-weight: bold;
+        
+        /* Sidebar Styling */
+        [data-testid="stSidebar"] {
+            background-color: #1e293b;
+            border-right: 1px solid #334155;
+            padding: 2rem 1rem;
         }
-        .stMarkdown h2 {
-            color: black;
-            font-size: 20px;
-            font-weight: bold;
-            border-bottom: 1px solid black;
-        }
-        .stDataFrame {
+        
+        [data-testid="stSidebar"] .stButton > button {
             width: 100%;
+            text-align: left;
+            padding: 0.75rem 1rem;
+            background-color: transparent;
+            color: #94a3b8;
+            border: none;
+            border-radius: 0.5rem;
+            margin-bottom: 0.5rem;
+            transition: all 0.2s;
         }
-        table {
-            width: 100%;
-            border-collapse: collapse;
+        
+        [data-testid="stSidebar"] .stButton > button:hover {
+            background-color: #334155;
+            color: #60a5fa;
         }
-        th, td {
-            border: 1px solid black;
-            padding: 8px;
-            text-align: center;
-        }
-        th {
-            background-color: #f2f2f2;
-            font-weight: bold;
-        }
-        .warning {
-            color: red;
-            font-weight: bold;
-        }
-        .break-option {
-            padding: 5px;
-            margin: 2px;
-            border-radius: 3px;
-            cursor: pointer;
-        }
-        .break-option:hover {
-            background-color: #f0f0f0;
-        }
-        .selected-break {
-            background-color: #4CAF50;
-            color: white;
-        }
-        .full-break {
-            background-color: #FF5252;
-            color: white;
-        }
-        .stApp { background-color: #121212; color: #E0E0E0; }
-        [data-testid="stSidebar"] { background-color: #1E1E1E; }
-        .stButton>button { background-color: #2563EB; color: white; }
-        .card { background-color: #1F1F1F; border-radius: 12px; padding: 1.5rem; }
-        .metric-card { background-color: #1F2937; border-radius: 10px; padding: 20px; }
-        .killswitch-active {
-            background-color: #4A1E1E;
-            border-left: 5px solid #D32F2F;
-            padding: 1rem;
+        
+        /* Card Styling */
+        .card {
+            background-color: #1e293b;
+            border-radius: 1rem;
+            padding: 1.5rem;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);
             margin-bottom: 1rem;
-            color: #FFCDD2;
+            border: 1px solid #334155;
         }
-        .chat-killswitch-active {
-            background-color: #1E3A4A;
-            border-left: 5px solid #1E88E5;
+        
+        /* Form Styling */
+        .stTextInput > div > div {
+            border-radius: 0.5rem;
+            border: 1px solid #334155;
+            background-color: #1e293b;
+            color: #e2e8f0;
+        }
+        
+        .stTextInput > div > div:focus-within {
+            border-color: #60a5fa;
+            box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.1);
+        }
+        
+        .stSelectbox > div > div {
+            border-radius: 0.5rem;
+            border: 1px solid #334155;
+            background-color: #1e293b;
+            color: #e2e8f0;
+        }
+        
+        /* Button Styling */
+        .stButton > button {
+            border-radius: 0.5rem;
+            padding: 0.5rem 1rem;
+            background-color: #2563eb;
+            color: white;
+            border: none;
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+        
+        .stButton > button:hover {
+            background-color: #1d4ed8;
+            transform: translateY(-1px);
+        }
+        
+        /* Login Form Styling */
+        .login-container {
+            max-width: 400px;
+            margin: 4rem auto;
+            padding: 2rem;
+            background-color: #1e293b;
+            border-radius: 1rem;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);
+            border: 1px solid #334155;
+        }
+        
+        /* Notification Styling */
+        .notification {
             padding: 1rem;
+            border-radius: 0.5rem;
             margin-bottom: 1rem;
-            color: #B3E5FC;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
         }
+        
+        .notification.info {
+            background-color: #1e3a5f;
+            color: #93c5fd;
+            border-left: 4px solid #3b82f6;
+        }
+        
+        .notification.warning {
+            background-color: #451a03;
+            color: #fcd34d;
+            border-left: 4px solid #f59e0b;
+        }
+        
+        .notification.error {
+            background-color: #450a0a;
+            color: #fca5a5;
+            border-left: 4px solid #dc2626;
+        }
+        
+        /* Comment Box Styling */
         .comment-box {
+            background-color: #1e293b;
+            border-radius: 0.5rem;
+            padding: 1rem;
             margin: 0.5rem 0;
-            padding: 0.5rem;
-            background: #2D2D2D;
-            border-radius: 8px;
+            border: 1px solid #334155;
         }
+        
         .comment-user {
             display: flex;
             justify-content: space-between;
-            margin-bottom: 0.25rem;
+            color: #94a3b8;
+            font-size: 0.875rem;
+            margin-bottom: 0.5rem;
         }
+        
         .comment-text {
-            margin-top: 0.5rem;
+            color: #e2e8f0;
+        }
+        
+        /* Metric Card Styling */
+        .metric-card {
+            background-color: #1e293b;
+            border-radius: 1rem;
+            padding: 1.5rem;
+            border: 1px solid #334155;
+            text-align: center;
+        }
+        
+        .metric-value {
+            font-size: 2rem;
+            font-weight: 600;
+            color: #60a5fa;
+            margin: 0.5rem 0;
+        }
+        
+        .metric-label {
+            color: #94a3b8;
+            font-size: 0.875rem;
+        }
+        
+        /* Table Styling */
+        .stDataFrame {
+            border: 1px solid #334155;
+            border-radius: 0.5rem;
+            overflow: hidden;
+        }
+        
+        .stDataFrame table {
+            border-collapse: separate;
+            border-spacing: 0;
+            background-color: #1e293b;
+        }
+        
+        .stDataFrame th {
+            background-color: #334155;
+            padding: 0.75rem 1rem;
+            border-bottom: 1px solid #475569;
+            color: #e2e8f0;
+            font-weight: 500;
+        }
+        
+        .stDataFrame td {
+            padding: 0.75rem 1rem;
+            border-bottom: 1px solid #334155;
+            color: #e2e8f0;
+        }
+        
+        /* Killswitch Styling */
+        .killswitch-active {
+            background-color: #450a0a;
+            border-radius: 0.5rem;
+            padding: 1rem;
+            margin-bottom: 1rem;
+            border-left: 4px solid #dc2626;
+            color: #fca5a5;
+        }
+        
+        .chat-killswitch-active {
+            background-color: #1e3a5f;
+            border-radius: 0.5rem;
+            padding: 1rem;
+            margin-bottom: 1rem;
+            border-left: 4px solid #3b82f6;
+            color: #93c5fd;
+        }
+        
+        /* Header Styling */
+        h1, h2, h3, h4, h5, h6 {
+            color: #e2e8f0;
+            font-weight: 600;
+            margin-bottom: 1rem;
+        }
+        
+        /* Expander Styling */
+        .streamlit-expanderHeader {
+            background-color: #1e293b;
+            border-radius: 0.5rem;
+            border: 1px solid #334155;
+            padding: 0.75rem 1rem;
+            color: #94a3b8;
+            font-weight: 500;
+        }
+        
+        /* Progress Bar Styling */
+        .stProgress > div > div {
+            background-color: #2563eb;
+            border-radius: 1rem;
+        }
+        
+        /* File Uploader Styling */
+        .stFileUploader > div {
+            border-radius: 0.5rem;
+            border: 2px dashed #334155;
+            padding: 2rem;
+            text-align: center;
+            background-color: #1e293b;
+            color: #e2e8f0;
+        }
+        
+        .stFileUploader > div:hover {
+            border-color: #60a5fa;
+        }
+
+        /* Input Fields */
+        .stTextInput input, .stTextArea textarea, .stSelectbox select {
+            background-color: #1e293b !important;
+            color: #e2e8f0 !important;
+            border-color: #334155 !important;
+        }
+
+        /* Checkbox Styling */
+        .stCheckbox > div > div > div {
+            background-color: #1e293b !important;
+            border-color: #334155 !important;
+        }
+
+        .stCheckbox > div > div > div:hover {
+            border-color: #60a5fa !important;
+        }
+
+        /* Radio Button Styling */
+        .stRadio > div > div > div {
+            background-color: #1e293b !important;
+            border-color: #334155 !important;
+        }
+
+        .stRadio > div > div > div:hover {
+            border-color: #60a5fa !important;
+        }
+
+        /* Success/Info Messages */
+        .element-container .stAlert {
+            background-color: #1e293b;
+            color: #e2e8f0;
+            border: 1px solid #334155;
+            border-radius: 0.5rem;
+        }
+
+        /* Tabs Styling */
+        .stTabs [data-baseweb="tab-list"] {
+            background-color: #1e293b;
+            border-bottom: 1px solid #334155;
+        }
+
+        .stTabs [data-baseweb="tab"] {
+            color: #94a3b8;
+        }
+
+        .stTabs [data-baseweb="tab"][aria-selected="true"] {
+            color: #60a5fa;
+        }
+
+        /* Tooltip Styling */
+        .stTooltipIcon {
+            color: #94a3b8 !important;
+        }
+
+        /* Date Input Styling */
+        .stDateInput > div > div {
+            background-color: #1e293b !important;
+            border-color: #334155 !important;
+            color: #e2e8f0 !important;
+        }
+
+        /* Number Input Styling */
+        .stNumberInput > div > div {
+            background-color: #1e293b !important;
+            border-color: #334155 !important;
+            color: #e2e8f0 !important;
         }
     </style>
     """, unsafe_allow_html=True)
@@ -1519,13 +1742,17 @@ init_db()
 init_break_session_state()
 
 if not st.session_state.authenticated:
-    col1, col2, col3 = st.columns([1, 2, 1])
-    with col2:
-        st.title("🏢 Request Management System")
-        with st.form("login_form"):
-            username = st.text_input("Username")
-            password = st.text_input("Password", type="password")
-            if st.form_submit_button("Login"):
+    st.markdown("""
+        <div class="login-container">
+            <h1 style="text-align: center; margin-bottom: 2rem;">🏢 Request Management System</h1>
+    """, unsafe_allow_html=True)
+    
+    with st.form("login_form"):
+        username = st.text_input("Username")
+        password = st.text_input("Password", type="password")
+        submit_col1, submit_col2, submit_col3 = st.columns([1, 2, 1])
+        with submit_col2:
+            if st.form_submit_button("Login", use_container_width=True):
                 if username and password:
                     role = authenticate(username, password)
                     if role:
@@ -1540,6 +1767,8 @@ if not st.session_state.authenticated:
                         st.rerun()
                     else:
                         st.error("Invalid credentials")
+    
+    st.markdown("</div>", unsafe_allow_html=True)
 
 else:
     if is_killswitch_enabled():
