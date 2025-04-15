@@ -8,12 +8,6 @@ from PIL import Image
 import io
 import pandas as pd
 import json
-import base64
-import emoji
-import numpy as np
-from scipy import stats
-import plotly.graph_objects as go
-import plotly.express as px
 
 # --------------------------
 # Database Functions
@@ -80,9 +74,7 @@ def init_db():
                 sender TEXT,
                 message TEXT,
                 timestamp TEXT,
-                mentions TEXT,
-                reply_to INTEGER REFERENCES group_messages(id),
-                formatted_text TEXT)
+                mentions TEXT)
         """)
         
         cursor.execute("""
@@ -132,34 +124,6 @@ def init_db():
                 start_time TEXT,
                 end_time TEXT,
                 timestamp TEXT)
-        """)
-        
-        # Add new tables for enhanced chat
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS chat_files (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                message_id INTEGER,
-                file_name TEXT,
-                file_data BLOB,
-                file_type TEXT,
-                FOREIGN KEY(message_id) REFERENCES group_messages(id))
-        """)
-        
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS message_reactions (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                message_id INTEGER,
-                user TEXT,
-                reaction TEXT,
-                FOREIGN KEY(message_id) REFERENCES group_messages(id))
-        """)
-        
-        cursor.execute("""
-            ALTER TABLE group_messages ADD COLUMN IF NOT EXISTS reply_to INTEGER REFERENCES group_messages(id)
-        """)
-        
-        cursor.execute("""
-            ALTER TABLE group_messages ADD COLUMN IF NOT EXISTS formatted_text TEXT
         """)
         
         # Handle system_settings table schema migration
@@ -251,31 +215,6 @@ def init_db():
                 INSERT OR IGNORE INTO users (username, password, role) 
                 VALUES (?, ?, ?)
             """, (agent_name, hash_password(workspace_id), "agent"))
-        
-        # Add break tracking table
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS break_records (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user TEXT,
-                break_start DATETIME,
-                break_end DATETIME,
-                break_type TEXT,
-                productivity_before INTEGER,
-                productivity_after INTEGER,
-                notes TEXT
-            )
-        """)
-        
-        # Add break preferences table
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS break_preferences (
-                user TEXT PRIMARY KEY,
-                preferred_duration INTEGER,
-                preferred_frequency INTEGER,
-                preferred_time_slots TEXT,
-                last_updated DATETIME
-            )
-        """)
         
         conn.commit()
     finally:
@@ -746,240 +685,6 @@ def clear_midshift_issues():
         st.error(f"Error clearing mid-shift issues: {str(e)}")
     finally:
         conn.close()
-
-def save_chat_file(message_id, file_name, file_data, file_type):
-    conn = get_db_connection()
-    try:
-        cursor = conn.cursor()
-        cursor.execute("""
-            INSERT INTO chat_files (message_id, file_name, file_data, file_type)
-            VALUES (?, ?, ?, ?)
-        """, (message_id, file_name, file_data, file_type))
-        conn.commit()
-        return True
-    finally:
-        conn.close()
-
-def get_chat_file(message_id):
-    conn = get_db_connection()
-    try:
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM chat_files WHERE message_id = ?", (message_id,))
-        return cursor.fetchone()
-    finally:
-        conn.close()
-
-def add_message_reaction(message_id, user, reaction):
-    conn = get_db_connection()
-    try:
-        cursor = conn.cursor()
-        # Remove existing reaction from same user
-        cursor.execute("""
-            DELETE FROM message_reactions 
-            WHERE message_id = ? AND user = ?
-        """, (message_id, user))
-        # Add new reaction
-        cursor.execute("""
-            INSERT INTO message_reactions (message_id, user, reaction)
-            VALUES (?, ?, ?)
-        """, (message_id, user, reaction))
-        conn.commit()
-        return True
-    finally:
-        conn.close()
-
-def get_message_reactions(message_id):
-    conn = get_db_connection()
-    try:
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM message_reactions WHERE message_id = ?", (message_id,))
-        return cursor.fetchall()
-    finally:
-        conn.close()
-
-def send_enhanced_message(sender, message, reply_to=None, formatted_text=None, file=None):
-    if is_killswitch_enabled() or is_chat_killswitch_enabled():
-        st.error("Chat is currently locked. Please contact the developer.")
-        return False
-        
-    conn = get_db_connection()
-    try:
-        cursor = conn.cursor()
-        mentions = re.findall(r'@(\w+)', message)
-        cursor.execute("""
-            INSERT INTO group_messages (sender, message, timestamp, mentions, reply_to, formatted_text) 
-            VALUES (?, ?, ?, ?, ?, ?)
-        """, (sender, message, datetime.now().strftime("%Y-%m-%d %H:%M:%S"), 
-             ','.join(mentions), reply_to, formatted_text))
-        
-        message_id = cursor.lastrowid
-        
-        # Save file if provided
-        if file:
-            save_chat_file(message_id, file.name, file.getvalue(), file.type)
-        
-        conn.commit()
-        return message_id
-    finally:
-        conn.close()
-
-def log_break(user, start_time, end_time, break_type, productivity_before=None, productivity_after=None, notes=None):
-    conn = get_db_connection()
-    try:
-        cursor = conn.cursor()
-        cursor.execute("""
-            INSERT INTO break_records 
-            (user, break_start, break_end, break_type, productivity_before, productivity_after, notes)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        """, (user, start_time, end_time, break_type, productivity_before, productivity_after, notes))
-        conn.commit()
-        return True
-    finally:
-        conn.close()
-
-def get_break_history(user, days=30):
-    conn = get_db_connection()
-    try:
-        cursor = conn.cursor()
-        start_date = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
-        cursor.execute("""
-            SELECT * FROM break_records 
-            WHERE user = ? AND break_start >= ?
-            ORDER BY break_start DESC
-        """, (user, start_date))
-        return cursor.fetchall()
-    finally:
-        conn.close()
-
-def update_break_preferences(user, duration, frequency, time_slots):
-    conn = get_db_connection()
-    try:
-        cursor = conn.cursor()
-        cursor.execute("""
-            INSERT OR REPLACE INTO break_preferences 
-            (user, preferred_duration, preferred_frequency, preferred_time_slots, last_updated)
-            VALUES (?, ?, ?, ?, ?)
-        """, (user, duration, frequency, json.dumps(time_slots), datetime.now()))
-        conn.commit()
-        return True
-    finally:
-        conn.close()
-
-def get_break_preferences(user):
-    conn = get_db_connection()
-    try:
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM break_preferences WHERE user = ?", (user,))
-        return cursor.fetchone()
-    finally:
-        conn.close()
-
-def analyze_break_patterns(user):
-    breaks = get_break_history(user)
-    if not breaks:
-        return None
-    
-    # Convert breaks to pandas DataFrame for analysis
-    df = pd.DataFrame(breaks, columns=[
-        'id', 'user', 'break_start', 'break_end', 'break_type',
-        'productivity_before', 'productivity_after', 'notes'
-    ])
-    
-    # Convert datetime strings to datetime objects
-    df['break_start'] = pd.to_datetime(df['break_start'])
-    df['break_end'] = pd.to_datetime(df['break_end'])
-    df['duration'] = (df['break_end'] - df['break_start']).dt.total_seconds() / 60
-    
-    # Calculate productivity impact
-    df['productivity_impact'] = df['productivity_after'] - df['productivity_before']
-    
-    analysis = {
-        'avg_duration': df['duration'].mean(),
-        'avg_frequency': len(df) / (datetime.now() - df['break_start'].min()).days,
-        'most_productive_duration': df.loc[df['productivity_impact'].idxmax(), 'duration'],
-        'optimal_times': df.loc[df['productivity_impact'] > 0, 'break_start'].dt.hour.mode().tolist(),
-        'productivity_correlation': stats.pearsonr(df['duration'], df['productivity_impact'])[0]
-    }
-    
-    return analysis
-
-def generate_break_recommendations(user):
-    analysis = analyze_break_patterns(user)
-    if not analysis:
-        return default_break_recommendations()
-    
-    prefs = get_break_preferences(user)
-    
-    recommendations = {
-        'optimal_duration': min(max(analysis['most_productive_duration'], 10), 30),
-        'suggested_frequency': max(min(analysis['avg_frequency'] * 1.2, 8), 4),
-        'best_times': [f"{hour:02d}:00" for hour in analysis['optimal_times']],
-        'tips': []
-    }
-    
-    # Generate personalized tips
-    if analysis['productivity_correlation'] > 0.3:
-        recommendations['tips'].append("Longer breaks appear to boost your productivity. Consider taking fewer but longer breaks.")
-    elif analysis['productivity_correlation'] < -0.3:
-        recommendations['tips'].append("Shorter, more frequent breaks seem to work better for you.")
-    
-    if prefs:
-        if abs(prefs[1] - recommendations['optimal_duration']) > 5:
-            recommendations['tips'].append(
-                f"Consider adjusting your break duration from {prefs[1]} to {recommendations['optimal_duration']} minutes."
-            )
-    
-    return recommendations
-
-def default_break_recommendations():
-    return {
-        'optimal_duration': 15,
-        'suggested_frequency': 6,
-        'best_times': ['10:00', '12:00', '14:00', '16:00'],
-        'tips': [
-            "Start with the standard Pomodoro technique: 25 minutes of work followed by 5-minute breaks",
-            "Take a longer 15-minute break every 2 hours",
-            "Use breaks for light physical activity or eye exercises"
-        ]
-    }
-
-def visualize_break_patterns(user):
-    breaks = get_break_history(user)
-    if not breaks:
-        return None
-    
-    df = pd.DataFrame(breaks, columns=[
-        'id', 'user', 'break_start', 'break_end', 'break_type',
-        'productivity_before', 'productivity_after', 'notes'
-    ])
-    
-    df['break_start'] = pd.to_datetime(df['break_start'])
-    df['break_end'] = pd.to_datetime(df['break_end'])
-    df['duration'] = (df['break_end'] - df['break_start']).dt.total_seconds() / 60
-    df['productivity_impact'] = df['productivity_after'] - df['productivity_before']
-    
-    # Create break pattern visualization
-    fig1 = px.scatter(df, 
-                     x='break_start', 
-                     y='duration',
-                     color='productivity_impact',
-                     title='Break Patterns Over Time',
-                     labels={'break_start': 'Date', 'duration': 'Break Duration (min)'},
-                     color_continuous_scale='RdYlGn')
-    
-    # Create productivity impact by time of day
-    df['hour'] = df['break_start'].dt.hour
-    hourly_impact = df.groupby('hour')['productivity_impact'].mean().reset_index()
-    
-    fig2 = go.Figure()
-    fig2.add_trace(go.Bar(x=hourly_impact['hour'],
-                         y=hourly_impact['productivity_impact'],
-                         name='Average Productivity Impact'))
-    fig2.update_layout(title='Productivity Impact by Time of Day',
-                      xaxis_title='Hour of Day',
-                      yaxis_title='Average Productivity Impact')
-    
-    return fig1, fig2
 
 # --------------------------
 # Break Scheduling Functions (from first code)
@@ -2142,115 +1847,11 @@ else:
                 st.warning("Chat functionality is currently disabled by the administrator.")
             else:
                 messages = get_group_messages()
-                
-                # Initialize session state for reply
-                if 'replying_to' not in st.session_state:
-                    st.session_state.replying_to = None
-                
-                # Message composition area
-                with st.form("enhanced_chat_form", clear_on_submit=True):
-                    col1, col2 = st.columns([4, 1])
-                    with col1:
-                        message = st.text_area("Type your message...", key="chat_input", height=100)
-                    with col2:
-                        # Emoji picker
-                        emoji_list = ["👍", "👎", "😊", "❤️", "👋", "✅", "❌", "⭐", "🎉", "🤔"]
-                        selected_emoji = st.selectbox("Add Emoji", [""] + emoji_list)
-                        if selected_emoji:
-                            if message:
-                                message += f" {selected_emoji}"
-                            else:
-                                message = selected_emoji
-                    
-                    # Text formatting
-                    formatting_col1, formatting_col2, formatting_col3 = st.columns(3)
-                    with formatting_col1:
-                        bold = st.checkbox("Bold")
-                    with formatting_col2:
-                        italic = st.checkbox("Italic")
-                    with formatting_col3:
-                        code = st.checkbox("Code")
-                    
-                    # File upload
-                    uploaded_file = st.file_uploader("Attach File", type=['pdf', 'doc', 'docx', 'png', 'jpg', 'jpeg'])
-                    
-                    # Reply to message
-                    if st.session_state.replying_to:
-                        reply_msg = next((m for m in messages if m[0] == st.session_state.replying_to), None)
-                        if reply_msg:
-                            st.info(f"Replying to {reply_msg[1]}: {reply_msg[2]}")
-                            if st.button("Cancel Reply"):
-                                st.session_state.replying_to = None
-                                st.rerun()
-                    
-                    # Send button
-                    if st.form_submit_button("Send"):
-                        if message or uploaded_file:
-                            # Apply formatting
-                            formatted_text = message
-                            if bold:
-                                formatted_text = f"**{formatted_text}**"
-                            if italic:
-                                formatted_text = f"*{formatted_text}*"
-                            if code:
-                                formatted_text = f"`{formatted_text}`"
-                            
-                            # Send message
-                            message_id = send_enhanced_message(
-                                st.session_state.username,
-                                message,
-                                reply_to=st.session_state.replying_to,
-                                formatted_text=formatted_text,
-                                file=uploaded_file
-                            )
-                            
-                            if message_id:
-                                st.session_state.replying_to = None
-                                st.rerun()
-                
-                # Display messages
                 st.markdown('<div class="chat-container">', unsafe_allow_html=True)
                 for msg in reversed(messages):
-                    msg_id, sender, message, ts, mentions, reply_to, formatted_text = msg
+                    msg_id, sender, message, ts, mentions = msg
                     is_sent = sender == st.session_state.username
                     is_mentioned = st.session_state.username in (mentions.split(',') if mentions else [])
-                    
-                    # Get reply context
-                    reply_context = ""
-                    if reply_to:
-                        replied_msg = next((m for m in messages if m[0] == reply_to), None)
-                        if replied_msg:
-                            reply_context = f"""
-                            <div class="reply-context">
-                                <small>↪️ Reply to {replied_msg[1]}: {replied_msg[2]}</small>
-                            </div>
-                            """
-                    
-                    # Get file attachment
-                    file_html = ""
-                    file_data = get_chat_file(msg_id)
-                    if file_data:
-                        file_id, _, file_name, _, file_type = file_data
-                        if file_type.startswith('image/'):
-                            file_html = f'<img src="data:{file_type};base64,{base64.b64encode(file_data[3]).decode()}" style="max-width: 200px; margin-top: 10px;">'
-                        else:
-                            file_html = f'<div class="file-attachment">📎 {file_name}</div>'
-                    
-                    # Get reactions
-                    reactions = get_message_reactions(msg_id)
-                    reaction_html = ""
-                    if reactions:
-                        reaction_counts = {}
-                        for _, _, user, reaction in reactions:
-                            if reaction in reaction_counts:
-                                reaction_counts[reaction].append(user)
-                            else:
-                                reaction_counts[reaction] = [user]
-                        
-                        reaction_html = '<div class="reactions">'
-                        for reaction, users in reaction_counts.items():
-                            reaction_html += f'<span class="reaction" title="{", ".join(users)}">{reaction} {len(users)}</span>'
-                        reaction_html += '</div>'
                     
                     st.markdown(f"""
                     <div class="chat-message {'sent' if is_sent else 'received'}">
@@ -2258,37 +1859,21 @@ else:
                             {sender[0].upper()}
                         </div>
                         <div class="message-content">
-                            {reply_context}
-                            <div>{formatted_text if formatted_text else message}</div>
-                            {file_html}
-                            {reaction_html}
-                            <div class="message-meta">
-                                {sender} • {ts}
-                                <span class="message-actions">
-                                    <button onclick="replyToMessage({msg_id})">↪️ Reply</button>
-                                    <button onclick="addReaction({msg_id})">👍 React</button>
-                                </span>
-                            </div>
+                            <div>{message}</div>
+                            <div class="message-meta">{sender} • {ts}</div>
                         </div>
                     </div>
                     """, unsafe_allow_html=True)
-                
                 st.markdown('</div>', unsafe_allow_html=True)
                 
-                # Add JavaScript for message actions
-                st.markdown("""
-                <script>
-                function replyToMessage(messageId) {
-                    window.parent.postMessage({type: 'reply', messageId: messageId}, '*');
-                }
-                
-                function addReaction(messageId) {
-                    window.parent.postMessage({type: 'react', messageId: messageId}, '*');
-                }
-                </script>
-                """, unsafe_allow_html=True)
-            else:
-                st.warning("Chat functionality is currently disabled by the administrator.")
+                with st.form("chat_form", clear_on_submit=True):
+                    message = st.text_input("Type your message...", key="chat_input")
+                    col1, col2 = st.columns([5,1])
+                    with col2:
+                        if st.form_submit_button("Send"):
+                            if message:
+                                send_group_message(st.session_state.username, message)
+                                st.rerun()
         else:
             st.error("System is currently locked. Access to chat is disabled.")
 
@@ -2808,118 +2393,6 @@ else:
             admin_break_dashboard()
         else:
             agent_break_dashboard()
-
-    elif st.session_state.current_section == "break_schedule":
-        if not is_killswitch_enabled():
-            st.title("Break Schedule Optimization")
-            
-            tabs = st.tabs(["Track Breaks", "Analysis & Recommendations", "Preferences"])
-            
-            with tabs[0]:
-                st.subheader("Log Your Breaks")
-                
-                with st.form("break_log_form"):
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        break_start = st.time_input("Break Start Time", value=datetime.now().time())
-                        break_type = st.selectbox("Break Type", ["Short Break", "Long Break", "Lunch Break"])
-                        productivity_before = st.slider("Productivity Before Break (1-10)", 1, 10, 5)
-                    
-                    with col2:
-                        break_end = st.time_input("Break End Time", 
-                                                value=(datetime.now() + timedelta(minutes=15)).time())
-                        notes = st.text_area("Notes (optional)")
-                        productivity_after = st.slider("Productivity After Break (1-10)", 1, 10, 5)
-                    
-                    if st.form_submit_button("Log Break"):
-                        start_dt = datetime.combine(datetime.now().date(), break_start)
-                        end_dt = datetime.combine(datetime.now().date(), break_end)
-                        
-                        if end_dt < start_dt:  # Handle breaks crossing midnight
-                            end_dt += timedelta(days=1)
-                        
-                        if log_break(st.session_state.username, start_dt, end_dt, break_type,
-                                   productivity_before, productivity_after, notes):
-                            st.success("Break logged successfully!")
-                            st.rerun()
-                
-                st.subheader("Recent Breaks")
-                breaks = get_break_history(st.session_state.username, days=7)
-                if breaks:
-                    break_df = pd.DataFrame(breaks, columns=[
-                        'id', 'user', 'break_start', 'break_end', 'break_type',
-                        'productivity_before', 'productivity_after', 'notes'
-                    ])
-                    st.dataframe(break_df[['break_start', 'break_end', 'break_type', 'notes']])
-                else:
-                    st.info("No breaks logged in the past week.")
-            
-            with tabs[1]:
-                st.subheader("Break Pattern Analysis")
-                
-                col1, col2 = st.columns(2)
-                with col1:
-                    analysis = analyze_break_patterns(st.session_state.username)
-                    if analysis:
-                        st.metric("Average Break Duration", f"{analysis['avg_duration']:.1f} min")
-                        st.metric("Daily Break Frequency", f"{analysis['avg_frequency']:.1f}")
-                        st.metric("Most Productive Duration", f"{analysis['most_productive_duration']:.1f} min")
-                
-                with col2:
-                    recommendations = generate_break_recommendations(st.session_state.username)
-                    st.subheader("Recommendations")
-                    st.write(f"🕒 Optimal break duration: {recommendations['optimal_duration']} minutes")
-                    st.write(f"📅 Suggested daily breaks: {recommendations['suggested_frequency']}")
-                    st.write("⭐ Best break times:", ", ".join(recommendations['best_times']))
-                    
-                    with st.expander("Tips"):
-                        for tip in recommendations['tips']:
-                            st.write(f"• {tip}")
-                
-                st.subheader("Visualizations")
-                figs = visualize_break_patterns(st.session_state.username)
-                if figs:
-                    fig1, fig2 = figs
-                    st.plotly_chart(fig1, use_container_width=True)
-                    st.plotly_chart(fig2, use_container_width=True)
-            
-            with tabs[2]:
-                st.subheader("Break Preferences")
-                
-                prefs = get_break_preferences(st.session_state.username)
-                with st.form("break_preferences_form"):
-                    preferred_duration = st.number_input(
-                        "Preferred Break Duration (minutes)",
-                        min_value=5,
-                        max_value=60,
-                        value=prefs[1] if prefs else 15
-                    )
-                    
-                    preferred_frequency = st.number_input(
-                        "Preferred Daily Break Frequency",
-                        min_value=2,
-                        max_value=12,
-                        value=prefs[2] if prefs else 6
-                    )
-                    
-                    current_slots = json.loads(prefs[3]) if prefs and prefs[3] else []
-                    preferred_slots = st.multiselect(
-                        "Preferred Break Time Slots",
-                        options=[f"{hour:02d}:00" for hour in range(8, 19)],
-                        default=current_slots
-                    )
-                    
-                    if st.form_submit_button("Save Preferences"):
-                        if update_break_preferences(
-                            st.session_state.username,
-                            preferred_duration,
-                            preferred_frequency,
-                            preferred_slots
-                        ):
-                            st.success("Preferences updated successfully!")
-                            st.rerun()
-        else:
-            st.error("System is currently locked. Access to break schedule optimization is disabled.")
 
 def get_new_messages(last_check_time):
     """Get new messages since last check"""
