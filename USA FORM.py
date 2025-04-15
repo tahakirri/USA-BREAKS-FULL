@@ -675,6 +675,50 @@ def clear_all_bookings():
     save_break_data()
     return True
 
+def adjust_template_time(time_str, hours):
+    """Adjust a single time string by adding/subtracting hours"""
+    try:
+        if not time_str.strip():
+            return ""
+        time_obj = datetime.strptime(time_str.strip(), "%H:%M")
+        adjusted_time = (time_obj + timedelta(hours=hours)).time()
+        return adjusted_time.strftime("%H:%M")
+    except:
+        return time_str
+
+def bulk_update_template_times(hours):
+    """Update all template times by adding/subtracting hours"""
+    if 'templates' not in st.session_state:
+        return False
+    
+    try:
+        for template_name in st.session_state.templates:
+            template = st.session_state.templates[template_name]
+            
+            # Update lunch breaks
+            template["lunch_breaks"] = [
+                adjust_template_time(t, hours) 
+                for t in template["lunch_breaks"]
+            ]
+            
+            # Update early tea breaks
+            template["tea_breaks"]["early"] = [
+                adjust_template_time(t, hours) 
+                for t in template["tea_breaks"]["early"]
+            ]
+            
+            # Update late tea breaks
+            template["tea_breaks"]["late"] = [
+                adjust_template_time(t, hours) 
+                for t in template["tea_breaks"]["late"]
+            ]
+        
+        save_break_data()
+        return True
+    except Exception as e:
+        st.error(f"Error updating template times: {str(e)}")
+        return False
+
 def admin_break_dashboard():
     st.title("Admin Dashboard")
     st.markdown("---")
@@ -695,6 +739,23 @@ def admin_break_dashboard():
         st.session_state.timezone_offset = new_offset
         st.success(f"Timezone set to {timezone}. All break times adjusted.")
         st.rerun()
+    
+    # Bulk Time Update
+    st.header("Bulk Time Update")
+    st.warning("⚠️ This will permanently update all time slots in all templates!")
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        if st.button("➕ Add 1 Hour to All Times"):
+            if bulk_update_template_times(1):
+                st.success("Successfully added 1 hour to all template times!")
+                st.rerun()
+    
+    with col2:
+        if st.button("➖ Subtract 1 Hour from All Times"):
+            if bulk_update_template_times(-1):
+                st.success("Successfully subtracted 1 hour from all template times!")
+                st.rerun()
     
     # Clear All Bookings button
     st.header("Clear All Bookings")
