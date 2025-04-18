@@ -1388,22 +1388,22 @@ def agent_break_dashboard():
 # Fancy Number Functions
 # --------------------------
 
-def is_sequential(digits, step=1):
+    def is_sequential(digits, step=1):
     """Check if digits form a sequential pattern with given step"""
-    try:
-        return all(int(digits[i]) == int(digits[i-1]) + step for i in range(1, len(digits)))
-    except:
-        return False
+        try:
+            return all(int(digits[i]) == int(digits[i-1]) + step for i in range(1, len(digits)))
+        except:
+            return False
 
-def is_fancy_number(phone_number):
+    def is_fancy_number(phone_number):
     clean_number = re.sub(r'\D', '', phone_number)
     
     # Get last 6 digits according to Lycamobile policy
-    if len(clean_number) >= 6:
+        if len(clean_number) >= 6:
         last_six = clean_number[-6:]
         last_three = clean_number[-3:]
-    else:
-        return False, "Number too short (need at least 6 digits)"
+        else:
+            return False, "Number too short (need at least 6 digits)"
     
     patterns = []
     
