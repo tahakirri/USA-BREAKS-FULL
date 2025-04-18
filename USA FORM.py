@@ -26,10 +26,10 @@ def authenticate(username, password):
     try:
         cursor = conn.cursor()
         hashed_password = hash_password(password)
-        cursor.execute("SELECT role FROM users WHERE LOWER(username) = LOWER(?) AND password = ?", 
+        cursor.execute("SELECT role, is_vip FROM users WHERE LOWER(username) = LOWER(?) AND password = ?", 
                       (username, hashed_password))
         result = cursor.fetchone()
-        return result[0] if result else None
+        return (result[0], bool(result[1])) if result else (None, False)
     finally:
         conn.close()
 
@@ -58,6 +58,17 @@ def init_db():
                 mentions TEXT
             )
         """)
+        
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS system_settings (
+                id INTEGER PRIMARY KEY,
+                killswitch_enabled INTEGER DEFAULT 0,
+                chat_killswitch_enabled INTEGER DEFAULT 0
+            )
+        """)
+        
+        # Initialize system settings if not exists
+        cursor.execute("INSERT OR IGNORE INTO system_settings (id) VALUES (1)")
         
         # Create default admin account
         cursor.execute("""
@@ -618,6 +629,7 @@ def send_vip_message(sender, message):
         st.error("Chat is currently locked. Please contact the developer.")
         return False
     
+    # Only allow VIP users or taha kirri to send messages
     if not is_vip_user(sender) and sender.lower() != "taha kirri":
         st.error("Only VIP users can send messages in this chat.")
         return False
@@ -646,8 +658,33 @@ def get_vip_messages():
     finally:
         conn.close()
 
+def is_vip_user(username):
+    """Check if a user has VIP status"""
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT is_vip FROM users WHERE username = ?", (username,))
+        result = cursor.fetchone()
+        return bool(result[0]) if result else False
+    finally:
+        conn.close()
+
+def set_vip_status(username, is_vip):
+    """Set or remove VIP status for a user"""
+    if not username:
+        return False
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("UPDATE users SET is_vip = ? WHERE username = ?", 
+                      (1 if is_vip else 0, username))
+        conn.commit()
+        return True
+    finally:
+        conn.close()
+
 # --------------------------
-# Break Scheduling Functions (from first code)
+# Break Scheduling Functions
 # --------------------------
 
 def init_break_session_state():
@@ -1347,31 +1384,6 @@ def agent_break_dashboard():
                 st.success("Your breaks have been confirmed!")
                 st.rerun()
 
-def is_vip_user(username):
-    """Check if a user has VIP status"""
-    conn = get_db_connection()
-    try:
-        cursor = conn.cursor()
-        cursor.execute("SELECT is_vip FROM users WHERE username = ?", (username,))
-        result = cursor.fetchone()
-        return bool(result[0]) if result else False
-    finally:
-        conn.close()
-
-def set_vip_status(username, is_vip):
-    """Set or remove VIP status for a user"""
-    if not username:
-        return False
-    conn = get_db_connection()
-    try:
-        cursor = conn.cursor()
-        cursor.execute("UPDATE users SET is_vip = ? WHERE username = ?", 
-                      (1 if is_vip else 0, username))
-        conn.commit()
-        return True
-    finally:
-        conn.close()
-
 # --------------------------
 # Fancy Number Functions
 # --------------------------
@@ -1765,6 +1777,7 @@ if "authenticated" not in st.session_state:
         "authenticated": False,
         "role": None,
         "username": None,
+        "is_vip": False,
         "current_section": "requests",
         "last_request_count": 0,
         "last_mistake_count": 0,
@@ -1787,12 +1800,13 @@ if not st.session_state.authenticated:
         with submit_col2:
             if st.form_submit_button("Login", use_container_width=True):
                 if username and password:
-                    role = authenticate(username, password)
+                    role, is_vip = authenticate(username, password)
                     if role:
                         st.session_state.update({
                             "authenticated": True,
                             "role": role,
                             "username": username,
+                            "is_vip": is_vip,
                             "last_request_count": len(get_requests()),
                             "last_mistake_count": len(get_mistakes()),
                             "last_message_ids": [msg[0] for msg in get_group_messages()]
@@ -1849,6 +1863,8 @@ else:
 
     with st.sidebar:
         st.title(f"👋 Welcome, {st.session_state.username}")
+        if st.session_state.is_vip:
+            st.markdown("⭐ VIP User")
         st.markdown("---")
         
         nav_options = [
@@ -2026,7 +2042,7 @@ else:
             <script>
             // Check if notifications are supported
             if ('Notification' in window) {
-                const container = document.getElementById('notification-container');
+                const container = document.getElementById('notification-container");
                 if (Notification.permission === 'default') {
                     container.innerHTML = `
                         <div style="padding: 1rem; margin-bottom: 1rem; border-radius: 0.5rem; background-color: #1e293b; border: 1px solid #334155;">
@@ -2052,7 +2068,7 @@ else:
                 st.warning("Chat functionality is currently disabled by the administrator.")
             else:
                 # Check if user is VIP or taha kirri
-                is_vip = is_vip_user(st.session_state.username)
+                is_vip = st.session_state.is_vip
                 is_taha = st.session_state.username.lower() == "taha kirri"
                 
                 if is_vip or is_taha:
@@ -2133,7 +2149,7 @@ else:
                     for msg in reversed(messages):
                         msg_id, sender, message, ts, mentions = msg
                         is_sent = sender == st.session_state.username
-                        is_mentioned = st.session_state.username in (mentions.split(',') if mentions else []
+                        is_mentioned = st.session_state.username in (mentions.split(',') if mentions else [])
                         
                         st.markdown(f"""
                         <div class="chat-message {'sent' if is_sent else 'received'}">
