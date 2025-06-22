@@ -930,7 +930,7 @@ else:
     if is_killswitch_enabled():
         st.markdown("""
         <div class="killswitch-active">
-            <h3>⚠️ SYSTEM LOCKED ⚠️</h3>
+            <h3>⚠️ Not Approved by Management ⚠️</h3>
             <p>Access is restricted pending management approval.</p>
         </div>
         """, unsafe_allow_html=True)
