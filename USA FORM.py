@@ -930,8 +930,8 @@ else:
     if is_killswitch_enabled():
         st.markdown("""
         <div class="killswitch-active">
-            <h3>⚠️ SISTIM TAY7 ⚠️</h3>
-            <p>tal gheda o rja3 </p>
+            <h3>⚠️ Not Approved by Management⚠️</h3>
+            <p>Access is restricted pending management approval. </p>
         </div>
         """, unsafe_allow_html=True)
     elif is_chat_killswitch_enabled():
