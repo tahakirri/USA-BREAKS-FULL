@@ -931,7 +931,7 @@ else:
         st.markdown("""
         <div class="killswitch-active">
             <h3>⚠️ SYSTEM LOCKED ⚠️</h3>
-            <p>The system is currently in read-only mode.</p>
+            <p>Access is restricted pending management approval.</p>
         </div>
         """, unsafe_allow_html=True)
     elif is_chat_killswitch_enabled():
