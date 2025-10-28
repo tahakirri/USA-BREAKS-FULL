@@ -2948,6 +2948,7 @@ else:
             nav_options.extend([
                 ("📋 Requests", "requests"),
                 ("☕ Breaks", "breaks"),
+                ("💬 Chat", "chat"),
                 ("📊 Live KPIs ", "Live KPIs"),
                 ("❌ Mistakes", "mistakes"),
                 ("⏰ Late Login", "late_login"),
@@ -3111,6 +3112,65 @@ else:
             st.rerun()
 
     st.title(st.session_state.current_section.title())
+
+    if st.session_state.current_section == "chat":
+        if not is_chat_killswitch_enabled():
+            st.subheader("Group Chat")
+            # Determine group
+            if st.session_state.role == "admin":
+                all_groups = list(set([u[3] for u in get_all_users() if u[3]]))
+                default_idx = 0 if all_groups else None
+                selected = st.selectbox("Select Group", all_groups, index=default_idx, key="admin_chat_group") if all_groups else None
+                group_name = selected
+            else:
+                if not hasattr(st.session_state, 'group_name') or not st.session_state.group_name:
+                    for u in get_all_users():
+                        if u[1] == st.session_state.username:
+                            st.session_state.group_name = u[3]
+                            break
+                group_name = st.session_state.get('group_name')
+
+            if not group_name:
+                st.info("No group selected or assigned.")
+            else:
+                # Send message
+                with st.form("send_group_message_form"):
+                    msg_text = st.text_input("Message", placeholder="Type @name to mention")
+                    if st.form_submit_button("Send"):
+                        if msg_text.strip():
+                            if send_group_message(st.session_state.username, msg_text.strip(), group_name):
+                                st.success("Message sent")
+                                st.rerun()
+                # List messages
+                messages = get_group_messages(group_name)
+                if not messages:
+                    st.info("No messages yet.")
+                else:
+                    for m in messages:
+                        sender = m.get('sender') if isinstance(m, dict) else m[1]
+                        text = m.get('message') if isinstance(m, dict) else m[2]
+                        ts = m.get('timestamp') if isinstance(m, dict) else m[3]
+                        mid = m.get('id') if isinstance(m, dict) else m[0]
+                        reactions = m.get('reactions', {}) if isinstance(m, dict) else {}
+                        st.markdown(f"**{sender}** · {ts}")
+                        st.write(text)
+                        # Reactions (simple)
+                        cols = st.columns(3)
+                        if cols[0].button("👍", key=f"react_like_{mid}"):
+                            add_reaction_to_message(mid, "👍", st.session_state.username)
+                            st.rerun()
+                        if cols[1].button("❤️", key=f"react_love_{mid}"):
+                            add_reaction_to_message(mid, "❤️", st.session_state.username)
+                            st.rerun()
+                        if cols[2].button("🎉", key=f"react_party_{mid}"):
+                            add_reaction_to_message(mid, "🎉", st.session_state.username)
+                            st.rerun()
+                        # Show counts
+                        if reactions:
+                            summary = ", ".join([f"{emo} {len(users)}" for emo, users in reactions.items()])
+                            st.caption(summary)
+        else:
+            st.error("System is currently locked. Access to chat is disabled.")
 
     if st.session_state.current_section == "requests":
         if not is_killswitch_enabled():
