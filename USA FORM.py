@@ -9,11 +9,6 @@ import io
 import pandas as pd
 import json
 import pytz
-try:
-    import bcrypt  # type: ignore
-    _HAS_BCRYPT = True
-except Exception:
-    _HAS_BCRYPT = False
 
 # Ensure 'data' directory exists before any DB connection
 os.makedirs("data", exist_ok=True)
@@ -154,51 +149,22 @@ def get_date_range_casablanca(date):
 # --------------------------
 
 def get_db_connection():
-    """Create and return a database connection with safe pragmas enabled."""
+    """Create and return a database connection."""
     os.makedirs("data", exist_ok=True)
-    conn = sqlite3.connect("data/requests.db", check_same_thread=False)
-    try:
-        cursor = conn.cursor()
-        cursor.execute("PRAGMA journal_mode=WAL")
-        cursor.execute("PRAGMA foreign_keys=ON")
-    except Exception:
-        pass
-    return conn
+    return sqlite3.connect("data/requests.db")
 
 def hash_password(password):
-    if _HAS_BCRYPT:
-        return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
     return hashlib.sha256(password.encode()).hexdigest()
 
 def authenticate(username, password):
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
-        cursor.execute("SELECT password, role FROM users WHERE LOWER(username) = LOWER(?)", (username,))
-        row = cursor.fetchone()
-        if not row:
-            return None
-        stored_hash, role = row
-        # Bcrypt stored
-        if _HAS_BCRYPT and isinstance(stored_hash, str) and stored_hash.startswith("$2"):
-            try:
-                if bcrypt.checkpw(password.encode(), stored_hash.encode()):
-                    return role
-                return None
-            except Exception:
-                return None
-        # Legacy sha256
-        legacy = hashlib.sha256(password.encode()).hexdigest()
-        if stored_hash == legacy:
-            if _HAS_BCRYPT:
-                try:
-                    new_hash = hash_password(password)
-                    cursor.execute("UPDATE users SET password = ? WHERE LOWER(username) = LOWER(?)", (new_hash, username))
-                    conn.commit()
-                except Exception:
-                    pass
-            return role
-        return None
+        hashed_password = hash_password(password)
+        cursor.execute("SELECT role FROM users WHERE LOWER(username) = LOWER(?) AND password = ?", 
+                      (username, hashed_password))
+        result = cursor.fetchone()
+        return result[0] if result else None
     finally:
         conn.close()
 
@@ -223,6 +189,15 @@ def init_db():
         except Exception:
             pass
         
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS vip_messages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                sender TEXT,
+                message TEXT,
+                timestamp TEXT,
+                mentions TEXT
+            )
+        """)
         
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS requests (
@@ -348,38 +323,6 @@ def init_db():
             )
         """)
         
-        # --- Breaks minimal DB mirror and indexes ---
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS break_templates (
-                name TEXT PRIMARY KEY,
-                data TEXT
-            )
-        """)
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS break_limits (
-                template TEXT,
-                break_type TEXT,
-                time_slot TEXT,
-                max_count INTEGER,
-                PRIMARY KEY(template, break_type, time_slot)
-            )
-        """)
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS break_bookings (
-                date TEXT,
-                agent TEXT,
-                data TEXT,
-                PRIMARY KEY(date, agent)
-            )
-        """)
-
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_requests_completed_group_ts ON requests (completed, group_name, timestamp)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_group_messages_group_ts ON group_messages (group_name, timestamp)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_late_logins_ts ON late_logins (timestamp)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_quality_issues_ts ON quality_issues (timestamp)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_midshift_issues_ts ON midshift_issues (timestamp)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_dropdown_section_order ON dropdown_options (section, display_order)")
-
         # Create default admin account
         cursor.execute("""
             INSERT OR IGNORE INTO users (username, password, role) 
@@ -1078,9 +1021,37 @@ def get_all_dropdown_options_with_ids(section):
         conn.close()
 
 def send_vip_message(sender, message):
-    return False
+    """Send a message in the VIP-only chat"""
+    if is_killswitch_enabled() or is_chat_killswitch_enabled():
+        st.error("Chat is currently locked. Please contact the developer.")
+        return False
+    
+    if not is_vip_user(sender) and sender.lower() != "taha kirri":
+        st.error("Only VIP users can send messages in this chat.")
+        return False
+        
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        mentions = re.findall(r'@(\w+)', message)
+        cursor.execute("""
+            INSERT INTO vip_messages (sender, message, timestamp, mentions) 
+            VALUES (?, ?, ?, ?)
+        """, (sender, message, get_casablanca_time(), ','.join(mentions)))
+        conn.commit()
+        return True
+    finally:
+        conn.close()
+
 def get_vip_messages():
-    return []
+    """Get messages from the VIP-only chat"""
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM vip_messages ORDER BY timestamp DESC LIMIT 50")
+        return cursor.fetchall()
+    finally:
+        conn.close()
 
 # --------------------------
 # Break Scheduling Functions (from first code)
@@ -1169,32 +1140,6 @@ def save_break_data():
         json.dump(st.session_state.agent_bookings, f)
     with open('active_templates.json', 'w') as f:
         json.dump(st.session_state.active_templates, f)
-    # Mirror to DB (best-effort, non-fatal)
-    try:
-        conn = get_db_connection()
-        cur = conn.cursor()
-        # Templates
-        for name, data in st.session_state.templates.items():
-            cur.execute("INSERT OR REPLACE INTO break_templates (name, data) VALUES (?, ?)", (name, json.dumps(data)))
-        # Limits
-        for tpl, by_type in st.session_state.break_limits.items():
-            for btype, limits in by_type.items():
-                for slot, maxc in limits.items():
-                    cur.execute(
-                        "INSERT OR REPLACE INTO break_limits (template, break_type, time_slot, max_count) VALUES (?, ?, ?, ?)",
-                        (tpl, btype, slot, int(maxc))
-                    )
-        # Bookings (only for current date for size)
-        for date, agents in st.session_state.agent_bookings.items():
-            for agent, data in agents.items():
-                cur.execute(
-                    "INSERT OR REPLACE INTO break_bookings (date, agent, data) VALUES (?, ?, ?)",
-                    (date, agent, json.dumps(data))
-                )
-        conn.commit()
-        conn.close()
-    except Exception:
-        pass
 
 def adjust_time(time_str, offset):
     try:
@@ -1715,8 +1660,7 @@ def agent_break_dashboard():
         selected_template = st.selectbox(
             "Choose your break schedule template:",
             available_templates,
-            index=None,
-            placeholder="Select a template..."
+            key="template_select"
         )
         
         if st.button("Select Template"):
@@ -2100,7 +2044,15 @@ def agent_break_dashboard():
                     st.error("Failed to save break bookings. Please try again.")
 
 def is_vip_user(username):
-    return False
+    """Check if a user has VIP status"""
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT is_vip FROM users WHERE username = ?", (username,))
+        result = cursor.fetchone()
+        return bool(result[0]) if result else False
+    finally:
+        conn.close()
 
 def is_sequential(digits, step=1):
     """Check if digits form a sequential pattern with given step"""
@@ -2264,7 +2216,18 @@ def lycamobile_fancy_number_checker():
             st.error(f"The phone number {phone_number} does not have a fancy pattern: {pattern}")
 
 def set_vip_status(username, is_vip):
-    return False
+    """Set or remove VIP status for a user"""
+    if not username:
+        return False
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("UPDATE users SET is_vip = ? WHERE username = ?", 
+                      (1 if is_vip else 0, username))
+        conn.commit()
+        return True
+    finally:
+        conn.close()
 
 # --------------------------
 # Streamlit App
@@ -2303,8 +2266,7 @@ def inject_custom_css():
     // Function to check for new messages
     async function checkNewMessages() {
         try {
-            const url = window.location.pathname + '?check_messages=1';
-            const response = await fetch(url, { headers: { 'Cache-Control': 'no-cache' } });
+            const response = await fetch('/check_messages');
             const data = await response.json();
             
             if (data.new_messages) {
@@ -2833,7 +2795,7 @@ if not st.session_state.authenticated:
                             "username": username,
                             "last_request_count": len(get_requests()),
                             "last_mistake_count": len(get_mistakes()),
-                            "last_message_ids": [m["id"] if isinstance(m, dict) else m[0] for m in get_group_messages()]
+                            "last_message_ids": [msg[0] for msg in get_group_messages()]
                         })
                         st.rerun()
                     else:
@@ -2872,33 +2834,16 @@ else:
             st.toast(f"❌ {new_mistakes} new mistake(s) reported!")
         st.session_state.last_mistake_count = len(current_mistakes)
         
-        # Standardize messages as dicts
-        def to_dict(row):
-            if isinstance(row, dict):
-                return row
-            try:
-                return {
-                    "id": row[0],
-                    "sender": row[1],
-                    "message": row[2],
-                    "timestamp": row[3],
-                    "mentions": row[4] if len(row) > 4 else "",
-                    "group_name": row[5] if len(row) > 5 else None,
-                }
-            except Exception:
-                return {"id": None, "sender": None, "message": None, "timestamp": None, "mentions": "", "group_name": None}
-
-        current_messages = [to_dict(m) for m in current_messages]
-        current_message_ids = [m.get("id") for m in current_messages]
-        new_messages = [m for m in current_messages if m.get("id") not in st.session_state.last_message_ids]
+        current_message_ids = [msg[0] for msg in current_messages]
+        new_messages = [msg for msg in current_messages if msg[0] not in st.session_state.last_message_ids]
         for msg in new_messages:
-            if msg.get("sender") != st.session_state.username:
-                mentions = (msg.get("mentions") or "").split(',') if msg.get("mentions") else []
+            if msg[1] != st.session_state.username:
+                mentions = msg[4].split(',') if msg[4] else []
                 if st.session_state.username in mentions:
-                    st.toast(f"💬 You were mentioned by {msg.get('sender')}!")
+                    st.toast(f"💬 You were mentioned by {msg[1]}!")
                 else:
-                    st.toast(f"💬 New message from {msg.get('sender')}!")
-        st.session_state.last_message_ids = [mid for mid in current_message_ids if mid is not None]
+                    st.toast(f"💬 New message from {msg[1]}!")
+        st.session_state.last_message_ids = current_message_ids
 
     show_notifications()
 
@@ -2945,6 +2890,7 @@ else:
                 ("☕ Breaks", "breaks"),
                 ("📊 Live KPIs ", "Live KPIs"),
                 ("❌ Mistakes", "mistakes"),
+                ("💬 Chat", "chat"),
                 ("⏰ Late Login", "late_login"),
                 ("📞 Quality Issues", "quality_issues"),
                 ("🔄 Mid-shift Issues", "midshift_issues"),
@@ -2965,11 +2911,9 @@ else:
         if st.session_state.role in ["admin", "agent"]:
             pending_requests = len([r for r in get_requests() if not r[6]])
             new_mistakes = len(get_mistakes())
-            gm = get_group_messages()
-            gm = [m if isinstance(m, dict) else {"id": m[0], "sender": m[1]} for m in gm]
-            unread_messages = len([m for m in gm 
-                                 if m.get("id") not in st.session_state.last_message_ids 
-                                 and m.get("sender") != st.session_state.username])
+            unread_messages = len([m for m in get_group_messages() 
+                                 if m[0] not in st.session_state.last_message_ids 
+                                 and m[1] != st.session_state.username])
             
             st.markdown(f"""
             <div style="
@@ -3041,7 +2985,7 @@ else:
                                         notify();
                                         localStorage.setItem(storageKey,'1');
                                     }} else if (Notification.permission !== 'denied') {{
-                                        Notification.requestPermission().then(perm => {{ if (perm==='granted') {{ notify(); localStorage.setItem(storageKey,'1'); }} }});
+                                        Notification.requestPermission().then(p => {{ if (p==='granted') {{ notify(); localStorage.setItem(storageKey,'1'); }} }});
                                     }}
                                 }}
                             }});
@@ -3257,7 +3201,142 @@ else:
         else:
             st.error("System is currently locked. Access to mistakes is disabled.")
 
-        
+    elif st.session_state.current_section == "chat":
+        if not is_killswitch_enabled():
+            # Add notification permission request
+            st.markdown("""
+            <div id="notification-container"></div>
+            <script>
+            // Check if notifications are supported
+            if ('Notification' in window) {
+                const container = document.getElementById('notification-container');
+                if (Notification.permission === 'default') {
+                    container.innerHTML = `
+                        <div style=\"padding: 1rem; margin-bottom: 1rem; border-radius: 0.5rem; background-color: #1e293b; border: 1px solid #334155;\">
+                            <p style=\"margin: 0; color: #e2e8f0;\">Would you like to receive notifications for new messages?</p>
+                            <button onclick=\"requestNotificationPermission()\" style=\"margin-top: 0.5rem; padding: 0.5rem 1rem; background-color: #2563eb; color: white; border: none; border-radius: 0.25rem; cursor: pointer;\">
+                                Enable Notifications
+                            </button>
+                        </div>
+                    `;
+                }
+            }
+
+            async function requestNotificationPermission() {
+                const permission = await Notification.requestPermission();
+                if (permission === 'granted') {
+                    document.getElementById('notification-container').style.display = 'none';
+                }
+            }
+            </script>
+            """, unsafe_allow_html=True)
+            
+            if is_chat_killswitch_enabled():
+                st.warning("Chat functionality is currently disabled by the administrator.")
+            else:
+                # Group chat group selection
+                group_filter = None
+                if st.session_state.role == "admin":
+                    all_groups = list(set([u[3] for u in get_all_users() if u[3]]))
+                    group_filter = st.selectbox("Select Group to View Chat", all_groups, key="admin_chat_group")
+                else:
+                    # Always look up the user's group from the users table each time
+                    user_group = None
+                    for u in get_all_users():
+                        if u[1] == st.session_state.username:
+                            user_group = u[3]
+                            break
+                    st.session_state.group_name = user_group
+                    group_filter = user_group
+
+                st.subheader("Group Chat")
+                # Enforce group message visibility: agents only see their group, admin sees selected group
+                if st.session_state.role == "admin":
+                    # Only show messages for selected group; if not selected, show none
+                    view_group = group_filter if group_filter else None
+                else:
+                    # Agents always see only their group (look up each time)
+                    user_group = None
+                    for u in get_all_users():
+                        if u[1] == st.session_state.username:
+                            user_group = u[3]
+                            break
+                    view_group = user_group
+                # Harden: never allow None or empty group to fetch all messages
+                if view_group is not None and str(view_group).strip() != "":
+                    messages = get_group_messages(view_group)
+                else:
+                    messages = []  # No group selected or group is blank, show no messages
+                    if st.session_state.role == "agent":
+                        st.warning("You are not assigned to a group. Please contact an admin.")
+                st.markdown('''<style>
+                .chat-container {background: #f1f5f9; border-radius: 8px; padding: 1rem; max-height: 400px; overflow-y: auto; margin-bottom: 1rem;}
+                .chat-message {display: flex; align-items: flex-start; margin-bottom: 12px;}
+                .chat-message.sent {flex-direction: row-reverse;}
+                .chat-message .message-avatar {width: 36px; height: 36px; background: #3b82f6; color: #fff; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 1.1rem; margin: 0 10px;}
+                .chat-message .message-content {background: #fff; border-radius: 6px; padding: 8px 14px; min-width: 80px; box-shadow: 0 1px 3px rgba(0,0,0,0.04);}
+                .chat-message.sent .message-content {background: #dbeafe;}
+                .chat-message .message-meta {font-size: 0.8rem; color: #64748b; margin-top: 2px;}
+                </style>''', unsafe_allow_html=True)
+                st.markdown('<div class="chat-container">', unsafe_allow_html=True)
+                # Chat message rendering
+                for msg in reversed(messages):
+                    # Unpack all 7 fields (id, sender, message, ts, mentions, group_name, reactions)
+                    if isinstance(msg, dict):
+                        msg_id = msg.get('id')
+                        sender = msg.get('sender')
+                        message = msg.get('message')
+                        ts = msg.get('timestamp')
+                        mentions = msg.get('mentions')
+                        group_name = msg.get('group_name')
+                        reactions = msg.get('reactions', {})
+                    else:
+                        # fallback for tuple
+                        if len(msg) == 7:
+                            msg_id, sender, message, ts, mentions, group_name, reactions = msg
+                            try:
+                                reactions = json.loads(reactions) if reactions else {}
+                            except Exception:
+                                reactions = {}
+                        else:
+                            msg_id, sender, message, ts, mentions, group_name = msg
+                            reactions = {}
+                    is_sent = sender == st.session_state.username
+                    st.markdown(f"""
+                    <div class="chat-message {'sent' if is_sent else 'received'}">
+                        <div class="message-avatar">{sender[0].upper()}</div>
+                        <div class="message-content">
+                            <div>{message}</div>
+                            <div class="message-meta">{sender} • {ts}</div>
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                st.markdown('</div>', unsafe_allow_html=True)
+
+                # Chat input form (no emoji picker)
+                with st.form("chat_form", clear_on_submit=True):
+                    message = st.text_input("Type your message...", key="chat_input")
+                    col1, col2 = st.columns([5,1])
+                    with col2:
+                        if st.form_submit_button("Send"):
+                            if message:
+                                # Admin: send to selected group; Agent: always look up group from users table
+                                if st.session_state.role == "admin":
+                                    send_to_group = group_filter
+                                else:
+                                    # Always look up the user's group from the users table
+                                    send_to_group = None
+                                    for u in get_all_users():
+                                        if u[1] == st.session_state.username:
+                                            send_to_group = u[3]
+                                            break
+                                if send_to_group:
+                                    send_group_message(st.session_state.username, message, send_to_group)
+                                else:
+                                    st.warning("No group selected for chat.")
+                                st.rerun()
+        else:
+            st.error("System is currently locked. Access to chat is disabled.")
 
     elif st.session_state.current_section == "Live KPIs":
         if not is_killswitch_enabled():
@@ -4424,22 +4503,20 @@ def handle_message_check():
     return {"new_messages": False, "messages": []}
 
 def convert_to_casablanca_date(date_str):
-    """Convert a naive YYYY-MM-DD HH:MM:SS string to Casablanca date."""
+    """Convert a date string to Casablanca timezone"""
     try:
         dt = datetime.strptime(date_str, "%Y-%m-%d %H:%M:%S")
         morocco_tz = pytz.timezone('Africa/Casablanca')
-        return dt.date()
-    except Exception:
+        return pytz.UTC.localize(dt).astimezone(morocco_tz).date()
+    except:
         return None
 
 def get_date_range_casablanca(date):
-    """Get start and end datetimes for a date in Casablanca time (naive)."""
-    try:
-        start = datetime.combine(date, time.min)
-        end = datetime.combine(date, time.max)
-        return start, end
-    except Exception:
-        return None, None
+    """Get start and end of day in Casablanca time"""
+    morocco_tz = pytz.timezone('Africa/Casablanca')
+    start = morocco_tz.localize(datetime.combine(date, time.min))
+    end = morocco_tz.localize(datetime.combine(date, time.max))
+    return start, end
 
 if __name__ == "__main__":
     # Initialize color mode if not set
