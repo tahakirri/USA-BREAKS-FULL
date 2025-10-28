@@ -3203,6 +3203,12 @@ else:
 
     elif st.session_state.current_section == "chat":
         if not is_killswitch_enabled():
+            # Auto-refresh chat section periodically to fetch new messages without manual reload
+            try:
+                from streamlit_autorefresh import st_autorefresh  # type: ignore
+                st_autorefresh(interval=3000, key="chat_autorefresh")
+            except ImportError:
+                pass
             # Add notification permission request
             st.markdown("""
             <div id="notification-container"></div>
