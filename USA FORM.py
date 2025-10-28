@@ -3244,7 +3244,14 @@ else:
                 group_filter = None
                 if st.session_state.role == "admin":
                     all_groups = list(set([u[3] for u in get_all_users() if u[3]]))
-                    group_filter = st.selectbox("Select Group to View Chat", all_groups, key="admin_chat_group")
+                    if all_groups:
+                        # Preselect the first available group to avoid None state
+                        default_index = 0
+                        group_filter = st.selectbox("Select Group to View Chat", all_groups, index=default_index, key="admin_chat_group")
+                    else:
+                        st.info("No groups available. Create or assign a group to start chatting.")
+                        all_groups = []
+                        group_filter = None
                 else:
                     # Always look up the user's group from the users table each time
                     user_group = None
@@ -3336,11 +3343,11 @@ else:
                                         if u[1] == st.session_state.username:
                                             send_to_group = u[3]
                                             break
-                                if send_to_group:
-                                    send_group_message(st.session_state.username, message, send_to_group)
+                                if send_to_group and str(send_to_group).strip() != "":
+                                    if send_group_message(st.session_state.username, message, send_to_group):
+                                        st.rerun()
                                 else:
                                     st.warning("No group selected for chat.")
-                                st.rerun()
         else:
             st.error("System is currently locked. Access to chat is disabled.")
 
