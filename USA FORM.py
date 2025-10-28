@@ -2994,6 +2994,64 @@ else:
                         """
                         components.html(js_break, height=0)
 
+                        # Live countdown to next break (client-side updates every second)
+                        next_break_timer = f"""
+                        <div id=\"next-break-container\" style=\"background: {'#1e293b' if st.session_state.color_mode == 'dark' else '#ffffff'}; border: 1px solid {'#334155' if st.session_state.color_mode == 'dark' else '#e2e8f0'}; padding: 0.75rem; border-radius: 0.5rem; margin-top: 0.75rem;\">
+                            <div style=\"color: {'#e2e8f0' if st.session_state.color_mode == 'dark' else '#1e293b'}; font-weight: 600; margin-bottom: 0.25rem;\">Next Break</div>
+                            <div id=\"next-break-label\" style=\"color: {'#94a3b8' if st.session_state.color_mode == 'dark' else '#475569'};\">Calculating…</div>
+                            <div id=\"next-break-countdown\" style=\"font-size: 1.1rem; font-weight: 700; color: {'#e2e8f0' if st.session_state.color_mode == 'dark' else '#1f2937'};\">--:--:--</div>
+                        </div>
+                        <script>
+                        (function() {{
+                            const breakTimes = {json.dumps(break_times)}; // ["HH:MM", ...]
+                            const serverTimeISO = '{now_casa.isoformat()}';
+                            const labelEl = document.getElementById('next-break-label');
+                            const countdownEl = document.getElementById('next-break-countdown');
+
+                            function parseHM(hm) {{
+                                const [h, m] = hm.split(':').map(Number);
+                                const base = new Date(serverTimeISO);
+                                return new Date(base.getFullYear(), base.getMonth(), base.getDate(), h, m, 0, 0);
+                            }}
+
+                            function getNextBreak(now) {{
+                                const candidates = breakTimes.map(parseHM).filter(d => d.getTime() >= now.getTime());
+                                if (candidates.length === 0) return null;
+                                candidates.sort((a,b) => a - b);
+                                return candidates[0];
+                            }
+
+                            let now = new Date(serverTimeISO);
+                            let nextBreak = getNextBreak(now);
+
+                            function fmt2(n) {{ return String(n).padStart(2, '0'); }}
+                            function render() {{
+                                now = new Date(now.getTime() + 1000); // tick locally
+                                if (!nextBreak || now > nextBreak) {{
+                                    nextBreak = getNextBreak(now);
+                                }
+                                if (!nextBreak) {{
+                                    labelEl.textContent = 'No more breaks today';
+                                    countdownEl.textContent = '--:--:--';
+                                    return;
+                                }}
+                                const hh = fmt2(nextBreak.getHours());
+                                const mm = fmt2(nextBreak.getMinutes());
+                                labelEl.textContent = `Starts at ${hh}:${mm}`;
+                                const diffMs = Math.max(0, nextBreak - now);
+                                const s = Math.floor(diffMs / 1000);
+                                const h = Math.floor(s / 3600);
+                                const m = Math.floor((s % 3600) / 60);
+                                const sec = s % 60;
+                                countdownEl.textContent = `${fmt2(h)}:${fmt2(m)}:${fmt2(sec)}`;
+                            }
+                            render();
+                            setInterval(render, 1000);
+                        }})();
+                        </script>
+                        """
+                        components.html(next_break_timer, height=110)
+
             # --- Auto-update & browser notification for admin when new request is added ---
             if st.session_state.role == "admin":
                 # Server-side rerun every 15 s keeps data fresh without a full tab reload
