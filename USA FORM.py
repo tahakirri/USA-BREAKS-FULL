@@ -3257,8 +3257,7 @@ else:
         else:
             st.error("System is currently locked. Access to mistakes is disabled.")
 
-        else:
-            st.error("System is currently locked. Access to chat is disabled.")
+        
 
     elif st.session_state.current_section == "Live KPIs":
         if not is_killswitch_enabled():
