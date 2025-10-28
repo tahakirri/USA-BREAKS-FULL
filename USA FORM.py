@@ -2860,7 +2860,12 @@ else:
     def show_notifications():
         current_requests = get_requests()
         current_mistakes = get_mistakes()
-        current_messages = get_group_messages()
+        # Determine chat group for notifications
+        if st.session_state.role == "admin":
+            _chat_group = st.session_state.get("admin_chat_group")
+        else:
+            _chat_group = getattr(st.session_state, "group_name", None)
+        current_messages = get_group_messages(_chat_group)
         
         new_requests = len(current_requests) - st.session_state.last_request_count
         if new_requests > 0 and st.session_state.last_request_count > 0:
@@ -2965,7 +2970,11 @@ else:
         if st.session_state.role in ["admin", "agent"]:
             pending_requests = len([r for r in get_requests() if not r[6]])
             new_mistakes = len(get_mistakes())
-            gm = get_group_messages()
+            if st.session_state.role == "admin":
+                _chat_group = st.session_state.get("admin_chat_group")
+            else:
+                _chat_group = getattr(st.session_state, "group_name", None)
+            gm = get_group_messages(_chat_group)
             gm = [m if isinstance(m, dict) else {"id": m[0], "sender": m[1]} for m in gm]
             unread_messages = len([m for m in gm 
                                  if m.get("id") not in st.session_state.last_message_ids 
