@@ -2968,27 +2968,51 @@ else:
                         import streamlit.components.v1 as components
                         js_break = f"""
                         <script>
-                        const breakTimes = {json.dumps(break_times)};
-                        const serverTimeISO = '{now_casa.isoformat()}';
-                        const keyPrefix = 'notified_break_sidebar_';
                         (function() {{
-                            const now = new Date(serverTimeISO);
-                            const today = now.toISOString().split('T')[0];
-                            breakTimes.forEach(bt => {{
-                                const [h,m] = bt.split(':');
-                                const bTime = new Date(now.getFullYear(), now.getMonth(), now.getDate(), h, m, 0);
-                                const diffMin = Math.floor((bTime - now) / 60000);
-                                const storageKey = keyPrefix + today + '_' + bt;
-                                if (diffMin >= 4 && diffMin < 5 && !localStorage.getItem(storageKey)) {{
-                                    const notify = () => new Notification('Break Reminder', {{ body: `Your break starts in 5 minutes at ${{bt}}.` }});
-                                    if (Notification.permission === 'granted') {{
-                                        notify();
-                                        localStorage.setItem(storageKey,'1');
-                                    }} else if (Notification.permission !== 'denied') {{
-                                        Notification.requestPermission().then(p => {{ if (p==='granted') {{ notify(); localStorage.setItem(storageKey,'1'); }} }});
-                                    }}
+                            const breakTimes = {json.dumps(break_times)};
+                            const serverTimeISO = '{now_casa.isoformat()}';
+                            const start = new Date(serverTimeISO);
+                            const dayKey = start.toISOString().split('T')[0];
+
+                            function buildBreakDate(hm, base) {{
+                                const parts = hm.split(':');
+                                const h = parseInt(parts[0], 10) || 0;
+                                const m = parseInt(parts[1], 10) || 0;
+                                return new Date(base.getFullYear(), base.getMonth(), base.getDate(), h, m, 0, 0);
+                            }}
+
+                            const breaks = breakTimes.map(function(bt) {{ return {{ bt: bt, time: buildBreakDate(bt, start) }}; }});
+
+                            function notifyOnce(key, title, body) {{
+                                if (localStorage.getItem(key)) return;
+                                function doNotify() {{
+                                    try {{ new Notification(title, {{ body: body }}); }} catch (e) {{}}
+                                    localStorage.setItem(key, '1');
                                 }}
-                            }});
+                                if (Notification.permission === 'granted') {{
+                                    doNotify();
+                                }} else if (Notification.permission !== 'denied') {{
+                                    Notification.requestPermission().then(function(p) {{ if (p === 'granted') doNotify(); }});
+                                }}
+                            }}
+
+                            function tick() {{
+                                const now = new Date();
+                                breaks.forEach(function(b) {{
+                                    const remainingSec = Math.floor((b.time - now) / 1000);
+                                    [['300','5 minutes'], ['60','1 minute'], ['0','now']].forEach(function(pair) {{
+                                        const target = parseInt(pair[0], 10);
+                                        const label = pair[1];
+                                        const key = 'notified_break_' + dayKey + '_' + b.bt + '_' + target;
+                                        if (remainingSec === target) {{
+                                            const body = (label === 'now') ? ('Your break starts now at ' + b.bt + '.') : ('Your break starts in ' + label + ' at ' + b.bt + '.');
+                                            notifyOnce(key, 'Break Reminder', body);
+                                        }}
+                                    }});
+                                }});
+                            }}
+                            tick();
+                            setInterval(tick, 1000);
                         }})();
                         </script>
                         """
