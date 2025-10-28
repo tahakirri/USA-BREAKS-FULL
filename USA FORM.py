@@ -3133,6 +3133,12 @@ else:
             if not group_name:
                 st.info("No group selected or assigned.")
             else:
+                # Auto-refresh chat periodically so everyone sees new messages without clicking
+                try:
+                    from streamlit_autorefresh import st_autorefresh  # type: ignore
+                    st_autorefresh(interval=5000, key=f"chat_autorefresh_{group_name}")
+                except Exception:
+                    pass
                 # Send message
                 with st.form("send_group_message_form"):
                     msg_text = st.text_input("Message", placeholder="Type @name to mention")
