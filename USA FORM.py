@@ -1132,14 +1132,35 @@ def bulk_update_template_times(hours):
         return False
 
 def save_break_data():
-    with open('templates.json', 'w') as f:
-        json.dump(st.session_state.templates, f)
-    with open('break_limits.json', 'w') as f:
-        json.dump(st.session_state.break_limits, f)
-    with open('all_bookings.json', 'w') as f:
-        json.dump(st.session_state.agent_bookings, f)
-    with open('active_templates.json', 'w') as f:
-        json.dump(st.session_state.active_templates, f)
+    """Persist break-related data atomically and return True on success."""
+    try:
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        os.makedirs(current_dir, exist_ok=True)
+
+        temp_files = []
+        def write_tmp(filename, data):
+            tmp_path = os.path.join(current_dir, filename + '.tmp')
+            with open(tmp_path, 'w', encoding='utf-8') as f:
+                json.dump(data, f, indent=2, ensure_ascii=False)
+            temp_files.append((tmp_path, os.path.join(current_dir, filename)))
+
+        # Queue writes
+        write_tmp('all_bookings.json', st.session_state.agent_bookings)
+        write_tmp('templates.json', st.session_state.get('templates', {}))
+        write_tmp('break_limits.json', st.session_state.get('break_limits', {}))
+        write_tmp('active_templates.json', st.session_state.get('active_templates', []))
+
+        # Atomic replace
+        for tmp_path, final_path in temp_files:
+            os.replace(tmp_path, final_path)
+
+        return True
+    except Exception as e:
+        try:
+            st.error(f"Error saving break data: {str(e)}")
+        except Exception:
+            pass
+        return False
 
 def adjust_time(time_str, offset):
     try:
