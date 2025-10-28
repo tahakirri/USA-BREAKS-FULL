@@ -3140,19 +3140,21 @@ else:
                 except Exception:
                     # Fallback to JS-based reload if st_autorefresh is unavailable
                     import streamlit.components.v1 as components
-                    components.html(f"""
-                    <script>
-                      if (!window._chatAutoReload_{group_name}) {{
-                        window._chatAutoReload_{group_name} = setInterval(function() {{
-                          try {{
-                            if (document.body && document.body.innerText.indexOf('Group Chat') !== -1) {{
-                              location.reload();
-                            }}
-                          }} catch(e) {{}}
-                        }}, 5000);
-                      }
-                    </script>
-                    """, height=0)
+                    key_js = f"_chatAutoReload_{group_name}"
+                    js_code = (
+                        "<script>\n"
+                        f"  if (!window.{key_js}) " + "{\n"
+                        f"    window.{key_js} = setInterval(function() " + "{\n"
+                        "      try {\n"
+                        "        if (document.body && document.body.innerText.indexOf('Group Chat') !== -1) {\n"
+                        "          location.reload();\n"
+                        "        }\n"
+                        "      } catch(e) {}\n"
+                        "    }, 5000);\n"
+                        "  }\n"
+                        "</script>\n"
+                    )
+                    components.html(js_code, height=0)
                 # Send message
                 with st.form("send_group_message_form"):
                     msg_text = st.text_input("Message", placeholder="Type @name to mention")
