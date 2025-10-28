@@ -3146,29 +3146,25 @@ else:
                 if not messages:
                     st.info("No messages yet.")
                 else:
-                    for m in messages:
+                    for m in messages[::-1]:
                         sender = m.get('sender') if isinstance(m, dict) else m[1]
                         text = m.get('message') if isinstance(m, dict) else m[2]
                         ts = m.get('timestamp') if isinstance(m, dict) else m[3]
-                        mid = m.get('id') if isinstance(m, dict) else m[0]
-                        reactions = m.get('reactions', {}) if isinstance(m, dict) else {}
-                        st.markdown(f"**{sender}** · {ts}")
-                        st.write(text)
-                        # Reactions (simple)
-                        cols = st.columns(3)
-                        if cols[0].button("👍", key=f"react_like_{mid}"):
-                            add_reaction_to_message(mid, "👍", st.session_state.username)
-                            st.rerun()
-                        if cols[1].button("❤️", key=f"react_love_{mid}"):
-                            add_reaction_to_message(mid, "❤️", st.session_state.username)
-                            st.rerun()
-                        if cols[2].button("🎉", key=f"react_party_{mid}"):
-                            add_reaction_to_message(mid, "🎉", st.session_state.username)
-                            st.rerun()
-                        # Show counts
-                        if reactions:
-                            summary = ", ".join([f"{emo} {len(users)}" for emo, users in reactions.items()])
-                            st.caption(summary)
+                        # Determine side
+                        direction = "sent" if sender == st.session_state.username else "received"
+                        # Build initials avatar
+                        parts = [p for p in (sender or "").split() if p]
+                        initials = (parts[0][0] + (parts[1][0] if len(parts) > 1 else "")).upper() if parts else "?"
+                        # Render chat bubble styled like WhatsApp/FB using existing CSS
+                        st.markdown(f'''
+                        <div class="chat-message {direction}">
+                            <div class="message-avatar">{initials}</div>
+                            <div class="message-content">
+                                <div>{text}</div>
+                                <div class="message-meta">{sender} · {ts}</div>
+                            </div>
+                        </div>
+                        ''', unsafe_allow_html=True)
         else:
             st.error("System is currently locked. Access to chat is disabled.")
 
