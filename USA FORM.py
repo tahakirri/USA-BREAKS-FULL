@@ -3029,7 +3029,7 @@ else:
                                 now = new Date(now.getTime() + 1000); // tick locally
                                 if (!nextBreak || now > nextBreak) {{
                                     nextBreak = getNextBreak(now);
-                                }
+                                }}
                                 if (!nextBreak) {{
                                     labelEl.textContent = 'No more breaks today';
                                     countdownEl.textContent = '--:--:--';
@@ -3037,14 +3037,14 @@ else:
                                 }}
                                 const hh = fmt2(nextBreak.getHours());
                                 const mm = fmt2(nextBreak.getMinutes());
-                                labelEl.textContent = `Starts at ${hh}:${mm}`;
+                                labelEl.textContent = 'Starts at ' + hh + ':' + mm;
                                 const diffMs = Math.max(0, nextBreak - now);
                                 const s = Math.floor(diffMs / 1000);
                                 const h = Math.floor(s / 3600);
                                 const m = Math.floor((s % 3600) / 60);
                                 const sec = s % 60;
-                                countdownEl.textContent = `${fmt2(h)}:${fmt2(m)}:${fmt2(sec)}`;
-                            }
+                                countdownEl.textContent = fmt2(h) + ':' + fmt2(m) + ':' + fmt2(sec);
+                            }}
                             render();
                             setInterval(render, 1000);
                         }})();
