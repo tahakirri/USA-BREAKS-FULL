@@ -1,0 +1,7 @@
+streamlit
+streamlit-extras
+pytz
+pandas
+Pillow
+streamlit-autorefresh
+numpy
