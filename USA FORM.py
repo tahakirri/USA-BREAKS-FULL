@@ -3019,7 +3019,7 @@ else:
                                 if (candidates.length === 0) return null;
                                 candidates.sort((a,b) => a - b);
                                 return candidates[0];
-                            }
+                            }}
 
                             let now = new Date(serverTimeISO);
                             let nextBreak = getNextBreak(now);
